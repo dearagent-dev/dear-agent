@@ -83,8 +83,7 @@ the queue is built on top of it.
 - **The first slice** is `Task` + a `Queue` port over JMAP + claim/sweep semantics.
 - **Metadata is coarse.** JMAP has no mutable structured fields, so per-task artifact
   values (branch, SHA, PR url) are **not** stored on the email; they are threaded replies
-  with links. An `attempts` counter needs a workaround (numbered keywords such as
-  `$herald-attempt-2`, or a single `$herald-retried` flag allowing one retry).
+  with links. Attempts are tracked with numbered keywords (`$herald-attempt-2`, …).
 - **The mailbox is an external dependency.** Provider retention, quota, rate limits and
   account availability bound the queue. Terminal messages must be retained long enough to
   serve as tombstones so a redelivery cannot resurrect a task.
@@ -92,6 +91,6 @@ the queue is built on top of it.
   retries; acceptable at Herald's expected volume, revisit if it is not.
 - **No SQL reporting.** Observability is derived from mailbox state and external metrics,
   not from queries.
-- **Verification required before M2**: Fastmail must support custom `$herald-*` keywords
-  and filtering `Email/query` by `Message-ID`. If not, fall back to dedicated mailboxes per
-  state and an id-based dedupe query.
+- **Verified against Fastmail** (`scripts/verify_fastmail_jmap.py`): custom `$herald-*`
+  keywords, `Email/query` by `Message-ID`, and `Email/set` `ifInState` (a stale state
+  yields `stateMismatch`) all behave as required.

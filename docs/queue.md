@@ -7,27 +7,31 @@ Fastmail JMAP (RFC 8620/8621); see [ADR 0002](decisions/0002-deployment-topology
 ## Task
 
 A task is a parsed inbound message. Its authoritative copy is the email; there is no row in
-a database.
+a database. The queue record (`Task`) holds only what the mailbox can persist; message-body
+content is a `TaskSpec` produced by the Normalizer.
 
 ```
-Task
+Task  (queue record — persisted in the mailbox)
   id             # JMAP Email id (stable, assigned by the server)
   transport_id   # Message-ID (RFC 5322) — the dedupe key
   thread_id      # JMAP threadId, the conversation to reply into
-  sender         # advisory; authorization is separate (see security.md)
+  sender         # from the Email header; advisory (authorization is separate)
+  subject        # from the Email header
+  state          # see lifecycle (mailboxes/keywords)
+  attempts       # $herald-attempt-N keywords
+  lease_until    # encoded in a $herald-lease-<epoch> keyword
+  created_at     # Email.receivedAt
+
+TaskSpec  (content — parsed from the message body by the Normalizer)
   repo_url       # required to run
   base_branch    # default: main
   instructions   # free text from the message (untrusted)
   model_request  # optional provider/model hint
-  branch         # herald/<slug>, assigned at claim time
-  state          # see lifecycle
-  attempts       # claim attempts (see caveat)
-  lease_until    # running lease expiry (for resume)
-  artifacts      # branch, commit SHA, PR url (delivered as threaded replies)
-  created_at / updated_at
 ```
 
-`id` and `transport_id` come from the mail server; Herald never invents a task id.
+`id` and `transport_id` come from the mail server; Herald never invents a task id. Branch,
+commit SHA and PR url are not stored on the task either: they are delivered as threaded
+replies.
 
 ## States
 
@@ -80,16 +84,21 @@ retries. A bare `Email/query` followed by an unguarded `Email/set` is forbidden.
 
 - A `Running` message carries a lease; a scheduled sweep moves messages whose lease expired
   back to `Queued`, so a crashed run resumes instead of being lost.
-- **Attempts caveat**: JMAP has no mutable numeric field. Track attempts with companion
-  keywords (`$herald-attempt-2`, …) or a single `$herald-retried` flag; decide before the
-  lease slice.
+- **Attempts** are tracked with numbered keywords (`$herald-attempt-2`, …), since JMAP has
+  no mutable numeric field. The sweep adds the next keyword when it requeues a stale task.
 
 ## Approvals
 
-- A request for approval sends a threaded message with a short-lived, single-use token and
-  the task's `Message-ID`.
-- A reply matching the thread and token moves the task to `approved` or `rejected`.
-- Expired tokens trigger a new request, not a silent failure.
+- A request for approval sends a threaded message with a short-lived, **single-use** token
+  and the task's id. Tokens are generated with a CSPRNG, compared in constant time where
+  they travel over the wire, and stored beside the queue (`FileApprovalStore` for a
+  long-lived process, `MemoryApprovalStore` for tests) because an immutable email cannot
+  hold mutable state.
+- A reply matching the thread and token (`approve <token>` / `reject <token>`) moves the
+  task to `approved` or `rejected`.
+- A used, unknown or expired token is rejected explicitly; an expired token triggers a new
+  request, not a silent failure. The approval path never touches `main`: it only records a
+  decision.
 
 ## Concurrency
 

@@ -23,6 +23,8 @@ venv/
 var/
 runs/
 worktrees/
+approvals.json
+*.approvals.json
 
 # Editors / OS
 .DS_Store
