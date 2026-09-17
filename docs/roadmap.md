@@ -20,7 +20,8 @@ unchecked slice** of the earliest milestone. One slice = one branch = one draft 
   client and verified live against Fastmail (enqueue, claim, get, stale-lease sweep).
 - [x] **M1.4** CLI: `herald task ls|show|claim|complete|fail` (no network; memory backend
   by default, `--backend jmap` for Fastmail).
-- [ ] **M1.5** Approvals threaded by JMAP reply + single-use token.
+- [x] **M1.5** Approvals: single-use, expiring tokens issued next to the queue and redeemed
+  from a reply (`approve|reject <token>`); drives `action -> approved|rejected`.
 
 ## M2 — Transport (email in/out)
 

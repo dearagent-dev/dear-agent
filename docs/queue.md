@@ -89,10 +89,16 @@ retries. A bare `Email/query` followed by an unguarded `Email/set` is forbidden.
 
 ## Approvals
 
-- A request for approval sends a threaded message with a short-lived, single-use token and
-  the task's `Message-ID`.
-- A reply matching the thread and token moves the task to `approved` or `rejected`.
-- Expired tokens trigger a new request, not a silent failure.
+- A request for approval sends a threaded message with a short-lived, **single-use** token
+  and the task's id. Tokens are generated with a CSPRNG, compared in constant time where
+  they travel over the wire, and stored beside the queue (`FileApprovalStore` for a
+  long-lived process, `MemoryApprovalStore` for tests) because an immutable email cannot
+  hold mutable state.
+- A reply matching the thread and token (`approve <token>` / `reject <token>`) moves the
+  task to `approved` or `rejected`.
+- A used, unknown or expired token is rejected explicitly; an expired token triggers a new
+  request, not a silent failure. The approval path never touches `main`: it only records a
+  decision.
 
 ## Concurrency
 

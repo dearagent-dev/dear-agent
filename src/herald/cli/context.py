@@ -10,9 +10,14 @@ from herald.queue.port import Queue
 
 @dataclass(slots=True)
 class CliContext:
-    queue: Queue
+    queue: Queue | None
     as_json: bool
     out: TextIO
+
+    def require_queue(self) -> Queue:
+        if self.queue is None:
+            raise RuntimeError("this command requires a queue backend")
+        return self.queue
 
     def emit(self, message: str) -> None:
         print(message, file=self.out)

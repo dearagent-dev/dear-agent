@@ -49,7 +49,7 @@ def _add_list(subparsers: argparse._SubParsersAction, parent: argparse.ArgumentP
 
 
 def _handle_list(args: argparse.Namespace, context: CliContext) -> int:
-    _print_tasks(context, context.queue.list(TaskState(args.state), limit=args.limit))
+    _print_tasks(context, context.require_queue().list(TaskState(args.state), limit=args.limit))
     return 0
 
 
@@ -60,7 +60,7 @@ def _add_show(subparsers: argparse._SubParsersAction) -> None:
 
 
 def _handle_show(args: argparse.Namespace, context: CliContext) -> int:
-    task = context.queue.get(args.task_id)
+    task = context.require_queue().get(args.task_id)
     if task is None:
         context.emit(f"no task {args.task_id!r}")
         return 1
@@ -80,11 +80,11 @@ def _add_claim(subparsers: argparse._SubParsersAction) -> None:
 
 
 def _handle_claim(args: argparse.Namespace, context: CliContext) -> int:
-    task = context.queue.get(args.task_id)
+    task = context.require_queue().get(args.task_id)
     if task is None:
         context.emit(f"no task {args.task_id!r}")
         return 1
-    if not context.queue.claim(task, lease=timedelta(seconds=args.lease_seconds)):
+    if not context.require_queue().claim(task, lease=timedelta(seconds=args.lease_seconds)):
         context.emit(f"task {task.id} is not claimable (state {task.state.value})")
         return 1
     context.emit(f"claimed {task.id} for {args.lease_seconds}s")
@@ -100,11 +100,11 @@ def _add_terminal(
 
 
 def _handle_transition(args: argparse.Namespace, context: CliContext) -> int:
-    task = context.queue.get(args.task_id)
+    task = context.require_queue().get(args.task_id)
     if task is None:
         context.emit(f"no task {args.task_id!r}")
         return 1
-    transitioned = context.queue.transition(task, args.target_state)
+    transitioned = context.require_queue().transition(task, args.target_state)
     context.emit(f"{transitioned.id} -> {transitioned.state.value}")
     return 0
 
@@ -127,3 +127,32 @@ def add_task_commands(
     _add_claim(task_sub)
     _add_terminal(task_sub, "complete", TaskState.DONE, "mark a running task done")
     _add_terminal(task_sub, "fail", TaskState.FAILED, "mark a running task failed")
+
+
+def _add_parse_reply(subparsers: argparse._SubParsersAction) -> None:
+    parser = subparsers.add_parser("parse-reply", help="parse a reply body for a decision")
+    parser.add_argument("text")
+    parser.set_defaults(handler=_handle_parse_reply, needs_queue=False)
+
+
+def _handle_parse_reply(args: argparse.Namespace, context: CliContext) -> int:
+    from herald.approvals_service import parse_reply
+
+    reply = parse_reply(args.text)
+    if reply is None:
+        context.emit("no approval decision found")
+        return 1
+    if context.as_json:
+        context.emit_json({"token": reply.token, "decision": reply.decision})
+    else:
+        context.emit(f"{reply.decision} {reply.token}")
+    return 0
+
+
+def add_approval_commands(
+    subparsers: argparse._SubParsersAction, parent: argparse.ArgumentParser
+) -> None:
+    approval = subparsers.add_parser("approval", help="inspect approval replies")
+    approval.set_defaults(handler=None)
+    approval_sub = approval.add_subparsers(dest="approval_command", required=True)
+    _add_parse_reply(approval_sub)
