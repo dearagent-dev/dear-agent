@@ -64,11 +64,11 @@ def test_enqueue_returns_a_copy(queue: MemoryQueue) -> None:
     stored = queue.enqueue(make_task())
     assert stored is not None
 
-    stored.instructions = "mutated"
-    stored.artifacts["branch"] = "herald/x"
+    stored.sender = "mutated@example.com"
+    stored.thread_id = "mutated-thread"
 
-    assert queue.get("e1").instructions == ""
-    assert queue.get("e1").artifacts == {}
+    assert queue.get("e1").sender is None
+    assert queue.get("e1").thread_id is None
 
 
 def test_get_unknown_id_returns_none(queue: MemoryQueue) -> None:

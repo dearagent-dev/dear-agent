@@ -7,27 +7,31 @@ Fastmail JMAP (RFC 8620/8621); see [ADR 0002](decisions/0002-deployment-topology
 ## Task
 
 A task is a parsed inbound message. Its authoritative copy is the email; there is no row in
-a database.
+a database. The queue record (`Task`) holds only what the mailbox can persist; message-body
+content is a `TaskSpec` produced by the Normalizer.
 
 ```
-Task
+Task  (queue record — persisted in the mailbox)
   id             # JMAP Email id (stable, assigned by the server)
   transport_id   # Message-ID (RFC 5322) — the dedupe key
   thread_id      # JMAP threadId, the conversation to reply into
-  sender         # advisory; authorization is separate (see security.md)
+  sender         # from the Email header; advisory (authorization is separate)
+  subject        # from the Email header
+  state          # see lifecycle (mailboxes/keywords)
+  attempts       # $herald-attempt-N keywords
+  lease_until    # encoded in a $herald-lease-<epoch> keyword
+  created_at     # Email.receivedAt
+
+TaskSpec  (content — parsed from the message body by the Normalizer)
   repo_url       # required to run
   base_branch    # default: main
   instructions   # free text from the message (untrusted)
   model_request  # optional provider/model hint
-  branch         # herald/<slug>, assigned at claim time
-  state          # see lifecycle
-  attempts       # claim attempts (see caveat)
-  lease_until    # running lease expiry (for resume)
-  artifacts      # branch, commit SHA, PR url (delivered as threaded replies)
-  created_at / updated_at
 ```
 
-`id` and `transport_id` come from the mail server; Herald never invents a task id.
+`id` and `transport_id` come from the mail server; Herald never invents a task id. Branch,
+commit SHA and PR url are not stored on the task either: they are delivered as threaded
+replies.
 
 ## States
 

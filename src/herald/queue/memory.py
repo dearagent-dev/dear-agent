@@ -29,7 +29,6 @@ class MemoryQueue:
         stored.attempts = 0
         stored.lease_until = None
         stored.created_at = now
-        stored.updated_at = now
 
         self._tasks[stored.id] = stored
         self._by_transport[stored.transport_id] = stored.id
@@ -52,7 +51,6 @@ class MemoryQueue:
         now = self._clock()
         stored.state = TaskState.RUNNING
         stored.lease_until = now + lease
-        stored.updated_at = now
         return True
 
     def transition(self, task: Task, to_state: TaskState) -> Task:
@@ -62,11 +60,9 @@ class MemoryQueue:
         if stored.state != task.state:
             raise StateConflictError(task.id, task.state, stored.state)
 
-        now = self._clock()
         stored.state = to_state
         if to_state != TaskState.RUNNING:
             stored.lease_until = None
-        stored.updated_at = now
         return copy.deepcopy(stored)
 
     def release_stale(self, *, now: datetime) -> list[Task]:
@@ -80,7 +76,6 @@ class MemoryQueue:
             stored.state = TaskState.QUEUED
             stored.attempts += 1
             stored.lease_until = None
-            stored.updated_at = now
             released.append(copy.deepcopy(stored))
 
         released.sort(key=lambda task: (task.created_at, task.id))

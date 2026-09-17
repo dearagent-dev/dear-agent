@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any
 
 
 class TaskState(StrEnum):
@@ -30,26 +29,34 @@ def utcnow() -> datetime:
 
 @dataclass(slots=True)
 class Task:
-    """A parsed inbound message.
+    """Queue record for an inbound message.
 
-    The authoritative copy is the email in the mailbox; Herald keeps no database. ``id``
-    is the JMAP ``Email`` id assigned by the server and ``transport_id`` is the RFC 5322
-    ``Message-ID`` (the dedupe key). ``artifacts`` are delivered as threaded replies and
-    are not stored on the email.
+    Holds only what the mailbox can persist: identity, mailboxes/keywords, attempts and
+    lease. ``id`` is the JMAP ``Email`` id (server-assigned) and ``transport_id`` is the
+    RFC 5322 ``Message-ID`` (the dedupe key). Content that lives in the message body is
+    modelled by :class:`TaskSpec` and parsed by the Normalizer.
     """
 
     id: str
     transport_id: str
     thread_id: str | None = None
     sender: str | None = None
-    repo_url: str | None = None
-    base_branch: str = "main"
-    instructions: str = ""
-    model_request: str | None = None
-    branch: str | None = None
+    subject: str | None = None
     state: TaskState = TaskState.RECEIVED
     attempts: int = 0
     lease_until: datetime | None = None
-    artifacts: dict[str, Any] = field(default_factory=dict)
     created_at: datetime = field(default_factory=utcnow)
-    updated_at: datetime = field(default_factory=utcnow)
+
+
+@dataclass(slots=True)
+class TaskSpec:
+    """Task content parsed from the message body by the Normalizer.
+
+    Never persisted in the mailbox: JMAP emails are immutable, so this is derived on demand
+    from the message body.
+    """
+
+    repo_url: str
+    base_branch: str = "main"
+    instructions: str = ""
+    model_request: str | None = None
