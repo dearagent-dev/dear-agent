@@ -141,7 +141,6 @@ See [`docs/security.md`](docs/security.md) for the prompt-injection threat model
 
 ## 8. Open decisions (do not guess — ask or open an ADR)
 
-- Attempts representation in JMAP: numbered keywords vs a single retry flag.
 - Sweep cadence: latency vs cluster churn for the `CronJob`.
 - Concurrency: one task at a time vs N Jobs.
 - Idle loop scope: propose-only vs auto-enqueue drafts for approval.

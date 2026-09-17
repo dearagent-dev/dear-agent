@@ -80,9 +80,8 @@ retries. A bare `Email/query` followed by an unguarded `Email/set` is forbidden.
 
 - A `Running` message carries a lease; a scheduled sweep moves messages whose lease expired
   back to `Queued`, so a crashed run resumes instead of being lost.
-- **Attempts caveat**: JMAP has no mutable numeric field. Track attempts with companion
-  keywords (`$herald-attempt-2`, …) or a single `$herald-retried` flag; decide before the
-  lease slice.
+- **Attempts** are tracked with numbered keywords (`$herald-attempt-2`, …), since JMAP has
+  no mutable numeric field. The sweep adds the next keyword when it requeues a stale task.
 
 ## Approvals
 

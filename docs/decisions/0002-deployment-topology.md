@@ -83,8 +83,7 @@ the queue is built on top of it.
 - **The first slice** is `Task` + a `Queue` port over JMAP + claim/sweep semantics.
 - **Metadata is coarse.** JMAP has no mutable structured fields, so per-task artifact
   values (branch, SHA, PR url) are **not** stored on the email; they are threaded replies
-  with links. An `attempts` counter needs a workaround (numbered keywords such as
-  `$herald-attempt-2`, or a single `$herald-retried` flag allowing one retry).
+  with links. Attempts are tracked with numbered keywords (`$herald-attempt-2`, …).
 - **The mailbox is an external dependency.** Provider retention, quota, rate limits and
   account availability bound the queue. Terminal messages must be retained long enough to
   serve as tombstones so a redelivery cannot resurrect a task.
