@@ -10,8 +10,9 @@ unchecked slice** of the earliest milestone. One slice = one branch = one draft 
 
 ## M1 — Queue first (mailbox as the queue)
 
-- [ ] **M1.1** Verify Fastmail JMAP: custom `$herald-*` keywords, `Email/query` by
-  `Message-ID`, and `Email/set` `ifInState` (CAS) — a spike against a real account.
+- [x] **M1.1** Verify Fastmail JMAP: custom `$herald-*` keywords, `Email/query` by
+  `Message-ID`, and `Email/set` `ifInState` (CAS) — verified against a real account
+  (`scripts/verify_fastmail_jmap.py`); all checks pass.
 - [ ] **M1.2** `Task` model + `Queue` port (JMAP backend + in-memory fake for tests).
 - [ ] **M1.3** Idempotent enqueue on `Message-ID` + tests.
 - [ ] **M1.4** State machine as mailboxes/keywords with atomic claim (`ifInState`).

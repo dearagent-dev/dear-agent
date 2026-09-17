@@ -92,6 +92,6 @@ the queue is built on top of it.
   retries; acceptable at Herald's expected volume, revisit if it is not.
 - **No SQL reporting.** Observability is derived from mailbox state and external metrics,
   not from queries.
-- **Verification required before M2**: Fastmail must support custom `$herald-*` keywords
-  and filtering `Email/query` by `Message-ID`. If not, fall back to dedicated mailboxes per
-  state and an id-based dedupe query.
+- **Verified against Fastmail** (`scripts/verify_fastmail_jmap.py`): custom `$herald-*`
+  keywords, `Email/query` by `Message-ID`, and `Email/set` `ifInState` (a stale state
+  yields `stateMismatch`) all behave as required.
