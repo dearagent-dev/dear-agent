@@ -54,6 +54,11 @@ class JmapQueue:
     # Queue port ---------------------------------------------------------
 
     def enqueue(self, task: Task) -> Task | None:
+        # Two dedupe layers:
+        #  1. a query by Message-ID catches re-delivery that produced a second Email;
+        #  2. the guarded write below closes the concurrency window for the same Email,
+        #     because two racing enqueues read the same state and only one `ifInState`
+        #     write can win. A lost race is a duplicate, never a second task.
         if self._client.query_ids(
             filter={
                 "inMailbox": self._mailbox(),
@@ -68,11 +73,17 @@ class JmapQueue:
             raise TaskNotFoundError(task.id)
         record = records[0]
 
+        if self._state_of(record) is TaskState.QUEUED:
+            return None
+
         patch = self._state_patch(record, TaskState.QUEUED)
         patch.update(self._clear_prefix(record, ATTEMPT_PREFIX))
         patch.update(self._clear_prefix(record, LEASE_PREFIX))
         patch[f"mailboxIds/{self._mailbox()}"] = True
-        self._client.update(task.id, patch, if_in_state=state)
+        try:
+            self._client.update(task.id, patch, if_in_state=state)
+        except StateMismatchError:
+            return None
 
         return self._task_from(record, state=TaskState.QUEUED, attempts=0, lease_until=None)
 

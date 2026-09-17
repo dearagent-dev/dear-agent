@@ -178,6 +178,30 @@ def test_enqueue_clears_previous_state_keywords(
     assert not any(keyword.startswith(LEASE_PREFIX) for keyword in email.keywords)
 
 
+def test_enqueue_losing_the_ifinstate_race_is_a_noop(
+    queue: JmapQueue, client: FakeJmapMailClient
+) -> None:
+    add_email(client, "e1", "<m1@x>")
+    add_email(client, "e2", "<m2@x>")
+
+    original_update = client.update
+    calls = {"n": 0}
+
+    def racing_update(email_id: str, patch: dict, *, if_in_state: str) -> str:
+        calls["n"] += 1
+        if calls["n"] == 2:
+            client._version += 1
+        return original_update(email_id, patch, if_in_state=if_in_state)
+
+    client.update = racing_update  # type: ignore[method-assign]
+    first = queue.enqueue(Task(id="e1", transport_id="<m1@x>"))
+    second = queue.enqueue(Task(id="e2", transport_id="<m2@x>"))
+
+    assert first is not None
+    assert second is None
+    assert len(queue.list(TaskState.QUEUED)) == 1
+
+
 def test_list_filters_by_state(queue: JmapQueue, client: FakeJmapMailClient) -> None:
     add_email(client, "e1", "<m1@x>")
     add_email(client, "e2", "<m2@x>")
