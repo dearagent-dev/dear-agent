@@ -15,8 +15,9 @@ unchecked slice** of the earliest milestone. One slice = one branch = one draft 
   (`scripts/verify_fastmail_jmap.py`); all checks pass.
 - [x] **M1.2** `Task` model + `Queue` port + `MemoryQueue` with idempotent enqueue
   (`Message-ID`), atomic claim, guarded transitions and the lease sweep; TDD, no network.
-- [ ] **M1.3** `JmapQueue` backend: the same port over Fastmail mailboxes/keywords, using
-  `ifInState` for claims and `$herald-attempt-N` for attempts.
+- [x] **M1.3** `JmapQueue` backend: the same port over Fastmail mailboxes/keywords, using
+  `ifInState` for claims and `$herald-attempt-N` for attempts; unit-tested against a fake
+  client and verified live against Fastmail (enqueue, claim, get, stale-lease sweep).
 - [ ] **M1.4** CLI: `herald task ls|show|claim|complete|fail` (no harness).
 - [ ] **M1.5** Approvals threaded by JMAP reply + single-use token.
 
