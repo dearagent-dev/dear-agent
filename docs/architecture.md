@@ -1,0 +1,107 @@
+# Architecture
+
+Herald has one job: turn an **asynchronous inbound message** into a **reviewable Git pull
+request**, then tell the sender. Everything else is a detail of how that is done safely
+and idempotently.
+
+## Data flow
+
+```
+inbound message ──▶ Transport ──▶ Normalizer ──▶ Queue ──▶ Scheduler ──▶ Runner
+                     (mailbox)      (Task)       (mailbox)   (sweep)      │
+                                                                         │ worktree + model
+                                                                         ▼
+outbound message ◀── Notifier ◀── Evidence ◀──────────────────────── Git plane
+   (status/approval)                                                (branch + PR)
+```
+
+## Components
+
+### Transport
+Inbound: accept a message (webhook push, IMAP/JMAP poll) and hand the raw payload plus a
+stable transport id to the Normalizer. Outbound: send status and approval messages,
+threaded to the original conversation. See [transports.md](transports.md).
+
+**Interface (to implement):**
+```
+inbound()  -> Iterable[RawMessage]         # push handler or poller
+send(thread, subject, body, headers=None)  # reply in-thread
+```
+
+### Normalizer
+Maps a `RawMessage` to a `Task`. Extracts: repo URL, base branch, instructions,
+constraints, requested provider/model, and a reply token. Rejects messages without a
+resolvable repo. Never trusts the message for commands. See [security.md](security.md).
+
+### Queue
+The durable source of truth is the **transport mailbox itself** (Fastmail JMAP first), not
+a database. State lives in mailboxes/keywords, dedupe is on `Message-ID`, and claiming is
+an atomic JMAP `Email/set` with `ifInState`. See [queue.md](queue.md) and
+[ADR 0002](decisions/0002-deployment-topology.md).
+
+### Scheduler
+A Kubernetes `CronJob` sweep lists `Queued` messages and starts one Job per task, claiming
+each atomically before the work begins. The default is **one running task at a time**.
+
+### Runner
+Executes a harness for a claimed task inside an isolated Git worktree and returns
+evidence (branch, commit, logs, PR). The runner is a thin adapter over a harness CLI.
+Herald must not embed a harness.
+
+**Interface (to implement):**
+```
+run(task, worktree) -> RunResult
+```
+A runner adapter must: create/enter an isolated worktree, invoke the harness
+non-interactively, capture structured events, and never touch the user's tree.
+
+### Provider
+Model backend configuration handed to the harness (endpoint, model id, key reference).
+Hosted or local. See [providers.md](providers.md).
+
+### Git plane
+Owns worktrees, branches and pull requests. **Agents never write `main`.** Every result is
+an `herald/<slug>` branch and a draft PR.
+
+### Notifier
+Threads status and approval requests back over the transport. Approvals are replied to and
+matched by token + thread.
+
+### Idle / creative loop
+When the queue is empty, proposes new work anchored to recent repository activity and
+external trends. Proposals are queued (optionally gated for approval), never executed
+blindly. This is the "night shift" mode: useful work happens while no human is watching.
+
+## Task lifecycle
+
+```
+received ─▶ queued ─▶ running ─▶ (draft PR) ─▶ action? ─▶ done
+              │           │                        │
+              │           └─────────────▶ failed   └─▶ awaiting-approval ─▶ approved/rejected
+              └─▶ rejected (no repo / policy)
+```
+
+- `action?` is the human-in-the-loop queue: a task that needs a decision before it can
+  finish.
+- A finished task sends an outbound message with the PR link; the PR is the artifact.
+- Re-delivery of the same transport message is a no-op (idempotency).
+
+## Concurrency and durability
+
+- Tasks persist across restarts because the mailbox persists; an interrupted run is
+  **resumable** (a sweep returns a stale `Running` task to `Queued`), never a lost task.
+- Worktrees are disposable (`emptyDir` inside a Job); the branch/PR is durable.
+- Serial execution is the default and is not a bug.
+
+## Deployment
+
+Herald is **Kubernetes/OpenShift by design**. The control plane and the runner are standard
+workloads: one Job per task, a `CronJob` sweep to claim work, no always-on daemon and no
+database. See [ADR 0002](decisions/0002-deployment-topology.md).
+
+## Trust boundaries
+
+- Inbound content is untrusted. It can influence *what* work is proposed, never *which
+  commands run* without allowlist/approval. See [security.md](security.md).
+- Agent execution is isolated (worktree + optional OS sandbox). Network policy is explicit.
+- Model providers and transports are configured, not hard-coded.
