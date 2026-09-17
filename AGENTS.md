@@ -80,6 +80,8 @@ port**, because everything else depends on a correct, idempotent queue.
   `Task` and back.
 - **Deployment** is Kubernetes/OpenShift by design (ADR 0002): one Job per task, a
   `CronJob` sweep, no always-on daemon.
+- The **`herald` CLI** is the operator entry point: `herald task ls|show|claim|complete|fail`
+  (`--backend memory|jmap`).
 - Formatting/linting/tests (add these as they come into existence):
   - `ruff format && ruff check`
   - `pytest`
