@@ -53,7 +53,9 @@ unchecked slice** of the earliest milestone. One slice = one branch = one draft 
 
 ## M4 — Human-in-the-loop
 
-- [ ] **M4.1** Approval request → reply → approve/reject round trip.
+- [x] **M4.1** Approval round trip end to end: the `ControlPlane` detects an
+  `approve|reject <token>` reply, applies it to the task and reports a reused/expired token
+  back as a fresh request.
 - [ ] **M4.2** PR landing remains human-only; document the wall.
 - [ ] **M4.3** Failure/escalation messages.
 
