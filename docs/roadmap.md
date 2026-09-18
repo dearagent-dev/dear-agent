@@ -42,7 +42,8 @@ unchecked slice** of the earliest milestone. One slice = one branch = one draft 
 
 - [x] **M3.1** `Runner` interface + `Worktree` (isolated `herald/<slug>` worktree created
   and removed without touching the main checkout) + a minimal `CommandRunner`.
-- [ ] **M3.2** OpenCode runner adapter (headless `opencode run`), structured events.
+- [x] **M3.2** OpenCode runner adapter: headless `opencode run` with the prompt as a
+  separate argv element (never a shell), configurable binary/model/timeout.
 - [ ] **M3.3** Claude Code + Codex adapters.
 - [ ] **M3.4** Git plane: branch `herald/<slug>`, commit, push, **draft PR**.
 - [ ] **M3.5** Evidence as threaded replies (branch, SHA, PR url); logs to object storage.
