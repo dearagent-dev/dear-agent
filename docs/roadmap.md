@@ -63,7 +63,8 @@ unchecked slice** of the earliest milestone. One slice = one branch = one draft 
 
 ## M5 — Idle / creative loop
 
-- [ ] **M5.1** Signal collection: recent repo activity (commits, changed files).
+- [x] **M5.1** Signal collection: recent commits and TODO/FIXME markers from the local
+  checkout, read-only, no network.
 - [ ] **M5.2** Proposal generation anchored to activity + trends.
 - [ ] **M5.3** Proposal queue (approval-gated by default); never auto-execute blind.
 - [ ] **M5.4** Rate/budget limits so idle work cannot starve real work.
