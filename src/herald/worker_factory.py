@@ -9,6 +9,7 @@ from herald.notify.escalate import Escalator
 from herald.notify.notifier import Notifier
 from herald.queue.models import Task, TaskSpec
 from herald.queue.port import Queue
+from herald.repo import RepoPreparer
 from herald.runners.port import Runner
 from herald.sandbox import BubblewrapSandbox, NoSandbox, Sandbox, SandboxPolicy
 from herald.transports.port import Transport
@@ -20,11 +21,13 @@ class WorktreeSpecResolver:
 
     The queue record does not carry the content (ADR 0002), so the worker re-reads the
     message and normalizes it. A task with no resolvable spec is a hard error: the runner
-    must not invent instructions.
+    must not invent instructions. After resolving, it ensures the read-only checkout exists
+    so the executor can create a worktree from it.
     """
 
-    def __init__(self, transport: Transport) -> None:
+    def __init__(self, transport: Transport, preparer: RepoPreparer | None = None) -> None:
         self._transport = transport
+        self._preparer = preparer or RepoPreparer()
 
     def __call__(self, task: Task, repo_path: str) -> TaskSpec:
         from herald.normalizer import NormalizedTask, normalize
@@ -38,6 +41,8 @@ class WorktreeSpecResolver:
         result = normalize(message)
         if not isinstance(result, NormalizedTask):
             raise ValueError(f"message {task.transport_id!r} does not normalize: {result.reason}")
+        if result.spec.repo_url:
+            self._preparer.ensure(repo_path, result.spec.repo_url)
         return result.spec
 
 

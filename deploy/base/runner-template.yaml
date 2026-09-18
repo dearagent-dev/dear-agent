@@ -41,7 +41,7 @@ data:
                 - "--backend"
                 - "jmap"
                 - "--repo"
-                - "/repos/source"
+                - "/work/source"
                 - "--recipient"
                 - "$(HERALD_RECIPIENT)"
                 - "--model"

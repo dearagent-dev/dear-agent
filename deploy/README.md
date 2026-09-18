@@ -59,7 +59,8 @@ selected repositories.
 
 ## Hardening already baked into the manifests
 
-- `automountServiceAccountToken: false` on every workload.
+- `automountServiceAccountToken: false` on every workload except the sweep, which needs a
+  token to create runner Jobs (its `Role` can only read the template and create Jobs).
 - Separate `ServiceAccount`s for the control plane, the runner (read) and the publisher.
 - `runAsNonRoot`, `seccompProfile: RuntimeDefault`, all capabilities dropped.
 - Runner worktree is an `emptyDir`; nothing persists in the pod except the pushed branch.
@@ -72,11 +73,10 @@ selected repositories.
 - The runner is a **`JobTemplate`** (`herald-runner-template` ConfigMap), not a static Job:
   a Job is immutable and one-per-task, so the scheduler renders it per claimed task. The
   template invokes `herald run --backend jmap <task-id>`, which claims the task, runs the
-  harness in a worktree and opens the draft PR. The controller that instantiates the
-  template per queued task (and injects `HERALD_TASK_ID`) is not written yet.
-- The runner's `--repo /repos/source` needs a checkout: today the template mounts an
-  `emptyDir` at `/work`. Production should clone the read-only repo there from
-  `herald-git-read`, or mount a pre-cloned volume, before `herald run` starts.
+  harness in a worktree and opens the draft PR. `herald sweep` (the CronJob) creates one
+  Job per queued task with the task id injected.
+- The runner's `--repo /work/source` is cloned read-only on first use from the task's
+  `repo:` URL, using the mounted `herald-git-read` key (`GIT_SSH_COMMAND`).
 - No Postgres: by design, the mailbox is the queue.
 
 ## Verified on a live OpenShift cluster
