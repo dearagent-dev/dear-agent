@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from herald.jmap.client import EmailRecord, StateMismatchError
+from herald.jmap.client import EmailRecord, JmapError, StateMismatchError
 from herald.queue.jmap import LEASE_PREFIX, JmapQueue
 from herald.queue.models import Task, TaskState
 from herald.queue.port import Queue, StateConflictError
@@ -145,6 +145,28 @@ def add_email(
             subject="task",
         )
     )
+
+
+def test_get_resolves_a_message_id_to_the_email_id(
+    queue: JmapQueue, client: FakeJmapMailClient
+) -> None:
+    email = add_email(client, email_id="email-123", message_id="<m1@x>")
+    email.mailbox_ids.add(client._mailbox_id)
+
+    # JMAP rejects an Email/get for a non-Email id rather than returning empty.
+    original = client.get
+
+    def strict_get(ids: list[str]):
+        if ids == ["<m1@x>"]:
+            raise JmapError("g: invalidArguments")
+        return original(ids)
+
+    client.get = strict_get  # type: ignore[method-assign]
+
+    task = queue.get("<m1@x>")
+
+    assert task is not None
+    assert task.id == "email-123"
 
 
 def test_jmap_queue_satisfies_the_port(queue: JmapQueue) -> None:

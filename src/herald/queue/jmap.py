@@ -4,7 +4,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 
-from herald.jmap.client import EmailRecord, StateMismatchError
+from herald.jmap.client import EmailRecord, JmapError, StateMismatchError
 from herald.queue.models import Task, TaskState, utcnow
 from herald.queue.port import StateConflictError, TaskNotFoundError
 
@@ -99,8 +99,27 @@ class JmapQueue:
         return self._task_from(record, state=TaskState.QUEUED, attempts=0, lease_until=None)
 
     def get(self, task_id: str) -> Task | None:
-        _, records = self._client.get([task_id])
+        try:
+            _, records = self._client.get([task_id])
+        except JmapError:
+            records = []
+        if not records:
+            email_id = self._email_id_for(task_id)
+            if email_id is None:
+                return None
+            _, records = self._client.get([email_id])
         return self._task_from(records[0]) if records else None
+
+    def _email_id_for(self, message_id: str) -> str | None:
+        """Resolve a transport Message-ID to the JMAP Email id, if one exists."""
+        ids = self._client.query_ids(
+            filter={
+                "inMailbox": self._mailbox(),
+                "header": ["Message-ID", message_id],
+            },
+            limit=1,
+        )
+        return ids[0] if ids else None
 
     def list(self, state: TaskState, *, limit: int = 10) -> list[Task]:
         keyword = STATE_KEYWORDS.get(state)
