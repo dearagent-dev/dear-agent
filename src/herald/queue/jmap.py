@@ -69,17 +69,15 @@ class JmapQueue:
             limit=5,
         )
         if existing:
-            _, records = self._client.get(existing)
+            state, records = self._client.get(existing)
             # Only a message that reached a Herald state is a duplicate; the raw inbound
             # message (still `${RECEIVED}`) is the one we are here to enqueue.
             if any(self._state_of(record) is not TaskState.RECEIVED for record in records):
                 return None
-
-        # The task id from the Normalizer is the transport Message-ID, but JMAP mutations
-        # need the Email id. Resolve it from the Message-ID when the id is not already one.
-        state, records = self._client.get([task.id])
-        if not records and existing:
-            state, records = self._client.get([existing[0]])
+        else:
+            # JMAP rejects a non-Email id (the transport Message-ID) with invalidArguments,
+            # so only ask by id when there was no Message-ID match.
+            state, records = self._client.get([task.id])
         if not records:
             raise TaskNotFoundError(task.id)
         record = records[0]
