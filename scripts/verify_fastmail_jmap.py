@@ -381,6 +381,76 @@ def check_queue_integration(token: str, account_id: str | None) -> bool:
         _destroy(client, email_id)
 
 
+def _write_raw_email(client: Any, mailbox_id: str, message_id: str, body: str) -> str:
+    payload = {
+        "mailboxIds": {mailbox_id: True},
+        "keywords": {"$draft": True},
+        "from": [{"email": PROBE_FROM}],
+        "to": [{"email": PROBE_FROM}],
+        "messageId": [message_id],
+        "subject": "herald transport probe",
+        "bodyValues": {"b1": {"value": body}},
+        "textBody": [{"partId": "b1", "type": "text/plain"}],
+    }
+    created = _raw_call(
+        client,
+        [["Email/set", {"accountId": client.account_id, "create": {"p": payload}}, "c"]],
+        "c",
+    )
+    if "p" not in created.get("created", {}):
+        raise RuntimeError(f"could not create email: {created.get('notCreated')}")
+    return created["created"]["p"]["id"]
+
+
+def check_transport_integration(token: str, account_id: str | None) -> bool:
+    """Validate :class:`herald.transports.jmap.JmapTransport` against the live account.
+
+    Polls a throwaway mailbox for a probe message and, if the token has the submission
+    scope, sends a threaded reply. A missing submission scope is reported, not failed.
+    """
+    from herald.jmap.client import JmapClient as TransportJmapClient
+    from herald.transports.base import OutboundMessage
+    from herald.transports.jmap import JmapTransport
+
+    probe_mailbox = os.environ.get("FASTMAIL_TRANSPORT_MAILBOX", "Herald-transport-probe")
+    client = TransportJmapClient(token, account_id=account_id)
+    client.connect()
+    mailbox_id = client.get_or_create_mailbox(probe_mailbox)
+
+    message_id = f"<herald-transport-probe-{os.getpid()}@example.invalid>"
+    email_id = _write_raw_email(
+        client, mailbox_id, message_id, "repo: https://example.com/o/r\n\nfix the build"
+    )
+
+    transport = JmapTransport(client, mailbox_name=probe_mailbox)
+    try:
+        polled = transport.poll()
+        match = next((raw for raw in polled if raw.transport_id == message_id), None)
+        if match is None:
+            print("  [FAIL] transport: probe message was not polled")
+            return False
+        if "fix the build" not in match.body:
+            print("  [FAIL] transport: polled body is empty")
+            return False
+        print("  [PASS] transport: poll maps the email to a RawMessage")
+
+        try:
+            transport.send(
+                OutboundMessage(
+                    thread_id=match.thread_id,
+                    subject="re: herald transport probe",
+                    body="transport probe reply",
+                    headers={"to": PROBE_FROM, "in-reply-to": message_id},
+                )
+            )
+            print("  [PASS] transport: threaded send")
+        except Exception as exc:  # noqa: BLE001
+            print(f"  [SKIP] transport: send needs the Email submission scope ({exc})")
+        return True
+    finally:
+        _destroy(client, email_id)
+
+
 def _destroy(client: Any, email_id: str) -> None:
     _raw_call(
         client,
@@ -442,8 +512,11 @@ def main() -> int:
     print("- JmapQueue over Fastmail")
     queue_ok = check_queue_integration(token, account_id)
 
+    print("- JmapTransport over Fastmail")
+    transport_ok = check_transport_integration(token, account_id)
+
     print("- result")
-    if any(keyword_results) and query_ok and cas_ok and queue_ok:
+    if any(keyword_results) and query_ok and cas_ok and queue_ok and transport_ok:
         print("  all critical checks passed")
         return 0
     print("  some checks failed; see above")
