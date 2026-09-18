@@ -69,6 +69,20 @@ selected repositories.
 
 ## Not yet wired
 
-- The runner Job template shows the intended shape; the full claim → run → publish flow is
-  driven by the code (`TaskExecutor`) and needs a task-id injection mechanism.
+- The runner is a **`JobTemplate`** (`herald-runner-template` ConfigMap), not a static Job:
+  a Job is immutable and one-per-task, so the scheduler renders it per claimed task. The
+  rendering controller is not written yet; today the template documents the intended shape
+  and passes the hardening invariants in CI.
 - No Postgres: by design, the mailbox is the queue.
+
+## Verified on a live OpenShift cluster
+
+The base manifests were applied to a validation namespace and the control plane reached
+`1/1 Running`, serving `/health` from inside the cluster. Two real issues were found and
+fixed by doing this:
+
+1. The image build failed because `pyproject.toml` references `LICENSE`; the `Dockerfile`
+   now copies it.
+2. Pods failed with `CreateContainerConfigError` when the referenced Secret had no keys, so
+   every `secretKeyRef` is now `optional: true`; the app fails closed on a missing token at
+   startup rather than the pod refusing to schedule.

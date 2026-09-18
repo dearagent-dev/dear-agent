@@ -4,7 +4,7 @@ resources:
   - config.yaml
   - secrets.yaml
   - control-plane.yaml
-  - runner-job.yaml
+  - runner-template.yaml
   - sweep-cronjob.yaml
 labels:
   - includeSelectors: true
