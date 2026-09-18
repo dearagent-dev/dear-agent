@@ -149,6 +149,53 @@ def _handle_parse_reply(args: argparse.Namespace, context: CliContext) -> int:
     return 0
 
 
+def add_run_commands(
+    subparsers: argparse._SubParsersAction, parent: argparse.ArgumentParser
+) -> None:
+    parser = subparsers.add_parser("run", help="execute one claimed task end to end")
+    parser.add_argument("task_id")
+    parser.add_argument("--repo", required=True, help="path to the source repository")
+    parser.add_argument("--recipient", default=None, help="email to notify on completion")
+    parser.add_argument(
+        "--model",
+        default=None,
+        help="model id passed to the harness (provider:model); default from env",
+    )
+    parser.add_argument(
+        "--backend",
+        choices=["memory", "jmap"],
+        default="memory",
+        help="queue/transport backend (default: memory)",
+    )
+    parser.set_defaults(handler=_handle_run)
+
+
+def _handle_run(args: argparse.Namespace, context: CliContext) -> int:
+    from herald.worker_factory import build_transport, build_worker
+
+    queue = context.require_queue()
+    transport = build_transport()
+    worker = build_worker(
+        queue=queue,
+        transport=transport,
+        repo_path=args.repo,
+        recipient=args.recipient,
+        provider_model=args.model,
+    )
+    evidence = worker.run(args.task_id)
+    payload = {
+        "task_id": evidence.task_id,
+        "branch": evidence.branch,
+        "commit": evidence.commit,
+        "pr_url": evidence.pr_url,
+    }
+    if context.as_json:
+        context.emit_json(payload)
+    else:
+        context.emit(f"{evidence.task_id} {evidence.branch} {evidence.pr_url}")
+    return 0
+
+
 def add_approval_commands(
     subparsers: argparse._SubParsersAction, parent: argparse.ArgumentParser
 ) -> None:

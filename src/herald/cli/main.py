@@ -4,7 +4,7 @@ import argparse
 import sys
 from collections.abc import Sequence
 
-from herald.cli.commands import add_approval_commands, add_task_commands
+from herald.cli.commands import add_approval_commands, add_run_commands, add_task_commands
 from herald.cli.context import CliContext, build_queue
 
 
@@ -17,6 +17,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
     add_task_commands(subparsers, parser)
+    add_run_commands(subparsers, parser)
     add_approval_commands(subparsers, parser)
     return parser
 
