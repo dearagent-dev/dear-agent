@@ -75,7 +75,11 @@ class JmapQueue:
             if any(self._state_of(record) is not TaskState.RECEIVED for record in records):
                 return None
 
+        # The task id from the Normalizer is the transport Message-ID, but JMAP mutations
+        # need the Email id. Resolve it from the Message-ID when the id is not already one.
         state, records = self._client.get([task.id])
+        if not records and existing:
+            state, records = self._client.get([existing[0]])
         if not records:
             raise TaskNotFoundError(task.id)
         record = records[0]
@@ -88,7 +92,7 @@ class JmapQueue:
         patch.update(self._clear_prefix(record, LEASE_PREFIX))
         patch[f"mailboxIds/{self._mailbox()}"] = True
         try:
-            self._client.update(task.id, patch, if_in_state=state)
+            self._client.update(record.id, patch, if_in_state=state)
         except StateMismatchError:
             return None
 
