@@ -48,7 +48,8 @@ unchecked slice** of the earliest milestone. One slice = one branch = one draft 
   `HarnessRunner` base with the same no-shell guarantee.
 - [x] **M3.4** Git plane: commit, push and **draft PR** via an injectable `Forge`
   (`GhForge`); a protected-branch guard makes writing `main` impossible.
-- [ ] **M3.5** Evidence as threaded replies (branch, SHA, PR url); logs to object storage.
+- [x] **M3.5** `TaskExecutor`: worktree → harness → commit → push → **draft PR** → task
+  `done`/`failed` → evidence as threaded links. Source never leaves Git.
 
 ## M4 — Human-in-the-loop
 
