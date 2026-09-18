@@ -22,10 +22,15 @@ Defense in depth, ordered from highest leverage. Each layer maps to a component.
 ### 1. Authorize before normalizing
 
 - Authenticate the **sender**, not the content: SPF/DKIM/DMARC alignment plus a signed
-  header (HMAC) or a signed reply token.
-- Allowlist authorized senders. The routing address alone never authorizes.
+  header (HMAC) or a signed reply token. `herald.auth.InboundAuthorizer` verifies an
+  `X-Herald-Signature` HMAC over the body **and the sender**, in constant time, so a valid
+  signature cannot be replayed under another `From`.
+- Allowlist authorized senders (`InboundAuthorizer.allowlist`). The routing address alone
+  never authorizes.
 - Unsigned or unauthorized mail is **quarantined and never normalized** into a task.
-- Rate-limit per sender: a burst of mail must not become a burst of agent runs.
+- Rate-limit per sender (`herald.auth.RateLimiter`, sliding window): a burst of mail must
+  not become a burst of agent runs.
+- `InboundGate` composes authorization and rate limiting, and runs before the Normalizer.
 
 Owner: transport adapter + normalizer.
 

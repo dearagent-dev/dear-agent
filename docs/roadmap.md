@@ -31,7 +31,8 @@ unchecked slice** of the earliest milestone. One slice = one branch = one draft 
   metadata, recipient-based repo, reject code/attachments/empty).
 - [x] **M2.3** Fastmail JMAP transport: `poll()` maps the task mailbox to `RawMessage`
   (including attachment detection), threaded `send()` via `EmailSubmission/set`.
-- [ ] **M2.4** Inbound authentication (shared secret / signed reply token), rate limit.
+- [x] **M2.4** Inbound authentication: HMAC-signed sender (constant-time, sender-bound)
+  plus a per-sender sliding-window rate limit, applied before normalization.
 - [x] **M2.5** Notifier: threaded status and approval messages carrying state, summary and
   links only (no source).
 
