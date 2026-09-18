@@ -78,6 +78,7 @@ class JmapClient:
         self._account_id = account_id
         self._session_url = session_url
         self._api_url = ""
+        self._event_source_url = ""
         self._mailboxes: dict[str, str] = {}
 
     @property
@@ -86,9 +87,16 @@ class JmapClient:
             raise JmapError("client is not connected; call connect() first")
         return self._account_id
 
+    @property
+    def event_source_url(self) -> str:
+        if not self._event_source_url:
+            raise JmapError("session exposed no eventSourceUrl")
+        return self._event_source_url
+
     def connect(self) -> None:
         session = self._request(self._session_url)
         self._api_url = session["apiUrl"]
+        self._event_source_url = session.get("eventSourceUrl", "")
         if not self._account_id:
             for account_id, account in session.get("accounts", {}).items():
                 if MAIL in account.get("accountCapabilities", {}):
@@ -96,6 +104,56 @@ class JmapClient:
                     break
         if not self._account_id:
             raise JmapError("session exposed no mail-capable account")
+
+    def push_create(
+        self,
+        *,
+        types: list[str] | None = None,
+        url: str | None = None,
+        expires: str | None = None,
+    ) -> str:
+        """Create a PushSubscription and return its id.
+
+        Fastmail exposes an ``eventSourceUrl`` on the session; a subscription tells it where
+        to push `StateChange` events. When ``url`` is omitted, Fastmail streams over the
+        EventSource connection instead of a webhook, which is what a poller uses.
+        """
+        arguments: dict[str, Any] = {"types": types or ["Email"]}
+        if url is not None:
+            arguments["url"] = url
+        if expires is not None:
+            arguments["expires"] = expires
+        args = self._response(
+            self._api_url,
+            [
+                [
+                    "PushSubscription/set",
+                    {"accountId": self.account_id, "create": {"p": arguments}},
+                    "p",
+                ]
+            ],
+            "p",
+        )
+        created = args.get("created", {}).get("p")
+        if not created:
+            raise JmapError(f"PushSubscription/set failed: {args.get('notCreated', args)}")
+        return created["id"]
+
+    def push_destroy(self, subscription_id: str) -> None:
+        """Destroy a PushSubscription by id (idempotent: absent ids are ignored)."""
+        args = self._response(
+            self._api_url,
+            [
+                [
+                    "PushSubscription/set",
+                    {"accountId": self.account_id, "destroy": [subscription_id]},
+                    "p",
+                ]
+            ],
+            "p",
+        )
+        if subscription_id not in args.get("destroyed", []):
+            raise JmapError(f"PushSubscription not destroyed: {args.get('notDestroyed', args)}")
 
     def query_ids(self, *, filter: dict[str, Any], limit: int) -> list[str]:
         args = self._response(
