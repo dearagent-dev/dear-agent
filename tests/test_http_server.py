@@ -63,3 +63,43 @@ def test_starting_twice_is_an_error() -> None:
             instance.start()
     finally:
         instance.stop()
+
+
+def post(server: HealthServer, path: str, body: bytes, headers: dict[str, str]) -> tuple[int, dict]:
+    url = f"http://127.0.0.1:{server.bound_port}{path}"
+    request = urllib.request.Request(url, data=body, headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(request, timeout=5) as response:
+            return response.status, json.load(response)
+    except urllib.error.HTTPError as exc:
+        return exc.code, json.load(exc)
+
+
+def test_inbound_without_a_handler_is_503() -> None:
+    instance = HealthServer(queue=MemoryQueue(), host="127.0.0.1", port=0)
+    instance.start()
+    try:
+        status, payload = post(instance, "/inbound", b"{}", {})
+    finally:
+        instance.stop()
+
+    assert status == 503
+
+
+def test_inbound_route_delegates_to_the_handler() -> None:
+    seen: dict[str, object] = {}
+
+    def handler(body: bytes, headers: dict[str, str]) -> tuple[int, dict]:
+        seen["body"] = body
+        return 202, {"accepted": ["e1"]}
+
+    instance = HealthServer(queue=MemoryQueue(), host="127.0.0.1", port=0, inbound=handler)
+    instance.start()
+    try:
+        status, payload = post(instance, "/inbound", b'{"id": "e1"}', {"X-Herald-Signature": "x"})
+    finally:
+        instance.stop()
+
+    assert status == 202
+    assert payload == {"accepted": ["e1"]}
+    assert seen["body"] == b'{"id": "e1"}'

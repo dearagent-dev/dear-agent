@@ -11,6 +11,30 @@ send(thread, subject, body, headers=None)  # reply in-thread
 Do not put business logic in a transport. Cloudflare Workers, if used, only forward
 normalized events to the daemon.
 
+## Inbound webhook
+
+Besides polling a mailbox, the control plane exposes `POST /inbound` for push transports
+(Cloudflare Email Worker, AgentMail, Postmark, …). The body is JSON:
+
+```json
+{
+  "id": "<Message-ID or event id>",
+  "thread_id": "<optional>",
+  "sender": "dev@example.com",
+  "subject": "add healthz",
+  "body": "repo: https://github.com/o/r\nadd a /healthz endpoint",
+  "headers": {},
+  "attachments": [{"name": "patch.diff", "content_type": "text/x-diff", "size": 123}]
+}
+```
+
+`id` is the dedupe key: re-delivery is idempotent. The request must carry
+`X-Herald-Signature: sha256=<hmac>` over the raw body (with the sender bound in), computed
+with `HERALD_INBOUND_SECRET`; without that secret the endpoint returns 503. A valid
+signature with a disallowed sender is 403, a bad signature is 401, malformed JSON is 400,
+and an accepted message is 202. Attachments are still rejected by the Normalizer — they
+are reported so the rejection is explicit, never stored.
+
 ## Comparison
 
 | Provider | Send | Receive | Async model | Notes |
