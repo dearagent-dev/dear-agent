@@ -69,9 +69,6 @@ selected repositories.
 
 ## Not yet wired
 
-- The control-plane container command is a placeholder (`--help`); the HTTP entrypoint and
-  `/health` endpoint are not implemented yet.
 - The runner Job template shows the intended shape; the full claim → run → publish flow is
-  driven by the code (`TaskExecutor`) and needs a real image and a task-id injection
-  mechanism.
+  driven by the code (`TaskExecutor`) and needs a task-id injection mechanism.
 - No Postgres: by design, the mailbox is the queue.
