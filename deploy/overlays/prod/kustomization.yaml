@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: herald
+resources:
+  - ../../base
+images:
+  - name: ghcr.io/OWNER/herald
+    newTag: stable
+patches:
+  - target:
+      kind: Deployment
+      name: herald-control-plane
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 2

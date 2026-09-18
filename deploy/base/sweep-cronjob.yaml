@@ -1,0 +1,50 @@
+# The sweep replaces an always-on daemon: on a schedule it resumes stale runs and starts
+# one Job per queued task. This is the scheduled-sweep trigger from ADR 0002.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: herald-sweep
+  labels:
+    app.kubernetes.io/name: herald
+    app.kubernetes.io/component: scheduler
+spec:
+  schedule: "*/2 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          serviceAccountName: herald-control-plane
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: sweep
+              image: ghcr.io/OWNER/herald:latest
+              command: ["python", "-m", "herald.cli.main", "task", "--backend", "jmap", "ls"]
+              args: ["--state", "queued"]
+              envFrom:
+                - configMapRef:
+                    name: herald-config
+              env:
+                - name: FASTMAIL_API_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: herald-jmap
+                      key: FASTMAIL_API_TOKEN
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  cpu: 250m
+                  memory: 256Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
