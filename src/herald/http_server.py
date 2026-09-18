@@ -13,11 +13,14 @@ from herald.queue.port import Queue
 
 HealthPayload = Callable[[], dict[str, Any]]
 InboundHandler = Callable[[bytes, dict[str, str]], tuple[int, dict[str, Any]]]
+DEFAULT_MAX_BODY_BYTES = 1_048_576
 
 
 class _HeraldHTTPServer(ThreadingHTTPServer):
     health_payload: HealthPayload
     inbound_handler: InboundHandler | None
+    max_body_bytes: int
+    timeout: float
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -42,6 +45,9 @@ class _Handler(BaseHTTPRequestHandler):
             self._json(503, {"error": "inbound webhook is not configured"})
             return
         length = int(self.headers.get("Content-Length", "0") or "0")
+        if length > self.server.max_body_bytes:  # type: ignore[attr-defined]
+            self._json(413, {"error": "request body too large"})
+            return
         body = self.rfile.read(length) if length else b""
         headers = {key: value for key, value in self.headers.items()}
         status, payload = handler(body, headers)
@@ -70,6 +76,8 @@ class HealthServer:
     port: int = 8080
     max_running: int = 1
     inbound: InboundHandler | None = None
+    max_body_bytes: int = DEFAULT_MAX_BODY_BYTES
+    timeout_seconds: float = 15.0
     _httpd: _HeraldHTTPServer | None = field(default=None, init=False, repr=False)
     _thread: Thread | None = field(default=None, init=False, repr=False)
 
@@ -83,6 +91,8 @@ class HealthServer:
         self._httpd = _HeraldHTTPServer((self.host, self.port), _Handler)
         self._httpd.health_payload = self.health_payload
         self._httpd.inbound_handler = self.inbound
+        self._httpd.max_body_bytes = self.max_body_bytes
+        self._httpd.timeout = self.timeout_seconds
         self._thread = Thread(target=self._httpd.serve_forever, daemon=True)
         self._thread.start()
 
