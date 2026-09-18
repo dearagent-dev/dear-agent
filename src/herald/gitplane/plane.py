@@ -63,6 +63,18 @@ class GitPlane:
         self._assert_not_protected(worktree.branch)
         _git(worktree.path, "push", "--set-upstream", remote, worktree.branch)
 
+    def has_changes_since(self, worktree: Worktree, base_branch: str) -> bool:
+        """True when the worktree branch differs from ``base_branch``."""
+        self._assert_not_protected(worktree.branch)
+        result = subprocess.run(
+            ["git", "diff", "--quiet", base_branch, "--"],
+            cwd=worktree.path,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return result.returncode == 1
+
     def open_draft_pr(
         self,
         worktree: Worktree,

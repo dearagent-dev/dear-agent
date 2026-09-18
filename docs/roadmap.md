@@ -56,8 +56,10 @@ unchecked slice** of the earliest milestone. One slice = one branch = one draft 
 - [x] **M4.1** Approval round trip end to end: the `ControlPlane` detects an
   `approve|reject <token>` reply, applies it to the task and reports a reused/expired token
   back as a fresh request.
-- [ ] **M4.2** PR landing remains human-only; document the wall.
-- [ ] **M4.3** Failure/escalation messages.
+- [x] **M4.2** PR landing remains human-only; the wall is documented in
+  `docs/architecture.md` and enforced by the protected-branch guard.
+- [x] **M4.3** Failure/escalation messages: missing harness, timeout, error and no-change
+  runs fail the task and ask a human to look, without raw harness output.
 
 ## M5 — Idle / creative loop
 
