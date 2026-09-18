@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 
 from herald.queue.models import Task, TaskSpec
 from herald.runners.worktree import RunResult, Worktree
+from herald.sandbox import NoSandbox, Sandbox
 
 DEFAULT_TIMEOUT_SECONDS = 3600
 
@@ -36,21 +37,24 @@ class HarnessRunner:
     Subclasses only describe the harness argv. The prompt is always a separate argv
     element, never routed through a shell, and the harness runs inside the isolated
     worktree. Herald wraps harnesses; it does not embed them.
+
+    A ``sandbox`` may wrap the argv in an OS-level jail (default-deny network); when none
+    is configured the command still runs in the isolated worktree.
     """
 
     binary: str
     model: str | None = None
     timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS
+    sandbox: Sandbox = field(default_factory=NoSandbox)
     _execute: SubprocessRunner = field(default=default_execute, repr=False)
 
     def build_argv(self, spec: TaskSpec) -> list[str]:  # pragma: no cover - overridden
         raise NotImplementedError
 
     def run(self, task: Task, spec: TaskSpec, worktree: Worktree) -> RunResult:
+        argv = self.sandbox.wrap(self.build_argv(spec), worktree=worktree.path)
         try:
-            completed = self._execute(
-                self.build_argv(spec), str(worktree.path), self.timeout_seconds
-            )
+            completed = self._execute(argv, str(worktree.path), self.timeout_seconds)
         except FileNotFoundError:
             return RunResult(
                 exit_code=127,

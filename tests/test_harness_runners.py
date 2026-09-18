@@ -78,3 +78,39 @@ def test_run_executes_in_the_worktree(tmp_path: Path) -> None:
 
     assert result.ok
     assert seen == [str(worktree.path)]
+
+
+class RecordingSandbox:
+    available = True
+
+    def wrap(self, argv: list[str], *, worktree: Path) -> list[str]:
+        return ["bwrap", "--unshare-net", "--", *argv]
+
+
+def test_sandbox_wraps_the_command(tmp_path: Path) -> None:
+    worktree = make_worktree(tmp_path)
+    seen: list[list[str]] = []
+
+    def fake_execute(argv: list[str], cwd: str, timeout: int) -> subprocess.CompletedProcess:
+        seen.append(argv)
+        return subprocess.CompletedProcess(args=argv, returncode=0, stdout="", stderr="")
+
+    runner = OpenCodeRunner(sandbox=RecordingSandbox(), _execute=fake_execute)
+    runner.run(make_task(), make_spec(), worktree)
+
+    assert seen[0][0] == "bwrap"
+    assert "--unshare-net" in seen[0]
+    assert "opencode" in seen[0]
+
+
+def test_no_sandbox_leaves_the_command_unwrapped(tmp_path: Path) -> None:
+    worktree = make_worktree(tmp_path)
+    seen: list[list[str]] = []
+
+    def fake_execute(argv: list[str], cwd: str, timeout: int) -> subprocess.CompletedProcess:
+        seen.append(argv)
+        return subprocess.CompletedProcess(args=argv, returncode=0, stdout="", stderr="")
+
+    OpenCodeRunner(_execute=fake_execute).run(make_task(), make_spec(), worktree)
+
+    assert seen[0][0] == "opencode"
