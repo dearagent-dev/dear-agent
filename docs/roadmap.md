@@ -78,7 +78,8 @@ unchecked slice** of the earliest milestone. One slice = one branch = one draft 
   task → project → global precedence; secrets referenced by env-var name only.
 - [x] **M6.2** OS sandbox: `SandboxPolicy` (default-deny network), `BubblewrapSandbox`
   wrapping the harness argv, wired into `HarnessRunner`.
-- [ ] **M6.3** Observability: task metrics, per-run evidence, health endpoint.
+- [x] **M6.3** Observability: in-process task `Metrics` and a `Health` check over the
+  queue (a non-empty queue is not unhealthy; too many running tasks is).
 - [ ] **M6.4** Prompt-injection hardening pass against `docs/security.md`.
 - [ ] **M6.5** Packaging (container image) + OpenShift manifests (Kustomize) + GitOps
   (ArgoCD).
