@@ -67,7 +67,10 @@ class BubblewrapSandbox:
     def wrap(self, argv: list[str], *, worktree: Path) -> list[str]:
         if not self.available:
             raise SandboxError(f"{self.binary!r} is not available")
+        return self.build_wrapped_argv(argv, worktree=worktree)
 
+    def build_wrapped_argv(self, argv: list[str], *, worktree: Path) -> list[str]:
+        """Build the ``bwrap`` invocation without checking availability."""
         command: list[str] = [
             self.binary,
             "--die-with-parent",

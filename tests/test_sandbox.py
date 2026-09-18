@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -12,6 +13,13 @@ from herald.sandbox import (
     SandboxError,
     SandboxPolicy,
 )
+
+HAS_BWRAP = shutil.which("bwrap") is not None
+
+
+def bwrap_argv(argv: list[str], **kwargs: object) -> list[str]:
+    """Build a bwrap invocation regardless of whether bwrap is installed."""
+    return BubblewrapSandbox(binary="bwrap").build_wrapped_argv(argv, worktree=Path("/tmp/wt"))
 
 
 def test_no_sandbox_returns_the_command_unchanged() -> None:
@@ -28,21 +36,19 @@ def test_no_sandbox_satisfies_the_port() -> None:
 
 
 def test_bubblewrap_denies_network_by_default() -> None:
-    wrapped = BubblewrapSandbox().wrap(["true"], worktree=Path("/tmp/wt"))
-
-    assert "--unshare-net" in wrapped
+    assert "--unshare-net" in bwrap_argv(["true"])
 
 
 def test_bubblewrap_allows_network_when_policy_permits() -> None:
-    sandbox = BubblewrapSandbox(policy=SandboxPolicy(allow_network=True))
+    sandbox = BubblewrapSandbox(binary="bwrap", policy=SandboxPolicy(allow_network=True))
 
-    wrapped = sandbox.wrap(["true"], worktree=Path("/tmp/wt"))
+    wrapped = sandbox.build_wrapped_argv(["true"], worktree=Path("/tmp/wt"))
 
     assert "--unshare-net" not in wrapped
 
 
 def test_bubblewrap_binds_the_worktree_and_chdirs_into_it() -> None:
-    wrapped = BubblewrapSandbox().wrap(["true"], worktree=Path("/tmp/wt"))
+    wrapped = bwrap_argv(["true"])
 
     assert "--bind" in wrapped
     assert "/tmp/wt" in wrapped
@@ -50,22 +56,17 @@ def test_bubblewrap_binds_the_worktree_and_chdirs_into_it() -> None:
 
 
 def test_bubblewrap_clears_the_environment() -> None:
-    wrapped = BubblewrapSandbox().wrap(["true"], worktree=Path("/tmp/wt"))
-
-    assert "--clearenv" in wrapped
+    assert "--clearenv" in bwrap_argv(["true"])
 
 
-def test_bubblewrap_is_a_no_op_to_build_when_unavailable() -> None:
+def test_an_unavailable_binary_raises() -> None:
     sandbox = BubblewrapSandbox(binary="bwrap-does-not-exist")
 
     with pytest.raises(SandboxError):
         sandbox.wrap(["true"], worktree=Path("/tmp/wt"))
 
 
-@pytest.mark.skipif(
-    subprocess.run(["sh", "-c", "command -v bwrap"], capture_output=True).returncode != 0,
-    reason="bubblewrap not installed",
-)
+@pytest.mark.skipif(not HAS_BWRAP, reason="bubblewrap not installed")
 def test_bubblewrap_actually_runs_a_command(tmp_path: Path) -> None:
     worktree = tmp_path / "wt"
     worktree.mkdir()
