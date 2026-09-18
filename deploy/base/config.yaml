@@ -1,0 +1,30 @@
+# Shared configuration. Secrets are referenced, never inlined (see ADR 0003).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: herald-config
+data:
+  HERALD_MAILBOX: "Herald"
+  HERALD_WORKTREES_ROOT: "/work"
+  HERALD_MODEL: "local:model"
+  HERALD_GIT_HOST: "github.com"
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: herald-control-plane
+automountServiceAccountToken: false
+---
+# The runner only needs to read repositories and call the model.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: herald-runner
+automountServiceAccountToken: false
+---
+# The push/PR step needs write access, so it gets its own identity.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: herald-publisher
+automountServiceAccountToken: false

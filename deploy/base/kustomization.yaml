@@ -1,0 +1,10 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - config.yaml
+  - secrets.yaml
+  - control-plane.yaml
+  - runner-job.yaml
+  - sweep-cronjob.yaml
+commonLabels:
+  app.kubernetes.io/part-of: herald

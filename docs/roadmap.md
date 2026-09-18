@@ -83,8 +83,8 @@ unchecked slice** of the earliest milestone. One slice = one branch = one draft 
 - [x] **M6.4** Prompt-injection hardening pass: an advisory `InjectionScanner` (audit and
   escalation, explicitly not a boundary) wired into the control plane as a `suspicious`
   report.
-- [ ] **M6.5** Packaging (container image) + OpenShift manifests (Kustomize) + GitOps
-  (ArgoCD).
+- [x] **M6.5** Packaging + OpenShift manifests (Kustomize base/overlays), a per-role
+  credential strategy (ADR 0003), and manifest tests asserting the hardening invariants.
 
 ## Later / ideas
 
