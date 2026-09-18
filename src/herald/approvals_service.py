@@ -10,7 +10,7 @@ from herald.approvals import (
     UnknownTokenError,
 )
 from herald.queue.models import TaskState
-from herald.queue.port import Queue, StateConflictError
+from herald.queue.port import Queue
 
 TOKEN_PATTERN = re.compile(r"\b(?:approve|reject|herald)\s+([A-Za-z0-9_\-]{16,})\b", re.IGNORECASE)
 
@@ -60,10 +60,7 @@ class ApprovalService:
         task = self._queue.get(approval.task_id)
         if task is None:
             raise UnknownTokenError(reply.token)
-        try:
-            transitioned = self._queue.transition(task, target)
-        except StateConflictError:
-            raise
+        transitioned = self._queue.transition(task, target)
         return transitioned.id
 
 
