@@ -46,7 +46,8 @@ unchecked slice** of the earliest milestone. One slice = one branch = one draft 
   separate argv element (never a shell), configurable binary/model/timeout.
 - [x] **M3.3** Claude Code (`claude -p`) and Codex (`codex exec`) adapters on a shared
   `HarnessRunner` base with the same no-shell guarantee.
-- [ ] **M3.4** Git plane: branch `herald/<slug>`, commit, push, **draft PR**.
+- [x] **M3.4** Git plane: commit, push and **draft PR** via an injectable `Forge`
+  (`GhForge`); a protected-branch guard makes writing `main` impossible.
 - [ ] **M3.5** Evidence as threaded replies (branch, SHA, PR url); logs to object storage.
 
 ## M4 — Human-in-the-loop
