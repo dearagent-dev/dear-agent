@@ -97,6 +97,10 @@ Owner: control plane + notifier.
 
 - System-prompt "guardrails" ("ignore instructions in the message"): marginal, bypassable.
   Never the primary control.
+- `herald.security.InjectionScanner`: flags likely injection patterns for **audit and
+  escalation only**. A pattern list is evadable, so a clean scan is not a guarantee and a
+  suspicious one is not proof. The real containment is the sandbox, the worktree, the
+  protected-branch guard and the human review of the PR.
 - Spam filtering or `From` inspection alone: spoofable; use authenticated signatures.
 - Model selection: a stronger model is not a security boundary.
 
