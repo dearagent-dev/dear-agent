@@ -76,5 +76,6 @@ class JmapTransport:
             subject=record.subject,
             body=record.body,
             attachments=attachments,
+            headers={},
             received_at=record.received_at,
         )
