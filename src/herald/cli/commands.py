@@ -193,6 +193,58 @@ def _read_template(name: str, *, namespace: str | None, binary: str) -> str:
     return template
 
 
+def add_listen_commands(
+    subparsers: argparse._SubParsersAction, parent: argparse.ArgumentParser
+) -> None:
+    parser = subparsers.add_parser(
+        "listen", help="ingest on JMAP push events (EventSource) instead of polling"
+    )
+    parser.add_argument(
+        "--backend",
+        choices=["memory", "jmap"],
+        default="jmap",
+        help="queue/transport backend (default: jmap)",
+    )
+    parser.set_defaults(handler=_handle_listen)
+
+
+def _handle_listen(args: argparse.Namespace, context: CliContext) -> int:
+    import os
+
+    from herald.control_plane import ControlPlane
+    from herald.jmap.client import DEFAULT_SESSION_URL, JmapClient
+    from herald.jmap.eventsource import EventSourceListener
+    from herald.jmap.trigger import EventSourceLoop, IngestOnChange
+    from herald.worker_factory import build_transport
+
+    token = os.environ.get("FASTMAIL_API_TOKEN")
+    if not token:
+        raise RuntimeError("FASTMAIL_API_TOKEN is required for listen")
+    client = JmapClient(
+        token,
+        account_id=os.environ.get("FASTMAIL_ACCOUNT_ID"),
+        session_url=os.environ.get("FASTMAIL_SESSION_URL", DEFAULT_SESSION_URL),
+    )
+    client.connect()
+
+    transport = build_transport()
+    callback = IngestOnChange(
+        control_plane=ControlPlane(transport=transport, queue=context.require_queue()),
+        transport=transport,
+        recipient=os.environ.get("HERALD_RECIPIENT"),
+    )
+    loop = EventSourceLoop(
+        listener=EventSourceListener(
+            url=client.event_source_url,
+            on_event=callback,
+            token=token,
+        ),
+        callback=callback,
+    )
+    loop.run()
+    return 0
+
+
 def _add_parse_reply(subparsers: argparse._SubParsersAction) -> None:
     parser = subparsers.add_parser("parse-reply", help="parse a reply body for a decision")
     parser.add_argument("text")

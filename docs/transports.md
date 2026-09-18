@@ -35,6 +35,14 @@ signature with a disallowed sender is 403, a bad signature is 401, malformed JSO
 and an accepted message is 202. Attachments are still rejected by the Normalizer — they
 are reported so the rejection is explicit, never stored.
 
+## JMAP push (EventSource)
+
+For Fastmail, `herald listen` opens the session's `eventSourceUrl` with the API token and
+ingests when an `Email` `StateChange` arrives. A `StateChange` says only *that* something
+changed, so the listener re-polls (idempotent) rather than trusting the event. The SSE
+parser and the callback are socket-free and unit-tested; `JmapClient.push_create` can also
+register a webhook `url` so Fastmail POSTs to `POST /inbound` instead.
+
 ## Comparison
 
 | Provider | Send | Receive | Async model | Notes |
