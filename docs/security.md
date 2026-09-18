@@ -49,8 +49,11 @@ Owner: normalizer + runner prompt construction.
 ### 3. Least privilege at execution
 
 - Run in an OS sandbox (bubblewrap / gVisor); non-root, arbitrary UID (OpenShift SCC).
+  `herald.sandbox.BubblewrapSandbox` wraps the harness argv in `bwrap` with the worktree as
+  the only writable path.
 - **Default-deny egress**, allowlisting only the Git remote and the model endpoint. No
-  network means no exfiltration and no tool download.
+  network means no exfiltration and no tool download. `SandboxPolicy(allow_network=False)`
+  is the default and adds `--unshare-net`.
 - Do **not** mount a service account token (`automountServiceAccountToken: false`).
 - No long-lived secrets in the run environment; only a scoped model key where required.
 - Mount the repo read-only outside the disposable worktree.
