@@ -27,7 +27,8 @@ unchecked slice** of the earliest milestone. One slice = one branch = one draft 
 
 - [x] **M2.1** `Transport` interface + a `MemoryTransport` for tests (pull `poll()` and
   push `receive()`, outbound with no attachment field).
-- [ ] **M2.2** Normalizer: raw message → `Task` (repo/base/instructions), reject code.
+- [x] **M2.2** Normalizer: raw message → `Task` + `TaskSpec` (`repo`/`base`/`model`
+  metadata, recipient-based repo, reject code/attachments/empty).
 - [ ] **M2.3** Fastmail JMAP transport (primary): push/poll, threading, keywords/state.
 - [ ] **M2.4** Inbound authentication (shared secret / signed reply token), rate limit.
 - [ ] **M2.5** Outbound threading + status/approval messages (no source).
