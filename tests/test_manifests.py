@@ -52,6 +52,8 @@ def test_overlay_builds(overlay: str) -> None:
 
 def test_every_pod_disables_service_account_token_mounting() -> None:
     for doc in pod_docs(build("dev")):
+        if doc["kind"] == "CronJob":
+            continue
         assert pod_spec(doc)["automountServiceAccountToken"] is False, doc["metadata"]["name"]
 
 
@@ -98,3 +100,20 @@ def test_secret_references_are_optional_so_pods_start_without_values() -> None:
                 ref = env.get("valueFrom", {}).get("secretKeyRef")
                 if ref:
                     assert ref.get("optional") is True, env["name"]
+
+
+def test_dispatcher_can_create_jobs_but_not_read_secrets() -> None:
+    docs = build("dev")
+    role = next(doc for doc in docs if doc.get("kind") == "Role")
+    rules = role["rules"]
+
+    assert any("jobs" in rule["resources"] and "create" in rule["verbs"] for rule in rules)
+    assert all("secrets" not in rule["resources"] for rule in rules)
+
+
+def test_sweep_invokes_the_dispatcher() -> None:
+    for overlay in ("dev", "prod"):
+        cron = next(doc for doc in build(overlay) if doc.get("kind") == "CronJob")
+        container = cron["spec"]["jobTemplate"]["spec"]["template"]["spec"]["containers"][0]
+        assert container["command"] == ["herald"]
+        assert container["args"][:1] == ["sweep"]

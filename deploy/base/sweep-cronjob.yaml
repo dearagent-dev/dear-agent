@@ -18,7 +18,9 @@ spec:
         spec:
           restartPolicy: Never
           serviceAccountName: herald-control-plane
-          automountServiceAccountToken: false
+          # The dispatcher creates runner Jobs through the API, so this pod alone needs a
+          # token. Its Role can only read the runner template and create Jobs (rbac.yaml).
+          automountServiceAccountToken: true
           securityContext:
             runAsNonRoot: true
             seccompProfile:
@@ -26,8 +28,8 @@ spec:
           containers:
             - name: sweep
               image: ghcr.io/OWNER/herald:latest
-              command: ["python", "-m", "herald.cli.main", "task", "--backend", "jmap", "ls"]
-              args: ["--state", "queued"]
+              command: ["herald"]
+              args: ["sweep", "--backend", "jmap"]
               envFrom:
                 - configMapRef:
                     name: herald-config

@@ -1,0 +1,27 @@
+# Permissions for the scheduler/control plane: read the runner template and create one
+# runner Job per queued task. Nothing here can read Secrets or touch workloads it did not
+# create (see docs/security.md).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: herald-dispatcher
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["herald-runner-template"]
+    verbs: ["get"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: herald-dispatcher
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: herald-dispatcher
+subjects:
+  - kind: ServiceAccount
+    name: herald-control-plane

@@ -8,6 +8,8 @@ data:
   HERALD_WORKTREES_ROOT: "/work"
   HERALD_MODEL: "local:model"
   HERALD_GIT_HOST: "github.com"
+  HERALD_RUNNER_TEMPLATE_CONFIGMAP: "herald-runner-template"
+  HERALD_NAMESPACE: "herald"
 ---
 apiVersion: v1
 kind: ServiceAccount
