@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 from datetime import timedelta
 from typing import Any
 
@@ -127,6 +128,69 @@ def add_task_commands(
     _add_claim(task_sub)
     _add_terminal(task_sub, "complete", TaskState.DONE, "mark a running task done")
     _add_terminal(task_sub, "fail", TaskState.FAILED, "mark a running task failed")
+
+
+def add_sweep_commands(
+    subparsers: argparse._SubParsersAction, parent: argparse.ArgumentParser
+) -> None:
+    parser = subparsers.add_parser(
+        "sweep", help="release stale runs and dispatch queued tasks to runner Jobs"
+    )
+    parser.add_argument(
+        "--backend",
+        choices=["memory", "jmap"],
+        default="memory",
+        help="queue backend (default: memory)",
+    )
+    parser.add_argument("--namespace", default=os.environ.get("HERALD_NAMESPACE"))
+    parser.add_argument("--template", default=os.environ.get("HERALD_RUNNER_TEMPLATE_CONFIGMAP"))
+    parser.add_argument("--kubectl", default=os.environ.get("HERALD_KUBECTL", "oc"))
+    parser.add_argument("--limit", type=int, default=20)
+    parser.set_defaults(handler=_handle_sweep)
+
+
+def _handle_sweep(args: argparse.Namespace, context: CliContext) -> int:
+    from datetime import UTC, datetime
+
+    from herald.dispatch import TaskDispatcher, kubectl_apply
+
+    queue = context.require_queue()
+    released = queue.release_stale(now=datetime.now(UTC))
+
+    if not args.template:
+        raise RuntimeError("HERALD_RUNNER_TEMPLATE_CONFIGMAP is required to dispatch")
+    template = _read_template(args.template, namespace=args.namespace, binary=args.kubectl)
+    dispatcher = TaskDispatcher(
+        queue=queue,
+        launcher=kubectl_apply(namespace=args.namespace, binary=args.kubectl),
+        template=template,
+        limit=args.limit,
+    )
+    created = dispatcher.dispatch_once()
+
+    payload = {"released": [task.id for task in released], "dispatched": created}
+    if context.as_json:
+        context.emit_json(payload)
+    else:
+        context.emit(f"released {len(released)} stale, dispatched {len(created)}")
+    return 0
+
+
+def _read_template(name: str, *, namespace: str | None, binary: str) -> str:
+    import json
+    import subprocess
+
+    argv = [binary, "get", "configmap", name, "-o", "json"]
+    if namespace:
+        argv += ["-n", namespace]
+    result = subprocess.run(argv, capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or f"cannot read configmap {name!r}")
+    data = json.loads(result.stdout).get("data", {})
+    template = data.get("job.yaml")
+    if not template:
+        raise RuntimeError(f"configmap {name!r} has no job.yaml key")
+    return template
 
 
 def _add_parse_reply(subparsers: argparse._SubParsersAction) -> None:

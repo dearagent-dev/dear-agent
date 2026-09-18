@@ -3,6 +3,7 @@ kind: Kustomization
 resources:
   - config.yaml
   - secrets.yaml
+  - rbac.yaml
   - control-plane.yaml
   - runner-template.yaml
   - sweep-cronjob.yaml
