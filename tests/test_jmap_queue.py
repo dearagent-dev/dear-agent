@@ -178,6 +178,32 @@ def test_enqueue_clears_previous_state_keywords(
     assert not any(keyword.startswith(LEASE_PREFIX) for keyword in email.keywords)
 
 
+def test_enqueue_ignores_a_raw_message_with_the_same_message_id(
+    queue: JmapQueue, client: FakeJmapMailClient
+) -> None:
+    # The inbound message that produced the task is already in the mailbox (so a Message-ID
+    # query matches it) but carries no Herald state keyword. It must not block enqueueing.
+    add_email(client, message_id="<m1@x>")
+
+    stored = queue.enqueue(Task(id="e1", transport_id="<m1@x>"))
+
+    assert stored is not None
+    assert stored.state is TaskState.QUEUED
+
+
+def test_enqueue_dedupes_a_message_already_carrying_a_herald_state(
+    queue: JmapQueue, client: FakeJmapMailClient
+) -> None:
+    first = add_email(client, email_id="e1", message_id="<m1@x>")
+    first.mailbox_ids.add(client._mailbox_id)
+    first.keywords.add("$herald-queued")
+    # A redelivery arrives as a second Email with the same Message-ID.
+    second = add_email(client, email_id="e2", message_id="<m1@x>")
+    second.mailbox_ids.add(client._mailbox_id)
+
+    assert queue.enqueue(Task(id="e2", transport_id="<m1@x>")) is None
+
+
 def test_enqueue_losing_the_ifinstate_race_is_a_noop(
     queue: JmapQueue, client: FakeJmapMailClient
 ) -> None:

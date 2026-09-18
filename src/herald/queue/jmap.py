@@ -55,18 +55,25 @@ class JmapQueue:
 
     def enqueue(self, task: Task) -> Task | None:
         # Two dedupe layers:
-        #  1. a query by Message-ID catches re-delivery that produced a second Email;
+        #  1. a query by Message-ID catches re-delivery that produced a second Email; only a
+        #     message that already carries a Herald state keyword counts, otherwise the raw
+        #     inbound message itself would match and the task could never be enqueued;
         #  2. the guarded write below closes the concurrency window for the same Email,
         #     because two racing enqueues read the same state and only one `ifInState`
         #     write can win. A lost race is a duplicate, never a second task.
-        if self._client.query_ids(
+        existing = self._client.query_ids(
             filter={
                 "inMailbox": self._mailbox(),
                 "header": ["Message-ID", task.transport_id],
             },
-            limit=1,
-        ):
-            return None
+            limit=5,
+        )
+        if existing:
+            _, records = self._client.get(existing)
+            # Only a message that reached a Herald state is a duplicate; the raw inbound
+            # message (still `${RECEIVED}`) is the one we are here to enqueue.
+            if any(self._state_of(record) is not TaskState.RECEIVED for record in records):
+                return None
 
         state, records = self._client.get([task.id])
         if not records:
