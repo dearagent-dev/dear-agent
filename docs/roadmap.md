@@ -74,7 +74,8 @@ unchecked slice** of the earliest milestone. One slice = one branch = one draft 
 
 ## M6 — Providers, hardening, ops
 
-- [ ] **M6.1** Provider registry (hosted + local OpenAI-compatible), A/B re-runs.
+- [x] **M6.1** Provider registry (hosted + local OpenAI-compatible) with
+  task → project → global precedence; secrets referenced by env-var name only.
 - [ ] **M6.2** OS sandbox for runs (e.g. bubblewrap) + network policy.
 - [ ] **M6.3** Observability: task metrics, per-run evidence, health endpoint.
 - [ ] **M6.4** Prompt-injection hardening pass against `docs/security.md`.
