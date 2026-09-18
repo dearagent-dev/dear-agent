@@ -33,6 +33,10 @@ Maps a `RawMessage` to a `Task`. Extracts: repo URL, base branch, instructions,
 constraints, requested provider/model, and a reply token. Rejects messages without a
 resolvable repo. Never trusts the message for commands. See [security.md](security.md).
 
+The `ControlPlane` wires the inbound loop: authorize (`InboundGate`) → normalize → enqueue.
+A rejected message gets a threaded explanation; an unauthorized one is dropped without a
+reply, so a forged sender cannot use Herald as a backscatter amplifier.
+
 ### Queue
 The durable source of truth is the **transport mailbox itself** (Fastmail JMAP first), not
 a database. State lives in mailboxes/keywords, dedupe is on `Message-ID`, and claiming is

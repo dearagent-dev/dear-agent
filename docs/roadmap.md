@@ -35,6 +35,8 @@ unchecked slice** of the earliest milestone. One slice = one branch = one draft 
   plus a per-sender sliding-window rate limit, applied before normalization.
 - [x] **M2.5** Notifier: threaded status and approval messages carrying state, summary and
   links only (no source).
+- [x] **M2.6** `ControlPlane` inbound loop: gate → normalize → enqueue, with threaded
+  explanations for rejected messages.
 
 ## M3 — Runner + Git plane
 

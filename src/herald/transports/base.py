@@ -26,7 +26,8 @@ class RawMessage:
     """A message as received from a transport, before normalization.
 
     ``transport_id`` is the transport's stable identifier (``Message-ID``, JMAP
-    ``emailId``, webhook event id) and is the dedupe key. ``body`` is untrusted text.
+    ``emailId``, webhook event id) and is the dedupe key. ``body`` and ``headers`` are
+    untrusted; ``headers`` carries authentication material such as the inbound signature.
     """
 
     transport_id: str
@@ -35,6 +36,7 @@ class RawMessage:
     subject: str | None = None
     body: str = ""
     attachments: list[Attachment] = field(default_factory=list)
+    headers: dict[str, str] = field(default_factory=dict)
     received_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     @property
