@@ -64,6 +64,8 @@ selected repositories.
 - Separate `ServiceAccount`s for the control plane, the runner (read) and the publisher.
 - `runAsNonRoot`, `seccompProfile: RuntimeDefault`, all capabilities dropped.
 - Runner worktree is an `emptyDir`; nothing persists in the pod except the pushed branch.
+- The inbound webhook rejects oversized bodies (`HERALD_MAX_BODY_BYTES`) before reading
+  them and times out idle connections (`HERALD_HTTP_TIMEOUT`).
 - `GIT_SSH_COMMAND` pins the mounted key and `StrictHostKeyChecking=yes`, so a run cannot
   be redirected to another host.
 - A dedicated read-only secret is mounted into the runner; the write key stays out of it.

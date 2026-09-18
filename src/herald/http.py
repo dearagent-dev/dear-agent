@@ -73,6 +73,8 @@ def main() -> int:
         host=os.environ.get("HERALD_HOST", "0.0.0.0"),
         port=int(os.environ.get("HERALD_PORT", "8080")),
         max_running=int(os.environ.get("HERALD_MAX_RUNNING", "1")),
+        max_body_bytes=int(os.environ.get("HERALD_MAX_BODY_BYTES", "1048576")),
+        timeout_seconds=float(os.environ.get("HERALD_HTTP_TIMEOUT", "15")),
         inbound=build_inbound(queue),
     )
 

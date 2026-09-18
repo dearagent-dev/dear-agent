@@ -103,3 +103,25 @@ def test_inbound_route_delegates_to_the_handler() -> None:
     assert status == 202
     assert payload == {"accepted": ["e1"]}
     assert seen["body"] == b'{"id": "e1"}'
+
+
+def test_oversized_body_is_413_and_not_read() -> None:
+    called = False
+
+    def handler(body: bytes, headers: dict[str, str]) -> tuple[int, dict]:
+        nonlocal called
+        called = True
+        return 202, {}
+
+    instance = HealthServer(
+        queue=MemoryQueue(), host="127.0.0.1", port=0, inbound=handler, max_body_bytes=16
+    )
+    instance.start()
+    try:
+        status, payload = post(instance, "/inbound", b"x" * 17, {})
+    finally:
+        instance.stop()
+
+    assert status == 413
+    assert payload["error"] == "request body too large"
+    assert called is False
