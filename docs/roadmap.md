@@ -44,7 +44,8 @@ unchecked slice** of the earliest milestone. One slice = one branch = one draft 
   and removed without touching the main checkout) + a minimal `CommandRunner`.
 - [x] **M3.2** OpenCode runner adapter: headless `opencode run` with the prompt as a
   separate argv element (never a shell), configurable binary/model/timeout.
-- [ ] **M3.3** Claude Code + Codex adapters.
+- [x] **M3.3** Claude Code (`claude -p`) and Codex (`codex exec`) adapters on a shared
+  `HarnessRunner` base with the same no-shell guarantee.
 - [ ] **M3.4** Git plane: branch `herald/<slug>`, commit, push, **draft PR**.
 - [ ] **M3.5** Evidence as threaded replies (branch, SHA, PR url); logs to object storage.
 

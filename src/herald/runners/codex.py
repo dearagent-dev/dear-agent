@@ -5,17 +5,17 @@ from dataclasses import dataclass
 from herald.queue.models import TaskSpec
 from herald.runners.harness import HarnessRunner
 
-DEFAULT_BINARY = "opencode"
+DEFAULT_BINARY = "codex"
 
 
 @dataclass(slots=True)
-class OpenCodeRunner(HarnessRunner):
-    """Runner adapter for the OpenCode harness (``opencode run``)."""
+class CodexRunner(HarnessRunner):
+    """Runner adapter for Codex (``codex exec <prompt>``)."""
 
     binary: str = DEFAULT_BINARY
 
     def build_argv(self, spec: TaskSpec) -> list[str]:
-        argv = [self.binary, "run"]
+        argv = [self.binary, "exec"]
         if self.model:
             argv += ["--model", self.model]
         argv += [spec.instructions]
