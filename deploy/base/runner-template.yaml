@@ -35,13 +35,27 @@ data:
           containers:
             - name: runner
               image: ghcr.io/OWNER/herald:latest
-              command: ["herald", "task", "--backend", "jmap", "claim"]
-              args: ["${HERALD_TASK_ID}"]
+              command: ["herald"]
+              args:
+                - "run"
+                - "--backend"
+                - "jmap"
+                - "--repo"
+                - "/repos/source"
+                - "--recipient"
+                - "$(HERALD_RECIPIENT)"
+                - "--model"
+                - "$(HERALD_MODEL)"
+                - "$(HERALD_TASK_ID)"
               envFrom:
                 - configMapRef:
                     name: herald-config
               env:
                 - name: HERALD_TASK_ID
+                  value: ""
+                - name: HERALD_RECIPIENT
+                  value: ""
+                - name: HERALD_MODEL
                   value: ""
                 - name: FASTMAIL_API_TOKEN
                   valueFrom:

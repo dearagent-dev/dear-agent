@@ -138,3 +138,42 @@ def test_jmap_backend_without_token_errors_cleanly(monkeypatch: object) -> None:
     )
     assert result.returncode == 2
     assert "FASTMAIL_API_TOKEN" in result.stderr
+
+
+def test_run_executes_a_task_via_the_worker(monkeypatch) -> None:
+    import contextlib
+    import io
+    from unittest import mock
+
+    from herald.executor import ExecutedTask
+    from herald.runners.worktree import RunResult
+
+    queue = MemoryQueue()
+    seed(queue, "e1")
+
+    captured: dict[str, object] = {}
+
+    class FakeWorker:
+        def run(self, task_id: str) -> ExecutedTask:
+            captured["task_id"] = task_id
+            return ExecutedTask(
+                task_id=task_id,
+                branch="herald/e1",
+                commit="deadbeef",
+                pr_url="https://example.com/pr/1",
+                run=RunResult(exit_code=0, branch="herald/e1"),
+            )
+
+    buffer = io.StringIO()
+    with (
+        mock.patch("herald.cli.main.build_queue", return_value=queue),
+        mock.patch("herald.worker_factory.build_transport", return_value=object()),
+        mock.patch("herald.worker_factory.build_worker", return_value=FakeWorker()),
+        contextlib.redirect_stdout(buffer),
+    ):
+        code = main(["--json", "run", "e1", "--repo", "/repos/source"])
+
+    assert code == 0
+    assert captured["task_id"] == "e1"
+    payload = json.loads(buffer.getvalue())
+    assert payload["pr_url"] == "https://example.com/pr/1"

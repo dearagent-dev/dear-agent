@@ -71,8 +71,12 @@ selected repositories.
 
 - The runner is a **`JobTemplate`** (`herald-runner-template` ConfigMap), not a static Job:
   a Job is immutable and one-per-task, so the scheduler renders it per claimed task. The
-  rendering controller is not written yet; today the template documents the intended shape
-  and passes the hardening invariants in CI.
+  template invokes `herald run --backend jmap <task-id>`, which claims the task, runs the
+  harness in a worktree and opens the draft PR. The controller that instantiates the
+  template per queued task (and injects `HERALD_TASK_ID`) is not written yet.
+- The runner's `--repo /repos/source` needs a checkout: today the template mounts an
+  `emptyDir` at `/work`. Production should clone the read-only repo there from
+  `herald-git-read`, or mount a pre-cloned volume, before `herald run` starts.
 - No Postgres: by design, the mailbox is the queue.
 
 ## Verified on a live OpenShift cluster
