@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 from herald.gitplane.plane import GitPlane
+from herald.notify.escalate import Escalator, FailureKind
 from herald.notify.notifier import Notifier, TaskLinks
 from herald.queue.models import Task, TaskSpec, TaskState
 from herald.queue.port import Queue
@@ -22,14 +23,20 @@ class ExecutedTask:
     commit: str | None
     pr_url: str | None
     run: RunResult
+    failure: FailureKind | None = None
+
+    @property
+    def ok(self) -> bool:
+        return self.failure is None
 
 
 class TaskExecutor:
     """Runs one claimed task end to end: worktree -> harness -> commit -> push -> draft PR.
 
     The queue backs the state machine; the git plane owns the artifact. On success the
-    task is `done` and the notifier reports the branch/commit/PR links. On harness failure
-    the task is `failed` and no PR is opened. Source never leaves Git, only links travel.
+    task is `done` and the notifier reports the branch/commit/PR links. A failed or
+    no-change run marks the task `failed`, opens no PR and escalates to a human. Source
+    never leaves Git; only links travel.
     """
 
     def __init__(
@@ -41,6 +48,7 @@ class TaskExecutor:
         repo_path: str,
         worktrees_root: str,
         notifier: Notifier | None = None,
+        escalator: Escalator | None = None,
         lease: timedelta = DEFAULT_LEASE,
     ) -> None:
         self._queue = queue
@@ -49,6 +57,7 @@ class TaskExecutor:
         self._repo_path = repo_path
         self._worktrees_root = worktrees_root
         self._notifier = notifier
+        self._escalator = escalator
         self._lease = lease
 
     def execute(self, task: Task, spec: TaskSpec, *, recipient: str | None = None) -> ExecutedTask:
@@ -65,44 +74,66 @@ class TaskExecutor:
         )
         try:
             run = self._runner.run(task, spec, worktree)
-
+            failure: FailureKind | None = None
             commit: str | None = None
             pr_url: str | None = None
+
             if run.ok:
                 commit = self._git.commit_all(worktree, message=_commit_message(task, spec))
-                self._git.push(worktree)
-                pr = self._git.open_draft_pr(
-                    worktree,
-                    base_branch=spec.base_branch,
-                    title=_pr_title(task),
-                    body=_pr_body(task),
+                if not self._git.has_changes_since(worktree, spec.base_branch):
+                    failure = FailureKind.NO_CHANGES
+                else:
+                    self._git.push(worktree)
+                    pr = self._git.open_draft_pr(
+                        worktree,
+                        base_branch=spec.base_branch,
+                        title=_pr_title(task),
+                        body=_pr_body(task),
+                    )
+                    pr_url = pr.url
+            else:
+                failure = (
+                    FailureKind.HARNESS_MISSING
+                    if run.exit_code == 127
+                    else (
+                        FailureKind.TIMEOUT if run.exit_code == 124 else FailureKind.HARNESS_FAILED
+                    )
                 )
-                pr_url = pr.url
 
-            final = self._queue.transition(running, TaskState.DONE if run.ok else TaskState.FAILED)
             evidence = ExecutedTask(
-                task_id=final.id,
+                task_id=running.id,
                 branch=worktree.branch,
                 commit=commit,
                 pr_url=pr_url,
                 run=run,
+                failure=failure,
             )
-            self._notify(evidence, recipient=recipient)
+            final = self._queue.transition(
+                running, TaskState.DONE if evidence.ok else TaskState.FAILED
+            )
+            evidence.task_id = final.id
+            self._report(evidence, recipient=recipient)
             return evidence
         finally:
             worktree.remove()
 
-    def _notify(self, evidence: ExecutedTask, *, recipient: str | None) -> None:
-        if self._notifier is None or recipient is None:
+    def _report(self, evidence: ExecutedTask, *, recipient: str | None) -> None:
+        if recipient is None:
             return
         task = self._queue.get(evidence.task_id)
         if task is None:
             return
-        summary = "completed" if evidence.run.ok else "harness failed"
+        if evidence.failure is not None and self._escalator is not None:
+            self._escalator.escalate(
+                task, evidence.run, recipient=recipient, branch=evidence.branch
+            )
+            return
+        if self._notifier is None:
+            return
         self._notifier.status(
             task,
             recipient=recipient,
-            summary=summary,
+            summary="completed" if evidence.ok else "harness failed",
             links=TaskLinks(
                 branch=evidence.branch,
                 commit=evidence.commit,

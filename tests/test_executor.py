@@ -8,6 +8,7 @@ import pytest
 
 from herald.executor import TaskExecutor, _slug
 from herald.gitplane.plane import GitPlane, PullRequest
+from herald.notify.escalate import Escalator, FailureKind
 from herald.notify.notifier import Notifier
 from herald.queue.memory import MemoryQueue
 from herald.queue.models import Task, TaskSpec, TaskState
@@ -31,13 +32,14 @@ class RecordingForge:
 
 
 class FakeRunner:
-    def __init__(self, ok: bool = True) -> None:
+    def __init__(self, ok: bool = True, write: bool = True) -> None:
         self.ok = ok
+        self.write = write
         self.ran_in: Path | None = None
 
     def run(self, task: Task, spec: TaskSpec, worktree: Worktree) -> RunResult:
         self.ran_in = worktree.path
-        if self.ok:
+        if self.ok and self.write:
             (worktree.path / "change.txt").write_text("done\n")
         return RunResult(
             exit_code=0 if self.ok else 1, stdout="out", stderr="err", branch=worktree.branch
@@ -85,6 +87,7 @@ def make_executor(
         repo_path=str(repo),
         worktrees_root=str(repo.parent / "wt"),
         notifier=Notifier(transport),
+        escalator=Escalator(transport),
     )
 
 
@@ -159,3 +162,46 @@ def test_slug_is_branch_safe() -> None:
 
     assert slug == "add-healthz-metrics"
     assert "/" not in slug and " " not in slug
+
+
+def test_failed_run_escalates_to_a_human(repo: Path) -> None:
+    queue = MemoryQueue()
+    task = make_task(queue)
+    transport = MemoryTransport()
+    executor = make_executor(queue, repo, RecordingForge(), FakeRunner(ok=False), transport)
+
+    evidence = executor.execute(task, make_spec(), recipient="dev@example.com")
+
+    assert evidence.failure is FailureKind.HARNESS_FAILED
+    assert "needs attention" in transport.outbox[0].subject
+
+
+def test_no_changes_is_treated_as_a_failure_without_a_pr(repo: Path) -> None:
+    queue = MemoryQueue()
+    task = make_task(queue)
+    transport = MemoryTransport()
+    forge = RecordingForge()
+    executor = make_executor(queue, repo, forge, FakeRunner(ok=True, write=False), transport)
+
+    evidence = executor.execute(task, make_spec(), recipient="dev@example.com")
+
+    assert evidence.failure is FailureKind.NO_CHANGES
+    assert evidence.pr_url is None
+    assert forge.calls == []
+    assert queue.get("e1").state is TaskState.FAILED
+
+
+def test_missing_harness_is_escalated_as_such(repo: Path) -> None:
+    queue = MemoryQueue()
+    task = make_task(queue)
+    transport = MemoryTransport()
+    executor = make_executor(queue, repo, RecordingForge(), MissingRunner(), transport)
+
+    evidence = executor.execute(task, make_spec(), recipient="dev@example.com")
+
+    assert evidence.failure is FailureKind.HARNESS_MISSING
+
+
+class MissingRunner:
+    def run(self, task: Task, spec: TaskSpec, worktree: Worktree) -> RunResult:
+        return RunResult(exit_code=127, stderr="opencode: not found", branch=worktree.branch)
