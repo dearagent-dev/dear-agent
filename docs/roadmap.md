@@ -80,7 +80,9 @@ unchecked slice** of the earliest milestone. One slice = one branch = one draft 
   wrapping the harness argv, wired into `HarnessRunner`.
 - [x] **M6.3** Observability: in-process task `Metrics` and a `Health` check over the
   queue (a non-empty queue is not unhealthy; too many running tasks is).
-- [ ] **M6.4** Prompt-injection hardening pass against `docs/security.md`.
+- [x] **M6.4** Prompt-injection hardening pass: an advisory `InjectionScanner` (audit and
+  escalation, explicitly not a boundary) wired into the control plane as a `suspicious`
+  report.
 - [ ] **M6.5** Packaging (container image) + OpenShift manifests (Kustomize) + GitOps
   (ArgoCD).
 

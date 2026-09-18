@@ -8,6 +8,7 @@ from herald.auth import AuthError, InboundGate
 from herald.normalizer import NormalizedTask, Rejected, RejectReason, normalize
 from herald.notify.notifier import Notifier
 from herald.queue.port import Queue
+from herald.security import InjectionScanner
 from herald.transports.base import OutboundMessage, RawMessage
 from herald.transports.port import Transport
 
@@ -35,6 +36,7 @@ class IngestReport:
     rejected: list[str] = field(default_factory=list)
     denied: list[str] = field(default_factory=list)
     decided: list[str] = field(default_factory=list)
+    suspicious: list[str] = field(default_factory=list)
 
 
 class ControlPlane:
@@ -45,6 +47,9 @@ class ControlPlane:
     else goes through the Normalizer and the queue. A rejected task gets a threaded
     explanation; an unauthorized one is dropped (never normalized and never answered, to
     avoid backscatter).
+
+    When a scanner is configured, messages that look like prompt injection are still
+    ingested but recorded as suspicious, so the run can be gated or audited.
     """
 
     def __init__(
@@ -55,12 +60,14 @@ class ControlPlane:
         notifier: Notifier | None = None,
         gate: InboundGate | None = None,
         approvals: ApprovalService | None = None,
+        scanner: InjectionScanner | None = None,
     ) -> None:
         self._transport = transport
         self._queue = queue
         self._notifier = notifier
         self._gate = gate
         self._approvals = approvals
+        self._scanner = scanner
 
     def ingest(self, messages: list[RawMessage], *, recipient: str | None = None) -> IngestReport:
         report = IngestReport()
@@ -84,6 +91,8 @@ class ControlPlane:
                 continue
 
             assert isinstance(result, NormalizedTask)
+            if self._scanner is not None and self._scanner.scan(message.body).suspicious:
+                report.suspicious.append(message.transport_id)
             if self._queue.enqueue(result.task) is None:
                 # Idempotent: a redelivery is a no-op, not an error.
                 continue
