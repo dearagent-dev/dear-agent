@@ -12,10 +12,12 @@ from herald.observability.health import Health
 from herald.queue.port import Queue
 
 HealthPayload = Callable[[], dict[str, Any]]
+InboundHandler = Callable[[bytes, dict[str, str]], tuple[int, dict[str, Any]]]
 
 
 class _HeraldHTTPServer(ThreadingHTTPServer):
     health_payload: HealthPayload
+    inbound_handler: InboundHandler | None
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -30,6 +32,20 @@ class _Handler(BaseHTTPRequestHandler):
             self._json(200, self.server.health_payload())  # type: ignore[attr-defined]
             return
         self._json(404, {"error": "not found"})
+
+    def do_POST(self) -> None:
+        if self.path.split("?")[0] != "/inbound":
+            self._json(404, {"error": "not found"})
+            return
+        handler = self.server.inbound_handler  # type: ignore[attr-defined]
+        if handler is None:
+            self._json(503, {"error": "inbound webhook is not configured"})
+            return
+        length = int(self.headers.get("Content-Length", "0") or "0")
+        body = self.rfile.read(length) if length else b""
+        headers = {key: value for key, value in self.headers.items()}
+        status, payload = handler(body, headers)
+        self._json(status, payload)
 
     def _json(self, status: int, payload: dict[str, Any]) -> None:
         body = json.dumps(payload).encode()
@@ -53,6 +69,7 @@ class HealthServer:
     host: str = "0.0.0.0"
     port: int = 8080
     max_running: int = 1
+    inbound: InboundHandler | None = None
     _httpd: _HeraldHTTPServer | None = field(default=None, init=False, repr=False)
     _thread: Thread | None = field(default=None, init=False, repr=False)
 
@@ -65,6 +82,7 @@ class HealthServer:
             raise RuntimeError("server already started")
         self._httpd = _HeraldHTTPServer((self.host, self.port), _Handler)
         self._httpd.health_payload = self.health_payload
+        self._httpd.inbound_handler = self.inbound
         self._thread = Thread(target=self._httpd.serve_forever, daemon=True)
         self._thread.start()
 

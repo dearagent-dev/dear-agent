@@ -41,6 +41,12 @@ spec:
                   name: herald-jmap
                   key: FASTMAIL_API_TOKEN
                   optional: true
+            - name: HERALD_INBOUND_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: herald-inbound
+                  key: HERALD_INBOUND_SECRET
+                  optional: true
           ports:
             - containerPort: 8080
               name: http
