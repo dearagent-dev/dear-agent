@@ -22,6 +22,11 @@ Inbound: accept a message (webhook push, IMAP/JMAP poll) and hand the raw payloa
 stable transport id to the Normalizer. Outbound: send status and approval messages,
 threaded to the original conversation. See [transports.md](transports.md).
 
+Concretely, inbound has two entrypoints: `JmapTransport.poll()` (the mailbox is the queue)
+and `POST /inbound` on the control-plane HTTP server for push transports, authenticated
+with an HMAC over the raw body and disabled (503) when `HERALD_INBOUND_SECRET` is unset.
+Both feed the same `ControlPlane.ingest`.
+
 **Interface (to implement):**
 ```
 inbound()  -> Iterable[RawMessage]         # push handler or poller
@@ -46,6 +51,12 @@ an atomic JMAP `Email/set` with `ifInState`. See [queue.md](queue.md) and
 ### Scheduler
 A Kubernetes `CronJob` sweep lists `Queued` messages and starts one Job per task, claiming
 each atomically before the work begins. The default is **one running task at a time**.
+
+Concretely: `herald sweep` returns stale `Running` tasks to `Queued` and renders the runner
+`JobTemplate` (a ConfigMap) once per queued task, injecting the task id through a parsed
+YAML value (never string interpolation); the Job runs `herald run <task-id>`, which claims
+the task, clones the repo read-only, creates a worktree and drives the executor. Creation
+is idempotent per task id, so a re-run after a restart is safe.
 
 ### Runner
 Executes a harness for a claimed task inside an isolated Git worktree and returns
