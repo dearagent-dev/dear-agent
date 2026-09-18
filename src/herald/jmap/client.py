@@ -9,6 +9,7 @@ from typing import Any
 
 CORE = "urn:ietf:params:jmap:core"
 MAIL = "urn:ietf:params:jmap:mail"
+SUBMISSION = "urn:ietf:params:jmap:submission"
 DEFAULT_SESSION_URL = "https://api.fastmail.com/jmap/session"
 
 _EMAIL_PROPERTIES = [
@@ -19,11 +20,28 @@ _EMAIL_PROPERTIES = [
     "receivedAt",
     "keywords",
     "mailboxIds",
+    "bodyValues",
+    "hasAttachment",
 ]
+
+_INBOUND_PROPERTIES = _EMAIL_PROPERTIES
+_TEXT_BODY_PROPERTIES = "textBody,bodyValues"
 
 
 class JmapError(RuntimeError):
     """Base class for JMAP client errors."""
+
+
+def _extract_text_body(item: dict[str, Any]) -> str:
+    body_values = item.get("bodyValues") or {}
+    parts = item.get("textBody") or []
+    chunks: list[str] = []
+    for part in parts:
+        part_id = part.get("partId")
+        value = body_values.get(part_id, {}).get("value")
+        if value:
+            chunks.append(value)
+    return "\n".join(chunks)
 
 
 class StateMismatchError(JmapError):
@@ -42,6 +60,8 @@ class EmailRecord:
     received_at: datetime
     keywords: set[str]
     mailbox_ids: set[str]
+    body: str = ""
+    has_attachment: bool = False
 
 
 class JmapClient:
@@ -91,22 +111,21 @@ class JmapClient:
         )
         return args.get("ids", [])
 
-    def get(self, ids: list[str]) -> tuple[str, list[EmailRecord]]:
+    def get(self, ids: list[str], *, fetch_body: bool = False) -> tuple[str, list[EmailRecord]]:
         if not ids:
             return "", []
+        properties = list(_EMAIL_PROPERTIES)
+        arguments: dict[str, Any] = {
+            "accountId": self.account_id,
+            "ids": ids,
+            "properties": properties + (["textBody"] if fetch_body else []),
+        }
+        if fetch_body:
+            arguments["bodyProperties"] = ["partId", "type"]
+            arguments["fetchTextBodyValues"] = True
         args = self._response(
             self._api_url,
-            [
-                [
-                    "Email/get",
-                    {
-                        "accountId": self.account_id,
-                        "ids": ids,
-                        "properties": _EMAIL_PROPERTIES,
-                    },
-                    "g",
-                ]
-            ],
+            [["Email/get", arguments, "g"]],
             "g",
         )
         return args["state"], [self._to_record(item) for item in args.get("list", [])]
@@ -165,6 +184,72 @@ class JmapClient:
         self._mailboxes[name] = created["m"]["id"]
         return self._mailboxes[name]
 
+    def submit(
+        self,
+        *,
+        to: str,
+        subject: str,
+        body: str,
+        in_reply_to_message_id: str | None = None,
+    ) -> str:
+        """Create a draft and submit it.
+
+        When ``in_reply_to_message_id`` is given, the outgoing ``References``/
+        ``In-Reply-To`` headers keep the conversation threaded. Only status/approval text
+        travels here, never source.
+        """
+        email: dict[str, Any] = {
+            "mailboxIds": {self.get_or_create_mailbox("Sent"): True},
+            "keywords": {"$draft": True},
+            "from": [{"email": self._identity_email()}],
+            "to": [{"email": to}],
+            "subject": subject,
+            "bodyValues": {"b": {"value": body}},
+            "textBody": [{"partId": "b", "type": "text/plain"}],
+        }
+        if in_reply_to_message_id is not None:
+            email["inReplyTo"] = [in_reply_to_message_id]
+
+        created = self._response(
+            self._api_url,
+            [["Email/set", {"accountId": self.account_id, "create": {"d": email}}, "d"]],
+            "d",
+        )
+        if "d" not in created.get("created", {}):
+            raise JmapError(f"could not create draft: {created.get('notCreated')}")
+        email_id = created["created"]["d"]["id"]
+
+        submission = self._response(
+            self._api_url,
+            [
+                [
+                    "EmailSubmission/set",
+                    {
+                        "accountId": self.account_id,
+                        "create": {"s": {"emailId": email_id}},
+                    },
+                    "s",
+                ]
+            ],
+            "s",
+            using=[CORE, MAIL, SUBMISSION],
+        )
+        if "s" not in submission.get("created", {}):
+            raise JmapError(f"could not submit: {submission.get('notCreated')}")
+        return email_id
+
+    def _identity_email(self) -> str:
+        identities = self._response(
+            self._api_url,
+            [["Identity/get", {"accountId": self.account_id, "ids": None}, "i"]],
+            "i",
+            using=[CORE, SUBMISSION],
+        )
+        for identity in identities.get("list", []):
+            if identity.get("email"):
+                return identity["email"]
+        raise JmapError("no sending identity found")
+
     def _request(self, url: str, *, data: bytes | None = None, method: str = "GET") -> Any:
         headers = {"Authorization": f"Bearer {self._token}"}
         if data is not None:
@@ -178,11 +263,16 @@ class JmapClient:
             raise JmapError(f"HTTP {exc.code}: {detail[:500]}") from exc
 
     def _response(
-        self, api_url: str, method_calls: list[list[Any]], call_id: str
+        self,
+        api_url: str,
+        method_calls: list[list[Any]],
+        call_id: str,
+        *,
+        using: list[str] | None = None,
     ) -> dict[str, Any]:
         body = self._request(
             api_url,
-            data=json.dumps({"using": [CORE, MAIL], "methodCalls": method_calls}).encode(),
+            data=json.dumps({"using": using or [CORE, MAIL], "methodCalls": method_calls}).encode(),
             method="POST",
         )
         for name, args, response_id in body.get("methodResponses", []):
@@ -208,4 +298,6 @@ class JmapClient:
             received_at=datetime.fromisoformat(item["receivedAt"].replace("Z", "+00:00")),
             keywords={kw for kw, on in (item.get("keywords") or {}).items() if on},
             mailbox_ids={mbx for mbx, on in (item.get("mailboxIds") or {}).items() if on},
+            body=_extract_text_body(item),
+            has_attachment=bool(item.get("hasAttachment")),
         )
