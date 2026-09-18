@@ -50,10 +50,17 @@ Allowed metadata (optional, one per line):
 ```
 
 Rules:
-- The repo may also be inferred from the recipient address (e.g. `owner-repo@herald.…`).
+- Metadata lines are case-insensitive and stripped from the instructions.
+- The repo may also be inferred from the recipient address (e.g. `owner-repo@herald.…`);
+  an explicit `repo:` line wins over the routing address.
 - **Never** accept source code, patches, or attachments as the task. If present, reject
   with a reply explaining that code travels over Git only.
+- A message with no resolvable repo, or with no instructions after metadata is removed, is
+  rejected with a reason instead of being guessed at.
 - Deduplicate on `Message-ID` (or the transport's stable event id).
+
+The Normalizer returns either a `NormalizedTask` (`Task` + `TaskSpec`) or a `Rejected`
+with a `RejectReason` (`attachments`, `no_repo`, `empty`). It never executes message text.
 
 Outbound status/approval messages are always **in-thread** and contain only: state,
 summary, and links (branch, commit SHA, PR). No source.
