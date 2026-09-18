@@ -191,6 +191,21 @@ def test_enqueue_ignores_a_raw_message_with_the_same_message_id(
     assert stored.state is TaskState.QUEUED
 
 
+def test_enqueue_resolves_the_email_id_from_the_message_id(
+    queue: JmapQueue, client: FakeJmapMailClient
+) -> None:
+    # The Normalizer builds the task with the transport Message-ID as its id, not the JMAP
+    # Email id (as the HTTP/simple clients do). Enqueue must resolve the latter.
+    email = add_email(client, email_id="email-123", message_id="<m1@x>")
+    email.mailbox_ids.add(client._mailbox_id)
+
+    stored = queue.enqueue(Task(id="<m1@x>", transport_id="<m1@x>"))
+
+    assert stored is not None
+    assert stored.id == "email-123"
+    assert "$herald-queued" in email.keywords
+
+
 def test_enqueue_dedupes_a_message_already_carrying_a_herald_state(
     queue: JmapQueue, client: FakeJmapMailClient
 ) -> None:
