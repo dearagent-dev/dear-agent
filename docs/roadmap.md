@@ -65,9 +65,12 @@ unchecked slice** of the earliest milestone. One slice = one branch = one draft 
 
 - [x] **M5.1** Signal collection: recent commits and TODO/FIXME markers from the local
   checkout, read-only, no network.
-- [ ] **M5.2** Proposal generation anchored to activity + trends.
-- [ ] **M5.3** Proposal queue (approval-gated by default); never auto-execute blind.
-- [ ] **M5.4** Rate/budget limits so idle work cannot starve real work.
+- [x] **M5.2** Deterministic `ProposalGenerator`: TODO markers and recent commits become
+  concrete proposals with evidence.
+- [x] **M5.3** `IdleLoop` submits proposals through the normal pipeline; they enter the
+  queue approval-gated and are never auto-executed.
+- [x] **M5.4** `IdleBudget`: a queue-depth gate and a per-run cap so idle work cannot
+  starve real work.
 
 ## M6 — Providers, hardening, ops
 
