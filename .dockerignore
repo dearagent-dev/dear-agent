@@ -1,0 +1,10 @@
+# Build artifacts and local state never belong in the image context.
+.git
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+tests
+deploy
+docs
