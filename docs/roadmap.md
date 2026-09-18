@@ -88,6 +88,9 @@ unchecked slice** of the earliest milestone. One slice = one branch = one draft 
 
 ## Later / ideas
 
+- HTTP entrypoint hardening: inbound webhook endpoint (the `ControlPlane` is ready; only
+  the route and its authentication are missing), request limits and timeouts.
+
 - JMAP `PushSubscription`/EventSource for low-latency triggering (replaces the sweep).
 - IMAP transport as a secondary backend.
 - Multi-provider debate (two models review each other before a PR).

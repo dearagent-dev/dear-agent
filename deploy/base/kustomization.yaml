@@ -6,5 +6,7 @@ resources:
   - control-plane.yaml
   - runner-job.yaml
   - sweep-cronjob.yaml
-commonLabels:
-  app.kubernetes.io/part-of: herald
+labels:
+  - includeSelectors: true
+    pairs:
+      app.kubernetes.io/part-of: herald

@@ -29,8 +29,8 @@ spec:
         - name: control-plane
           image: ghcr.io/OWNER/herald:latest
           imagePullPolicy: IfNotPresent
-          command: ["python", "-m", "herald.cli.main"]
-          args: ["--help"]
+          command: ["herald-http"]
+          args: []
           envFrom:
             - configMapRef:
                 name: herald-config
