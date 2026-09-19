@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -70,24 +69,18 @@ class TaskDispatcher:
         return task.state is not TaskState.QUEUED
 
 
-def kubectl_apply(namespace: str | None = None, binary: str = "oc") -> Callable[[dict], None]:
-    """Build a launcher that applies a Job manifest with ``oc apply`` (fixed argv, no shell)."""
+def kubernetes_launcher(client: object) -> Callable[[dict], None]:
+    """Build a launcher backed by a :class:`herald.kube.KubernetesClient`."""
 
     def apply(job: dict) -> None:
-        argv = [binary, "apply", "-f", "-"]
-        if namespace:
-            argv += ["-n", namespace]
-        result = subprocess.run(
-            argv,
-            input=yaml.safe_dump(job),
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if result.returncode != 0:
-            raise DispatchError(result.stderr.strip() or "kubectl apply failed")
+        client.create_job(job)  # type: ignore[attr-defined]
 
     return apply
 
 
-__all__ = ["DispatchError", "TaskDispatcher", "kubectl_apply", "render_job"]
+__all__ = [
+    "DispatchError",
+    "TaskDispatcher",
+    "kubernetes_launcher",
+    "render_job",
+]
