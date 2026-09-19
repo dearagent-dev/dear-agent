@@ -9,7 +9,6 @@ data:
   HERALD_MODEL: "local:model"
   HERALD_GIT_HOST: "github.com"
   HERALD_RUNNER_TEMPLATE_CONFIGMAP: "herald-runner-template"
-  HERALD_NAMESPACE: "herald"
   HERALD_MAX_BODY_BYTES: "1048576"
   HERALD_HTTP_TIMEOUT: "15"
 ---

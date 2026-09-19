@@ -142,7 +142,6 @@ def add_sweep_commands(
         default="memory",
         help="queue backend (default: memory)",
     )
-    parser.add_argument("--namespace", default=os.environ.get("HERALD_NAMESPACE"))
     parser.add_argument("--template", default=os.environ.get("HERALD_RUNNER_TEMPLATE_CONFIGMAP"))
     parser.add_argument("--limit", type=int, default=20)
     parser.set_defaults(handler=_handle_sweep)
@@ -160,7 +159,7 @@ def _handle_sweep(args: argparse.Namespace, context: CliContext) -> int:
     if not args.template:
         raise RuntimeError("HERALD_RUNNER_TEMPLATE_CONFIGMAP is required to dispatch")
     try:
-        client = KubernetesClient.from_cluster(args.namespace or "")
+        client = KubernetesClient.from_cluster()
     except KubernetesError as exc:
         raise RuntimeError(
             f"cannot reach the Kubernetes API ({exc}); sweep must run in-cluster"
