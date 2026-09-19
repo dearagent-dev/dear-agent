@@ -71,13 +71,21 @@ def test_from_cluster_requires_a_token(tmp_path: Any) -> None:
         KubernetesClient.from_cluster("herald", sa_dir=tmp_path)
 
 
-def test_from_cluster_reads_token_and_namespace(tmp_path: Any) -> None:
+def test_from_cluster_prefers_the_pod_namespace(tmp_path: Any) -> None:
     (tmp_path / "token").write_text("abc\n")
-    (tmp_path / "namespace").write_text("herald\n")
+    (tmp_path / "namespace").write_text("herald-validate\n")
 
-    built = KubernetesClient.from_cluster("", sa_dir=tmp_path)
+    built = KubernetesClient.from_cluster("herald", sa_dir=tmp_path)
 
     assert built.token == "abc"
+    assert built.namespace == "herald-validate"
+
+
+def test_from_cluster_uses_the_argument_when_there_is_no_namespace_file(tmp_path: Any) -> None:
+    (tmp_path / "token").write_text("abc\n")
+
+    built = KubernetesClient.from_cluster("herald", sa_dir=tmp_path)
+
     assert built.namespace == "herald"
 
 

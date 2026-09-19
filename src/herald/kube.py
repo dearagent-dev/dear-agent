@@ -36,7 +36,11 @@ class KubernetesClient:
         token_path = sa_dir / "token"
         if not token_path.exists():
             raise KubernetesError(f"no service-account token at {token_path}")
-        namespace = namespace or (sa_dir / "namespace").read_text().strip()
+        # The pod's own namespace is authoritative: the dispatcher creates runner Jobs where
+        # it runs, whatever namespace an operator configured elsewhere.
+        namespace_file = sa_dir / "namespace"
+        if namespace_file.exists():
+            namespace = namespace_file.read_text().strip()
         return cls(
             namespace=namespace, token=token_path.read_text().strip(), ca_path=sa_dir / "ca.crt"
         )
