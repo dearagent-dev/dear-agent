@@ -32,7 +32,7 @@ class KubernetesClient:
     timeout: float = 30.0
 
     @classmethod
-    def from_cluster(cls, namespace: str, *, sa_dir: Path = SA_DIR) -> KubernetesClient:
+    def from_cluster(cls, namespace: str = "", *, sa_dir: Path = SA_DIR) -> KubernetesClient:
         token_path = sa_dir / "token"
         if not token_path.exists():
             raise KubernetesError(f"no service-account token at {token_path}")
