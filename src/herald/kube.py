@@ -53,8 +53,15 @@ class KubernetesClient:
         return {str(key): str(value) for key, value in data.items()}
 
     def create_job(self, job: dict[str, Any]) -> dict[str, Any]:
+        """Create a Job. A Job that already exists is success (idempotent dispatch)."""
         path = f"/apis/batch/v1/namespaces/{self.namespace}/jobs"
-        return self._request("POST", path, payload=job)
+        try:
+            return self._request("POST", path, payload=job)
+        except KubernetesError as exc:
+            if " 409 " in f" {exc} " or "AlreadyExists" in str(exc):
+                name = job.get("metadata", {}).get("name", "")
+                return self._request("GET", f"{path}/{name}")
+            raise
 
     def _request(
         self, method: str, path: str, *, payload: dict[str, Any] | None = None

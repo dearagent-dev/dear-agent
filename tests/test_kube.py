@@ -100,3 +100,24 @@ def test_kubernetes_launcher_delegates_to_create_job() -> None:
     kubernetes_launcher(Fake())({"kind": "Job"})
 
     assert created == [{"kind": "Job"}]
+
+
+def test_create_job_treats_already_exists_as_success() -> None:
+    calls: list[str] = []
+
+    class Once409(KubernetesClient):
+        def __init__(self) -> None:
+            super().__init__(namespace="herald", token="t", host="http://127.0.0.1:1")
+            self.first = True
+
+        def _request(self, method: str, path: str, **_: Any) -> dict:
+            calls.append(method)
+            if method == "POST" and self.first:
+                self.first = False
+                raise KubernetesError("POST /jobs failed: 409 AlreadyExists")
+            return {"metadata": {"name": "herald-task-x"}}
+
+    result = Once409().create_job({"metadata": {"name": "herald-task-x"}})
+
+    assert result["metadata"]["name"] == "herald-task-x"
+    assert calls == ["POST", "GET"]

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -10,20 +12,37 @@ from herald.queue.port import Queue
 
 WORKER_ANNOTATION = "herald.dev/task-id"
 
+_SLUG_RE = re.compile(r"[^a-z0-9]+")
+
 
 class DispatchError(RuntimeError):
     """A task could not be dispatched to a runner Job."""
+
+
+def job_name(task_id: str) -> str:
+    """A deterministic, DNS-1123 Job name for a task id.
+
+    Deterministic so that re-dispatching the same task is a no-op (the Job already exists),
+    which is what makes the sweep idempotent across restarts and repeated CronJob runs. The
+    short digest keeps distinct task ids from colliding after slugging.
+    """
+    digest = hashlib.sha256(task_id.encode()).hexdigest()[:10]
+    slug = _SLUG_RE.sub("-", task_id.lower()).strip("-")[:40] or "task"
+    return f"herald-task-{slug}-{digest}"
 
 
 def render_job(template: str, task: Task) -> dict:
     """Render the runner JobTemplate for one task, injecting its id.
 
     The template is a Job manifest as a YAML string (as stored in the ConfigMap). We parse
-    it, stamp the task id as an env var and an annotation, and return the manifest. No shell
-    interpolation is involved, so a hostile task id cannot inject YAML.
+    it, stamp the task id as an env var and an annotation, and give the Job a deterministic
+    name. No shell interpolation is involved, so a hostile task id cannot inject YAML.
     """
 
     job = yaml.safe_load(template)
+    metadata = job.setdefault("metadata", {})
+    metadata.pop("generateName", None)
+    metadata["name"] = job_name(task.id)
     spec = job["spec"]["template"]["spec"]
     containers = spec.get("containers", [])
     if not containers:

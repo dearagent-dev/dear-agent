@@ -1,7 +1,7 @@
 # The runner Job template. A Job is immutable and one-per-task, so it cannot be applied
-# statically; the scheduler reads this template and creates one Job per claimed task with
-# the task id substituted. Keeping it in a ConfigMap makes the intent explicit and lets
-# the sweep render it without a controller.
+# statically; the scheduler reads this template, gives the Job a deterministic name from the
+# task id, and creates it. Deterministic naming makes dispatch idempotent: a re-run (or the
+# next CronJob tick) hits AlreadyExists instead of creating a second Job for the same task.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -11,7 +11,7 @@ data:
     apiVersion: batch/v1
     kind: Job
     metadata:
-      generateName: herald-task-
+      name: herald-task-placeholder
       labels:
         app.kubernetes.io/name: herald
         app.kubernetes.io/component: runner
@@ -29,7 +29,6 @@ data:
           automountServiceAccountToken: false
           securityContext:
             runAsNonRoot: true
-            fsGroup: 1001
             seccompProfile:
               type: RuntimeDefault
           containers:
