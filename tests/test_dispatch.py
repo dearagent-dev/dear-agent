@@ -4,7 +4,7 @@ from datetime import timedelta
 
 import yaml
 
-from herald.dispatch import WORKER_ANNOTATION, TaskDispatcher, render_job
+from herald.dispatch import WORKER_ANNOTATION, TaskDispatcher, job_name, render_job
 from herald.queue.memory import MemoryQueue
 from herald.queue.models import Task
 
@@ -33,6 +33,22 @@ def test_render_job_injects_the_task_id() -> None:
     env = job["spec"]["template"]["spec"]["containers"][0]["env"]
     assert env == [{"name": "HERALD_TASK_ID", "value": "e1"}]
     assert job["spec"]["template"]["metadata"]["annotations"][WORKER_ANNOTATION] == "e1"
+
+
+def test_render_job_names_the_job_deterministically() -> None:
+    job = render_job(TEMPLATE, Task(id="e1", transport_id="<m1@x>"))
+
+    assert job["metadata"]["name"] == job_name("e1")
+    assert "generateName" not in job["metadata"]
+    # Re-rendering the same task yields the same name, so a re-dispatch is a no-op.
+    again = render_job(TEMPLATE, Task(id="e1", transport_id="<m1@x>"))
+    assert again["metadata"]["name"] == job["metadata"]["name"]
+
+
+def test_job_name_is_dns1123_and_distinct() -> None:
+    assert job_name("Stm_un1pB0X-").startswith("herald-task-")
+    assert len(job_name("x" * 200)) <= 63
+    assert job_name("a/b") != job_name("a-b")
 
 
 def test_render_job_cannot_be_injected_by_a_hostile_task_id() -> None:
