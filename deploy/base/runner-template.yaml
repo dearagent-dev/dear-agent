@@ -41,8 +41,6 @@ data:
                 - "jmap"
                 - "--repo"
                 - "/work/source"
-                - "--recipient"
-                - "$(HERALD_RECIPIENT)"
                 - "--model"
                 - "$(HERALD_MODEL)"
                 - "$(HERALD_TASK_ID)"
@@ -51,8 +49,6 @@ data:
                     name: herald-config
               env:
                 - name: HERALD_TASK_ID
-                  value: ""
-                - name: HERALD_RECIPIENT
                   value: ""
                 - name: HERALD_MODEL
                   value: ""

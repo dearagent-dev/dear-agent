@@ -205,3 +205,37 @@ def test_missing_harness_is_escalated_as_such(repo: Path) -> None:
 class MissingRunner:
     def run(self, task: Task, spec: TaskSpec, worktree: Worktree) -> RunResult:
         return RunResult(exit_code=127, stderr="opencode: not found", branch=worktree.branch)
+
+
+def test_report_skips_an_empty_recipient(tmp_path) -> None:
+
+    from herald.executor import TaskExecutor
+    from herald.gitplane.plane import GitPlane
+    from herald.queue.memory import MemoryQueue
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    class NoNotifier:
+        def status(self, *a, **k):
+            raise AssertionError("must not notify an empty recipient")
+
+    executor = TaskExecutor(
+        queue=MemoryQueue(),
+        runner=object(),  # type: ignore[arg-type]
+        git=GitPlane(forge=object()),  # type: ignore[arg-type]
+        repo_path=str(repo),
+        worktrees_root=str(tmp_path / "wt"),
+        notifier=NoNotifier(),  # type: ignore[arg-type]
+    )
+
+    class Evidence:
+        task_id = "e1"
+        failure = None
+        ok = True
+        run = None
+        branch = "b"
+        commit = "c"
+        pr_url = None
+
+    executor._report(Evidence(), recipient="")  # type: ignore[arg-type]
