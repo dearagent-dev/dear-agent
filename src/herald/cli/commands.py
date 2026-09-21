@@ -285,8 +285,8 @@ def _handle_run(args: argparse.Namespace, context: CliContext) -> int:
         queue=queue,
         transport=transport,
         repo_path=args.repo,
-        recipient=args.recipient,
-        provider_model=args.model,
+        recipient=args.recipient or None,
+        provider_model=args.model or None,
     )
     evidence = worker.run(args.task_id)
     payload = {

@@ -118,7 +118,7 @@ class TaskExecutor:
             worktree.remove()
 
     def _report(self, evidence: ExecutedTask, *, recipient: str | None) -> None:
-        if recipient is None:
+        if not recipient:
             return
         task = self._queue.get(evidence.task_id)
         if task is None:
