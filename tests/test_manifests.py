@@ -77,12 +77,11 @@ def test_runner_template_has_the_hardening() -> None:
         assert container["securityContext"]["capabilities"]["drop"] == ["ALL"]
 
 
-def test_secrets_contain_no_values_in_git() -> None:
-    for doc in build("dev"):
-        if doc.get("kind") != "Secret":
-            continue
-        assert not doc.get("data"), doc["metadata"]["name"]
-        assert not doc.get("stringData"), doc["metadata"]["name"]
+def test_no_secret_objects_are_applied_from_git() -> None:
+    # Secrets are provisioned out of band; if they were in the build, a kustomize apply
+    # could reset a live credential (this happened once).
+    for overlay in ("dev", "prod"):
+        assert all(doc.get("kind") != "Secret" for doc in build(overlay)), overlay
 
 
 def test_containers_drop_privileges() -> None:
