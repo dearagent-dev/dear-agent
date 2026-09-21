@@ -217,7 +217,7 @@ def _handle_listen(args: argparse.Namespace, context: CliContext) -> int:
     )
     client.connect()
 
-    transport = build_transport()
+    transport = build_transport("jmap")
     callback = IngestOnChange(
         control_plane=ControlPlane(transport=transport, queue=context.require_queue()),
         transport=transport,
@@ -280,7 +280,7 @@ def _handle_run(args: argparse.Namespace, context: CliContext) -> int:
     from herald.worker_factory import build_transport, build_worker
 
     queue = context.require_queue()
-    transport = build_transport()
+    transport = build_transport(args.backend)
     worker = build_worker(
         queue=queue,
         transport=transport,

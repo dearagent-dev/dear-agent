@@ -54,3 +54,29 @@ def test_worker_rejects_an_unknown_task() -> None:
 
     with pytest.raises(TaskWorkerError):
         worker.run("missing")
+
+
+def test_build_transport_honors_the_backend_argument(monkeypatch) -> None:
+    from herald.transports.memory import MemoryTransport
+    from herald.worker_factory import build_transport
+
+    monkeypatch.setenv("HERALD_BACKEND", "memory")
+
+    assert isinstance(build_transport("memory"), MemoryTransport)
+
+
+def test_build_transport_prefers_the_backend_argument_over_env(monkeypatch) -> None:
+    from unittest import mock
+
+    from herald.worker_factory import build_transport
+
+    monkeypatch.setenv("HERALD_BACKEND", "memory")
+    monkeypatch.setenv("FASTMAIL_API_TOKEN", "token")
+
+    with (
+        mock.patch("herald.jmap.client.JmapClient.connect"),
+        mock.patch("herald.jmap.client.JmapClient.__init__", return_value=None),
+    ):
+        transport = build_transport("jmap")
+
+    assert type(transport).__name__ == "JmapTransport"

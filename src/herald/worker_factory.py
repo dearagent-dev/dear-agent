@@ -63,9 +63,15 @@ def default_sandbox() -> Sandbox:
     return NoSandbox()
 
 
-def build_transport() -> Transport:
-    """Build the inbound/outbound transport named by ``HERALD_BACKEND`` (default: memory)."""
-    backend = os.environ.get("HERALD_BACKEND", "memory")
+def build_transport(backend: str | None = None) -> Transport:
+    """Build the inbound/outbound transport.
+
+    The backend comes from the ``--backend`` flag when given, otherwise
+    ``HERALD_BACKEND`` (default: memory). Passing the CLI value matters: the runner is
+    invoked as ``herald run --backend jmap`` and its spec resolver must poll the same
+    transport the task came from.
+    """
+    backend = backend or os.environ.get("HERALD_BACKEND", "memory")
     if backend == "memory":
         from herald.transports.memory import MemoryTransport
 
