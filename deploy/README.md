@@ -21,7 +21,9 @@ oc apply -k deploy/overlays/dev
 
 ## Prerequisites
 
-1. Set the image in the overlay (`ghcr.io/OWNER/herald`).
+1. Set the image in the overlay (`ghcr.io/OWNER/herald`). The image is built from
+   `registry.access.redhat.com/ubi9/python-312`, so it matches the OpenShift platform; it
+   runs as an arbitrary UID with group 0 for OpenShift's SCC.
 2. Create the four Secrets out of band (never commit values). See
    [`../docs/decisions/0003-credentials.md`](../docs/decisions/0003-credentials.md).
 
