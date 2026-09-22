@@ -86,6 +86,45 @@ def default_sandbox() -> Sandbox:
     return NoSandbox()
 
 
+def build_routing_runner(sandbox: Sandbox) -> Runner | None:
+    """Build a per-task routing runner from ``HERALD_HARNESSES``, or ``None``.
+
+    ``HERALD_HARNESSES`` maps routing classes to harnesses, e.g. ``local:opencode,hosted:claude``.
+    When set, every run asks the decider which class fits the task and dispatches to that
+    harness; the default class is ``HERALD_HARNESS_DEFAULT`` (default ``hosted``). When unset,
+    routing is off and the single ``HERALD_HARNESS`` runner is used.
+    """
+    spec = os.environ.get("HERALD_HARNESSES")
+    if not spec:
+        return None
+    from herald.runners.routing import RoutingRunner
+
+    runners: dict[str, Runner] = {}
+    for entry in spec.split(","):
+        entry = entry.strip()
+        if not entry:
+            continue
+        class_name, _, harness = entry.partition(":")
+        harness = harness or class_name
+        saved = os.environ.get("HERALD_HARNESS")
+        os.environ["HERALD_HARNESS"] = harness
+        try:
+            runners[class_name.strip()] = build_runner(None, sandbox)
+        finally:
+            if saved is None:
+                os.environ.pop("HERALD_HARNESS", None)
+            else:
+                os.environ["HERALD_HARNESS"] = saved
+
+    from herald.decision.factory import build_decider
+
+    return RoutingRunner(
+        runners=runners,
+        decider=build_decider(),
+        default=os.environ.get("HERALD_HARNESS_DEFAULT", "hosted"),
+    )
+
+
 def build_transport(backend: str | None = None) -> Transport:
     """Build the inbound/outbound transport.
 
@@ -126,7 +165,10 @@ def build_worker(
     sandbox: Sandbox | None = None,
 ) -> TaskWorker:
     """Wire a TaskWorker from its collaborators."""
-    runner = build_runner(provider_model, sandbox or default_sandbox())
+    sandbox = sandbox or default_sandbox()
+    runner = build_routing_runner(sandbox)
+    if runner is None:
+        runner = build_runner(provider_model, sandbox)
     executor = TaskExecutor(
         queue=queue,
         runner=runner,

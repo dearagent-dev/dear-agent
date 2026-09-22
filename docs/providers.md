@@ -73,3 +73,13 @@ The decision layer is built from two ports in the core, each with pluggable adap
 `HERALD_DECIDER=openrouter` and `OPENROUTER_API_KEY`; unset a model to use the free tier, or
 set `HERALD_DECIDER_MODEL` to pin one. `HERALD_DECIDER_ALLOW_PAID=true` lets it choose a paid
 model when no free one qualifies.
+
+## Routing the harness per task
+
+The same decision can pick the *harness*, not just the model. Set `HERALD_HARNESSES` to map
+routing classes to harnesses, e.g. `local:opencode,hosted:claude`, and `HERALD_HARNESS_DEFAULT`
+(the class used when there is no decider or the decision is unknown). The `RoutingRunner`
+then asks the decider per task and dispatches: mechanical work to the light harness, reasoning
+work to the strong one. With no decider configured, everything uses the default, so behavior
+is unchanged. This is how "the router picks the model/harness per job" becomes real without
+touching the executor.

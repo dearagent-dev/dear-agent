@@ -123,3 +123,25 @@ def test_build_runner_defaults_to_opencode(monkeypatch) -> None:
 
     monkeypatch.delenv("HERALD_HARNESS", raising=False)
     assert isinstance(build_runner(None, sandbox=object()), OpenCodeRunner)  # type: ignore[arg-type]
+
+
+def test_build_routing_runner_is_none_without_config(monkeypatch) -> None:
+    from herald.worker_factory import build_routing_runner
+
+    monkeypatch.delenv("HERALD_HARNESSES", raising=False)
+    assert build_routing_runner(sandbox=object()) is None  # type: ignore[arg-type]
+
+
+def test_build_routing_runner_maps_classes(monkeypatch) -> None:
+    from herald.runners.routing import RoutingRunner
+    from herald.worker_factory import build_routing_runner
+
+    monkeypatch.setenv("HERALD_HARNESSES", "local:opencode,hosted:command")
+    monkeypatch.setenv("HERALD_HARNESS_COMMAND", "my-agent")
+    monkeypatch.setenv("HERALD_DECIDER", "rules")
+
+    runner = build_routing_runner(sandbox=object())  # type: ignore[arg-type]
+
+    assert isinstance(runner, RoutingRunner)
+    assert set(runner.runners) == {"local", "hosted"}
+    assert runner.default == "hosted"
