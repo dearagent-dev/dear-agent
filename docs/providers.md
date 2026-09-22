@@ -51,3 +51,12 @@ failure.
 
 Provider selection precedence: task hint → project default → global default. Record the
 provider and model in the task evidence so results are reproducible.
+
+## Deciding *which* provider
+
+Rather than a static mapping, selection can be a typed decision: a small System One model
+(see [ADR 0004](decisions/0004-decision-model.md)) scores a task as `local` or `hosted` — local
+for mechanical work, hosted for architecture/security/debugging — with a calibrated
+confidence. Below the threshold, fall back to the deterministic default. This runs behind a
+`Decider` port so no core code depends on the vendor, and it is advisory: it picks a model,
+it never authorizes an action.

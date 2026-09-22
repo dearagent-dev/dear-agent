@@ -87,14 +87,32 @@ unchecked slice** of the earliest milestone. One slice = one branch = one draft 
   base/overlays, runner `JobTemplate`), a per-role credential strategy (ADR 0003), and
   manifest tests asserting the hardening invariants. Verified live on OpenShift.
 
+## M7 — Decision layer (proposed; see ADR 0004)
+
+Small, fast, typed judgments at the edges, dispatched through a `Decider` port with a
+deterministic fallback. Advisory only — never a security boundary.
+
+- [ ] **M7.1** `Decider` port + `RuleDecider` (reproduces today's deterministic behavior)
+  and an optional `JevDecider` (hosted TypeSafe API, `TYPESAFE_API_KEY`). Fail open to the
+  rules when the decider is absent, unreachable, or below the confidence threshold.
+- [ ] **M7.2** Model routing: one `choice` (`local` / `hosted`) plus a `noul` "needs a
+  human" drives the provider registry, replacing a static mapping. Local for mechanical
+  work, hosted for architecture/security/debugging.
+- [ ] **M7.3** Advisory injection + "no source over transport": a `noul` pair feeding the
+  `suspicious` report next to `InjectionScanner` and the attachment check, so inline
+  diffs/encoded blobs get caught too.
+- [ ] **M7.4** Earned thresholds: calibrate every cutoff against labeled examples from our
+  own traffic; log decisions for tuning.
+
 ## Later / ideas
 
-- HTTP entrypoint hardening: inbound webhook endpoint (the `ControlPlane` is ready; only
-  the route and its authentication are missing), request limits and timeouts.
+- [x] HTTP entrypoint hardening: inbound webhook endpoint (`POST /inbound`, HMAC auth,
+  fail-closed without a secret), request-body cap and timeouts.
 
 - [x] JMAP `PushSubscription`/EventSource for low-latency triggering (replaces the sweep):
   `JmapClient` exposes `event_source_url`, `push_create` and `push_destroy`; `herald listen`
   opens the EventSource and re-polls (idempotently) on an `Email` `StateChange`.
 - IMAP transport as a secondary backend.
+- Self-hosted decision model (Simple Jev / Laya / NanoJev) as the reference local decider.
 - Multi-provider debate (two models review each other before a PR).
 - Per-project policies (which repos, which providers, which tasks allowed).

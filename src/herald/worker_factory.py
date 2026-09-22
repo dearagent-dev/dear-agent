@@ -47,11 +47,34 @@ class WorktreeSpecResolver:
 
 
 def build_runner(provider_model: str | None, sandbox: Sandbox) -> Runner:
-    """Build the OpenCode runner with the given sandbox."""
+    """Build the harness runner selected by ``HERALD_HARNESS`` (default: opencode).
+
+    ``opencode`` (default), ``claude`` and ``codex`` are first-class adapters. ``command``
+    wraps an arbitrary harness via ``HERALD_HARNESS_COMMAND`` (a space-separated argv), which
+    is how an operator plugs in a custom runner without forking Herald.
+    """
+    harness = os.environ.get("HERALD_HARNESS", "opencode").lower()
+    if harness == "command":
+        from herald.runners.command import CommandRunner
+
+        raw = os.environ.get("HERALD_HARNESS_COMMAND")
+        if not raw:
+            raise RuntimeError("HERALD_HARNESS_COMMAND is required for HERALD_HARNESS=command")
+        return CommandRunner(command=raw.split())
+
+    binary = os.environ.get("HERALD_HARNESS_BINARY")
+    if harness == "claude":
+        from herald.runners.claude import ClaudeCodeRunner
+
+        return ClaudeCodeRunner(model=provider_model, **({"binary": binary} if binary else {}))
+    if harness == "codex":
+        from herald.runners.codex import CodexRunner
+
+        return CodexRunner(model=provider_model, **({"binary": binary} if binary else {}))
+
     from herald.runners.opencode import OpenCodeRunner
 
-    binary = os.environ.get("HERALD_HARNESS_BINARY", "opencode")
-    return OpenCodeRunner(model=provider_model, binary=binary, sandbox=sandbox)
+    return OpenCodeRunner(model=provider_model, binary=binary or "opencode", sandbox=sandbox)
 
 
 def default_sandbox() -> Sandbox:

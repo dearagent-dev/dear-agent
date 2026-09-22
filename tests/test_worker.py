@@ -80,3 +80,46 @@ def test_build_transport_prefers_the_backend_argument_over_env(monkeypatch) -> N
         transport = build_transport("jmap")
 
     assert type(transport).__name__ == "JmapTransport"
+
+
+def test_build_runner_selects_the_command_harness(monkeypatch) -> None:
+    from herald.runners.command import CommandRunner
+    from herald.worker_factory import build_runner
+
+    monkeypatch.setenv("HERALD_HARNESS", "command")
+    monkeypatch.setenv("HERALD_HARNESS_COMMAND", "my-agent --flag")
+
+    runner = build_runner("model", sandbox=object())  # type: ignore[arg-type]
+
+    assert isinstance(runner, CommandRunner)
+    assert runner.command == ["my-agent", "--flag"]
+
+
+def test_build_runner_command_requires_the_command(monkeypatch) -> None:
+    from herald.worker_factory import build_runner
+
+    monkeypatch.setenv("HERALD_HARNESS", "command")
+    monkeypatch.delenv("HERALD_HARNESS_COMMAND", raising=False)
+
+    with __import__("pytest").raises(RuntimeError):
+        build_runner(None, sandbox=object())  # type: ignore[arg-type]
+
+
+def test_build_runner_selects_claude_and_codex(monkeypatch) -> None:
+    from herald.runners.claude import ClaudeCodeRunner
+    from herald.runners.codex import CodexRunner
+    from herald.worker_factory import build_runner
+
+    monkeypatch.setenv("HERALD_HARNESS", "claude")
+    assert isinstance(build_runner(None, sandbox=object()), ClaudeCodeRunner)  # type: ignore[arg-type]
+
+    monkeypatch.setenv("HERALD_HARNESS", "codex")
+    assert isinstance(build_runner(None, sandbox=object()), CodexRunner)  # type: ignore[arg-type]
+
+
+def test_build_runner_defaults_to_opencode(monkeypatch) -> None:
+    from herald.runners.opencode import OpenCodeRunner
+    from herald.worker_factory import build_runner
+
+    monkeypatch.delenv("HERALD_HARNESS", raising=False)
+    assert isinstance(build_runner(None, sandbox=object()), OpenCodeRunner)  # type: ignore[arg-type]
