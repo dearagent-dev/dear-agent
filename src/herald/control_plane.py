@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from herald.approvals import ApprovalError
 from herald.approvals_service import ApprovalReply, ApprovalService, parse_reply
 from herald.auth import AuthError, InboundGate
+from herald.decision.security import SecurityDecider
 from herald.normalizer import NormalizedTask, Rejected, RejectReason, normalize
 from herald.notify.notifier import Notifier
 from herald.queue.port import Queue
@@ -61,6 +62,7 @@ class ControlPlane:
         gate: InboundGate | None = None,
         approvals: ApprovalService | None = None,
         scanner: InjectionScanner | None = None,
+        security: SecurityDecider | None = None,
     ) -> None:
         self._transport = transport
         self._queue = queue
@@ -68,6 +70,7 @@ class ControlPlane:
         self._gate = gate
         self._approvals = approvals
         self._scanner = scanner
+        self._security = security
 
     def ingest(self, messages: list[RawMessage], *, recipient: str | None = None) -> IngestReport:
         report = IngestReport()
@@ -93,6 +96,10 @@ class ControlPlane:
             assert isinstance(result, NormalizedTask)
             if self._scanner is not None and self._scanner.scan(message.body).suspicious:
                 report.suspicious.append(message.transport_id)
+            if self._security is not None:
+                verdict = self._security.assess(message.body)
+                if verdict.suspicious and message.transport_id not in report.suspicious:
+                    report.suspicious.append(message.transport_id)
             if self._queue.enqueue(result.task) is None:
                 # Idempotent: a redelivery is a no-op, not an error.
                 continue
