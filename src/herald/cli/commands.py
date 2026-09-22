@@ -309,3 +309,50 @@ def add_approval_commands(
     approval.set_defaults(handler=None)
     approval_sub = approval.add_subparsers(dest="approval_command", required=True)
     _add_parse_reply(approval_sub)
+
+
+def add_decide_commands(
+    subparsers: argparse._SubParsersAction, parent: argparse.ArgumentParser
+) -> None:
+    parser = subparsers.add_parser(
+        "decide", help="ask the decision model to route a task (ADR 0004)"
+    )
+    parser.add_argument("state", help="the task text to decide on")
+    parser.add_argument(
+        "--decider",
+        default=None,
+        help="override HERALD_DECIDER (rules|jev|none) for this call",
+    )
+    parser.set_defaults(handler=_handle_decide, needs_queue=False)
+
+
+def _handle_decide(args: argparse.Namespace, context: CliContext) -> int:
+    import os
+
+    from herald.decision.factory import build_decider
+    from herald.decision.port import DecisionError
+    from herald.decision.router import HUMAN_QUESTION, ROUTE_QUESTION
+
+    if args.decider:
+        os.environ["HERALD_DECIDER"] = args.decider
+    try:
+        decider = build_decider()
+    except DecisionError as exc:
+        raise RuntimeError(str(exc)) from exc
+    if decider is None:
+        raise RuntimeError("no decider is configured")
+
+    decision = decider.decide(args.state, {"model": ROUTE_QUESTION, "needs_human": HUMAN_QUESTION})
+    payload = {
+        "model": decision.choice("model"),
+        "model_confidence": decision.confidence("model"),
+        "needs_human": decision.noul("needs_human"),
+    }
+    if context.as_json:
+        context.emit_json(payload)
+    else:
+        context.emit(
+            f"model={payload['model']} (confidence={payload['model_confidence']}) "
+            f"needs_human={payload['needs_human']}"
+        )
+    return 0

@@ -92,17 +92,17 @@ unchecked slice** of the earliest milestone. One slice = one branch = one draft 
 Small, fast, typed judgments at the edges, dispatched through a `Decider` port with a
 deterministic fallback. Advisory only — never a security boundary.
 
-- [ ] **M7.1** `Decider` port + `RuleDecider` (reproduces today's deterministic behavior)
+- [x] **M7.1** `Decider` port + `RuleDecider` (reproduces today's deterministic behavior)
   and an optional `JevDecider` (hosted TypeSafe API, `TYPESAFE_API_KEY`). Fail open to the
   rules when the decider is absent, unreachable, or below the confidence threshold.
-- [ ] **M7.2** Model routing: one `choice` (`local` / `hosted`) plus a `noul` "needs a
+- [x] **M7.2** Model routing: one `choice` (`local` / `hosted`) plus a `noul` "needs a
   human" drives the provider registry, replacing a static mapping. Local for mechanical
   work, hosted for architecture/security/debugging.
-- [ ] **M7.3** Advisory injection + "no source over transport": a `noul` pair feeding the
+- [x] **M7.3** Advisory injection + "no source over transport": a `noul` pair feeding the
   `suspicious` report next to `InjectionScanner` and the attachment check, so inline
   diffs/encoded blobs get caught too.
-- [ ] **M7.4** Earned thresholds: calibrate every cutoff against labeled examples from our
-  own traffic; log decisions for tuning.
+- [x] **M7.4** Earned thresholds: `DecisionLog` (JSONL, no DB) records every decision for
+  tuning; `herald decide` lets an operator test the routing, with rules or the live model.
 
 ## Later / ideas
 

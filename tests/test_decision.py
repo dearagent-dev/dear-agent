@@ -211,3 +211,54 @@ def test_security_decider_never_raises() -> None:
     verdict = SecurityDecider(decider=FakeDecider(error=True)).assess("anything")
 
     assert verdict.suspicious is False
+
+
+def test_decision_log_round_trips(tmp_path) -> None:
+    from herald.decision.log import DecisionLog, DecisionRecord
+
+    log = DecisionLog(path=tmp_path / "decisions.jsonl")
+    decision = RuleDecider().decide("refactor the queue port", MODEL_Q)
+    log.record(DecisionRecord.from_decision("refactor the queue port", MODEL_Q, decision))
+
+    records = log.read()
+
+    assert len(records) == 1
+    assert records[0].state == "refactor the queue port"
+    assert records[0].answers["model"]["choice"] == "hosted"
+    assert records[0].label is None
+
+
+def test_logging_decider_records_every_decision(tmp_path) -> None:
+    from herald.decision.factory import LoggingDecider
+    from herald.decision.log import DecisionLog
+
+    log = DecisionLog(path=tmp_path / "decisions.jsonl")
+    decider = LoggingDecider(decider=RuleDecider(), log=log)
+
+    decider.decide("fix the typo", MODEL_Q)
+    decider.decide("audit the auth module", MODEL_Q)
+
+    assert len(log.read()) == 2
+
+
+def test_logging_decider_survives_an_unwritable_log(tmp_path) -> None:
+    from herald.decision.factory import LoggingDecider
+    from herald.decision.log import DecisionLog
+
+    # A directory where the log file should be: the write fails but the decision must not.
+    bad = tmp_path / "as-dir"
+    bad.mkdir()
+    decider = LoggingDecider(decider=RuleDecider(), log=DecisionLog(path=bad))
+
+    decision = decider.decide("fix the typo", MODEL_Q)
+
+    assert decision.choice("model") == "local"
+
+
+def test_build_decider_wraps_with_logging_when_configured(monkeypatch, tmp_path) -> None:
+    from herald.decision.factory import LoggingDecider, build_decider
+
+    monkeypatch.setenv("HERALD_DECIDER", "rules")
+    monkeypatch.setenv("HERALD_DECIDER_LOG", str(tmp_path / "d.jsonl"))
+
+    assert isinstance(build_decider(), LoggingDecider)

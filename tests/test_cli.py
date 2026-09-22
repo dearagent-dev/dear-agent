@@ -177,3 +177,31 @@ def test_run_executes_a_task_via_the_worker(monkeypatch) -> None:
     assert captured["task_id"] == "e1"
     payload = json.loads(buffer.getvalue())
     assert payload["pr_url"] == "https://example.com/pr/1"
+
+
+def test_decide_routes_with_the_rule_decider(monkeypatch) -> None:
+    import contextlib
+    import io
+
+    monkeypatch.setenv("HERALD_DECIDER", "rules")
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        code = main(["--json", "decide", "audit the auth module for timing side-channels"])
+
+    assert code == 0
+    payload = json.loads(buffer.getvalue())
+    assert payload["model"] == "hosted"
+    assert payload["needs_human"] >= 0.5
+
+
+def test_decide_can_be_disabled(monkeypatch) -> None:
+    import contextlib
+    import io
+
+    monkeypatch.setenv("HERALD_DECIDER", "none")
+    buffer = io.StringIO()
+    with contextlib.redirect_stderr(buffer):
+        code = main(["decide", "anything"])
+
+    assert code == 1
+    assert "no decider" in buffer.getvalue()
