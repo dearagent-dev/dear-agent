@@ -231,3 +231,31 @@ def test_clean_message_is_not_flagged() -> None:
     report = plane.ingest([make_message(headers={})])
 
     assert report.suspicious == []
+
+
+def test_security_decider_adds_a_suspicious_flag() -> None:
+    from herald.control_plane import ControlPlane
+    from herald.decision.port import Answer, Decision, DecisionKind
+    from herald.decision.security import SecurityDecider
+
+    class _Model:
+        def decide(self, state, questions):
+            return Decision(
+                answers={
+                    "injection": Answer(kind=DecisionKind.NOUL, noul=0.0),
+                    "carries_source": Answer(kind=DecisionKind.NOUL, noul=0.95),
+                }
+            )
+
+    queue = MemoryQueue()
+    plane = ControlPlane(
+        transport=MemoryTransport(),
+        queue=queue,
+        security=SecurityDecider(decider=_Model()),
+    )
+    body = "repo: owner/repo\n\nhere is the patch:\n```diff\n+a\n-b\n```"
+
+    report = plane.ingest([make_message(body=body, headers={})])
+
+    assert report.suspicious == ["<m1@x>"]
+    assert report.accepted == ["<m1@x>"]
