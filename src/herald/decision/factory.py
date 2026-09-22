@@ -7,11 +7,7 @@ from dataclasses import dataclass
 from herald.decision.log import DecisionLog, DecisionRecord
 from herald.decision.port import Answer, Decider, Decision, DecisionError, DecisionKind, Question
 from herald.decision.rules import RuleDecider
-
-# The question ids the router and gate use; kept here so the rule fallback and the model
-# decider agree on the contract.
-QUESTION_MODEL = "model"
-QUESTION_NEEDS_HUMAN = "needs_human"
+from herald.decision.selection import QUESTION_MODEL, QUESTION_NEEDS_HUMAN
 
 DEFAULT_CONFIDENCE_THRESHOLD = 0.5
 
@@ -86,8 +82,10 @@ def build_decider() -> Decider | None:
     """Build the configured decider, or ``None`` when none is configured.
 
     ``HERALD_DECIDER`` selects the primary: ``rules`` (default) uses only the deterministic
-    path; ``jev`` wraps the hosted TypeSafe API (``TYPESAFE_API_KEY``) so any error or low
-    confidence falls back to the rules.
+    path; ``jev`` wraps the hosted TypeSafe API; ``openrouter`` selects a model from
+    OpenRouter's catalog by :class:`~herald.decision.selection.SelectionPolicy` (free first)
+    and wraps the generic OpenAI-compatible decider. Every model-backed decider is wrapped in
+    :class:`FallbackDecider`, so any error or low confidence falls back to the rules.
     """
     primary = os.environ.get("HERALD_DECIDER", "rules").lower()
     threshold = float(os.environ.get("HERALD_DECIDER_THRESHOLD", DEFAULT_CONFIDENCE_THRESHOLD))
@@ -114,7 +112,35 @@ def build_decider() -> Decider | None:
                 threshold=threshold,
             )
         )
+    if primary == "openrouter":
+        return _maybe_log(_build_openrouter(threshold, rules))
     raise DecisionError(f"unknown decider {primary!r}")
+
+
+def _build_openrouter(threshold: float, rules: Decider) -> Decider:
+    from herald.decision.openrouter import OpenRouterProvider
+    from herald.decision.selection import SelectionPolicy
+
+    api_key = os.environ.get("OPENROUTER_API_KEY")
+    if not api_key:
+        raise DecisionError("OPENROUTER_API_KEY is required for HERALD_DECIDER=openrouter")
+    provider = OpenRouterProvider(
+        api_key=api_key,
+        base_url=os.environ.get("HERALD_DECIDER_BASE_URL", "https://openrouter.ai/api/v1"),
+        referer=os.environ.get("HERALD_DECIDER_REFERER"),
+    )
+    model_id = os.environ.get("HERALD_DECIDER_MODEL")
+    if model_id:
+        from herald.decision.port import ModelInfo
+
+        model = ModelInfo(id=model_id, context_length=1_000_000, supports_json=True)
+    else:
+        policy = SelectionPolicy(
+            min_context=int(os.environ.get("HERALD_DECIDER_MIN_CONTEXT", "8192")),
+            allow_paid=os.environ.get("HERALD_DECIDER_ALLOW_PAID", "false").lower() == "true",
+        )
+        model = policy.select(provider.catalog())
+    return FallbackDecider(primary=provider.decider_for(model), fallback=rules, threshold=threshold)
 
 
 def _maybe_log(decider: Decider) -> Decider:

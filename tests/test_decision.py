@@ -262,3 +262,34 @@ def test_build_decider_wraps_with_logging_when_configured(monkeypatch, tmp_path)
     monkeypatch.setenv("HERALD_DECIDER_LOG", str(tmp_path / "d.jsonl"))
 
     assert isinstance(build_decider(), LoggingDecider)
+
+
+def test_build_decider_openrouter_requires_a_key(monkeypatch) -> None:
+    from herald.decision.factory import build_decider
+
+    monkeypatch.setenv("HERALD_DECIDER", "openrouter")
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    with pytest.raises(DecisionError):
+        build_decider()
+
+
+def test_build_decider_openrouter_uses_the_selection_policy(monkeypatch) -> None:
+    from herald.decision.factory import FallbackDecider, build_decider
+    from herald.decision.port import ModelInfo
+
+    monkeypatch.setenv("HERALD_DECIDER", "openrouter")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test")
+    monkeypatch.setenv("HERALD_DECIDER_ALLOW_PAID", "false")
+
+    class _Catalog:
+        def list_models(self):
+            return [ModelInfo(id="free/x:free", context_length=100000, supports_json=True)]
+
+    monkeypatch.setattr(
+        "herald.decision.openrouter.OpenRouterProvider.catalog", lambda self: _Catalog()
+    )
+
+    decider = build_decider()
+
+    assert isinstance(decider, FallbackDecider)
+    assert decider.primary.model == "free/x:free"
