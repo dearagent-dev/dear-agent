@@ -60,3 +60,16 @@ for mechanical work, hosted for architecture/security/debugging — with a calib
 confidence. Below the threshold, fall back to the deterministic default. This runs behind a
 `Decider` port so no core code depends on the vendor, and it is advisory: it picks a model,
 it never authorizes an action.
+
+The decision layer is built from two ports in the core, each with pluggable adapters:
+
+- `ModelCatalog` — *what models exist*, with price, context and capabilities. Adapters:
+  `OpenRouterCatalog` (live `/models`, free-first selection), or a static/local list.
+- `ModelProvider` — *how to run a chosen model*. Adapters: `OpenAICompatibleProvider`
+  (OpenRouter, vLLM, llama.cpp), and `JevDecider` for TypeSafe's System One API.
+
+`SelectionPolicy` is vendor-neutral and picks the most convenient model from any catalog
+(free first, then cheapest, then larger context; text-only, JSON-capable). Configure with
+`HERALD_DECIDER=openrouter` and `OPENROUTER_API_KEY`; unset a model to use the free tier, or
+set `HERALD_DECIDER_MODEL` to pin one. `HERALD_DECIDER_ALLOW_PAID=true` lets it choose a paid
+model when no free one qualifies.
