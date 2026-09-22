@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import contextlib
 import os
 from dataclasses import dataclass
 
+from herald.decision.log import DecisionLog, DecisionRecord
 from herald.decision.port import Answer, Decider, Decision, DecisionError, DecisionKind, Question
 from herald.decision.rules import RuleDecider
 
@@ -62,6 +64,24 @@ def _replace(primary: Decision, fallback: Decision, question_ids: set[str]) -> D
     return Decision(answers=answers)
 
 
+@dataclass(slots=True)
+class LoggingDecider:
+    """Wrap a decider so every decision is appended to a log (ADR 0004, M7.4).
+
+    The log is the raw material for earning thresholds; it is advisory metadata, never a
+    control path, so a logging failure must not break the decision.
+    """
+
+    decider: Decider
+    log: DecisionLog
+
+    def decide(self, state: str, questions: dict[str, Question]) -> Decision:
+        decision = self.decider.decide(state, questions)
+        with contextlib.suppress(OSError):
+            self.log.record(DecisionRecord.from_decision(state, questions, decision))
+        return decision
+
+
 def build_decider() -> Decider | None:
     """Build the configured decider, or ``None`` when none is configured.
 
@@ -73,26 +93,37 @@ def build_decider() -> Decider | None:
     threshold = float(os.environ.get("HERALD_DECIDER_THRESHOLD", DEFAULT_CONFIDENCE_THRESHOLD))
     rules = RuleDecider()
 
-    if primary == "rules":
-        return rules
     if primary == "none":
         return None
+    if primary == "rules":
+        return _maybe_log(rules)
     if primary == "jev":
         api_key = os.environ.get("TYPESAFE_API_KEY")
         if not api_key:
             raise DecisionError("TYPESAFE_API_KEY is required for HERALD_DECIDER=jev")
         from herald.decision.jev import DEFAULT_ENDPOINT, DEFAULT_MODEL, JevDecider
 
-        return FallbackDecider(
-            primary=JevDecider(
-                api_key=api_key,
-                model=os.environ.get("HERALD_DECIDER_MODEL", DEFAULT_MODEL),
-                endpoint=os.environ.get("HERALD_DECIDER_ENDPOINT", DEFAULT_ENDPOINT),
-            ),
-            fallback=rules,
-            threshold=threshold,
+        return _maybe_log(
+            FallbackDecider(
+                primary=JevDecider(
+                    api_key=api_key,
+                    model=os.environ.get("HERALD_DECIDER_MODEL", DEFAULT_MODEL),
+                    endpoint=os.environ.get("HERALD_DECIDER_ENDPOINT", DEFAULT_ENDPOINT),
+                ),
+                fallback=rules,
+                threshold=threshold,
+            )
         )
     raise DecisionError(f"unknown decider {primary!r}")
+
+
+def _maybe_log(decider: Decider) -> Decider:
+    path = os.environ.get("HERALD_DECIDER_LOG")
+    if not path:
+        return decider
+    from pathlib import Path
+
+    return LoggingDecider(decider=decider, log=DecisionLog(path=Path(path)))
 
 
 __all__ = [
@@ -100,5 +131,6 @@ __all__ = [
     "QUESTION_MODEL",
     "QUESTION_NEEDS_HUMAN",
     "FallbackDecider",
+    "LoggingDecider",
     "build_decider",
 ]

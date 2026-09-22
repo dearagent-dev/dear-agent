@@ -6,6 +6,7 @@ from collections.abc import Sequence
 
 from herald.cli.commands import (
     add_approval_commands,
+    add_decide_commands,
     add_listen_commands,
     add_run_commands,
     add_sweep_commands,
@@ -26,6 +27,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_run_commands(subparsers, parser)
     add_sweep_commands(subparsers, parser)
     add_listen_commands(subparsers, parser)
+    add_decide_commands(subparsers, parser)
     add_approval_commands(subparsers, parser)
     return parser
 
