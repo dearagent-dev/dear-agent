@@ -283,6 +283,11 @@ def add_idle_commands(
         action="store_true",
         help="enqueue proposals as runnable tasks instead of parking them for approval",
     )
+    parser.add_argument(
+        "--recipient",
+        default=None,
+        help="email to send approval requests to (default: HERALD_RECIPIENT)",
+    )
     parser.set_defaults(handler=_handle_idle)
 
 
@@ -297,6 +302,13 @@ def _handle_idle(args: argparse.Namespace, context: CliContext) -> int:
     queue = context.require_queue()
     repo_path = Path(args.repo)
     approvals = ApprovalService(build_approval_store(), queue)
+    recipient = args.recipient or os.environ.get("HERALD_RECIPIENT")
+    notifier = None
+    if recipient:
+        from herald.notify.notifier import Notifier
+        from herald.worker_factory import build_transport
+
+        notifier = Notifier(build_transport(), approvals)
 
     def submit(proposal) -> str | None:
         # Deterministic id: the same proposal must not be enqueued twice across ticks.
@@ -320,7 +332,12 @@ def _handle_idle(args: argparse.Namespace, context: CliContext) -> int:
             # Proposals are approval-gated by construction: park in Action and issue a
             # single-use token; 'herald approval approve <token>' releases it to run.
             queue.transition(stored, TaskState.ACTION)
-            approvals.request(stored.id, "run")
+            if notifier is not None and recipient:
+                notifier.request_approval(
+                    stored, recipient=recipient, action="run", summary=proposal.title
+                )
+            else:
+                approvals.request(stored.id, "run")
         return stored.id
 
     loop = IdleLoop(

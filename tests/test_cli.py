@@ -395,6 +395,25 @@ def test_idle_parks_proposals_for_approval(tmp_path, monkeypatch) -> None:
     assert queue.list(TaskState.QUEUED) == []
 
 
+def test_idle_gate_emails_the_approval_request(tmp_path, monkeypatch) -> None:
+    from unittest import mock
+
+    from herald.transports.memory import MemoryTransport
+
+    monkeypatch.setenv("HERALD_APPROVALS_FILE", str(tmp_path / "approvals.json"))
+    monkeypatch.delenv("HERALD_QUEUE", raising=False)
+    repo = _todo_repo(tmp_path)
+    queue = MemoryQueue()
+    transport = MemoryTransport()
+
+    with mock.patch("herald.worker_factory.build_transport", return_value=transport):
+        code, _ = run(["idle", "--repo", str(repo), "--recipient", "ops@example.com"], queue)
+
+    assert code == 0
+    assert len(transport.outbox) == 1
+    assert "approval needed" in transport.outbox[0].subject
+
+
 def test_idle_no_gate_enqueues_a_runnable_task(tmp_path) -> None:
     repo = _todo_repo(tmp_path)
     queue = MemoryQueue()
