@@ -4,16 +4,16 @@ from datetime import timedelta
 
 import pytest
 
-from herald.approvals import (
+from dear_agent.approvals import (
     ExpiredTokenError,
     FileApprovalStore,
     MemoryApprovalStore,
     TokenAlreadyUsedError,
     UnknownTokenError,
 )
-from herald.approvals_service import ApprovalService, parse_reply
-from herald.queue.memory import MemoryQueue
-from herald.queue.models import Task, TaskState
+from dear_agent.approvals_service import ApprovalService, parse_reply
+from dear_agent.queue.memory import MemoryQueue
+from dear_agent.queue.models import Task, TaskState
 
 
 class FakeClock:
@@ -132,7 +132,7 @@ def test_service_moves_task_to_rejected(clock) -> None:
 
 
 def test_apply_rejects_a_task_that_is_not_awaiting_a_decision(clock) -> None:
-    from herald.approvals import ApprovalNotApplicableError
+    from dear_agent.approvals import ApprovalNotApplicableError
 
     queue = MemoryQueue(clock=clock)
     task = queue.enqueue(Task(id="e1", transport_id="<m1@x>"))
@@ -166,28 +166,28 @@ def test_run_gate_releases_the_task_to_queued(clock) -> None:
 
 
 def test_build_approval_store_defaults_to_memory(monkeypatch) -> None:
-    from herald.approvals import build_approval_store
+    from dear_agent.approvals import build_approval_store
 
-    monkeypatch.delenv("HERALD_QUEUE", raising=False)
-    monkeypatch.delenv("HERALD_APPROVALS_FILE", raising=False)
+    monkeypatch.delenv("DEAR_AGENT_QUEUE", raising=False)
+    monkeypatch.delenv("DEAR_AGENT_APPROVALS_FILE", raising=False)
 
     assert isinstance(build_approval_store(), MemoryApprovalStore)
 
 
 def test_build_approval_store_uses_a_file_when_configured(monkeypatch, tmp_path) -> None:
-    from herald.approvals import build_approval_store
+    from dear_agent.approvals import build_approval_store
 
-    monkeypatch.delenv("HERALD_QUEUE", raising=False)
-    monkeypatch.setenv("HERALD_APPROVALS_FILE", str(tmp_path / "approvals.json"))
+    monkeypatch.delenv("DEAR_AGENT_QUEUE", raising=False)
+    monkeypatch.setenv("DEAR_AGENT_APPROVALS_FILE", str(tmp_path / "approvals.json"))
 
     assert isinstance(build_approval_store(), FileApprovalStore)
 
 
 def test_build_approval_store_postgres_requires_a_dsn(monkeypatch) -> None:
-    from herald.approvals import build_approval_store
+    from dear_agent.approvals import build_approval_store
 
-    monkeypatch.setenv("HERALD_QUEUE", "postgres")
-    monkeypatch.delenv("HERALD_DATABASE_URL", raising=False)
+    monkeypatch.setenv("DEAR_AGENT_QUEUE", "postgres")
+    monkeypatch.delenv("DEAR_AGENT_DATABASE_URL", raising=False)
 
     with pytest.raises(RuntimeError):
         build_approval_store()

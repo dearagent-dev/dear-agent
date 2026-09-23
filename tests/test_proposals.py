@@ -3,10 +3,10 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
-from herald.idle.proposals import ProposalGenerator
-from herald.idle.signals import Signal, SignalKind, Signals
+from dear_agent.idle.proposals import ProposalGenerator
+from dear_agent.idle.signals import Signal, SignalKind, Signals
 
-REPO = Path("/repos/herald")
+REPO = Path("/repos/dear-agent")
 
 
 def make_signals(items: list[Signal]) -> Signals:

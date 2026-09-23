@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from herald.decision.log import DecisionLog, DecisionRecord
+from dear_agent.decision.log import DecisionLog, DecisionRecord
 
 
 def _record(choice: str, confidence: float, question_id: str = "model") -> DecisionRecord:

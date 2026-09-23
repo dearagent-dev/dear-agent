@@ -5,7 +5,7 @@
 
 ## Context
 
-Herald needs transport adapters (email/JMAP), a durable queue, subprocess orchestration of
+Dear Agent needs transport adapters (email/JMAP), a durable queue, subprocess orchestration of
 coding-agent harnesses, and Git/PR automation. It runs unattended on a Kubernetes/OpenShift
 cluster and must be easy to build, audit and maintain. The durable queue is PostgreSQL, with
 the transport mailbox as ingress (see [ADR 0005](0005-state-store.md); it supersedes

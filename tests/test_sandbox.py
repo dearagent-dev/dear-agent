@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from herald.sandbox import (
+from dear_agent.sandbox import (
     BubblewrapSandbox,
     NoSandbox,
     Sandbox,
@@ -71,9 +71,9 @@ def test_policy_from_env_defaults_to_no_network_and_no_home() -> None:
 def test_policy_from_env_can_allow_network_and_extend_paths_and_env() -> None:
     policy = sandbox_policy_from_env(
         {
-            "HERALD_SANDBOX_NETWORK": "true",
-            "HERALD_SANDBOX_READABLE": "/opt/agent, /srv/tools",
-            "HERALD_SANDBOX_ENV": "OPENAI_API_KEY",
+            "DEAR_AGENT_SANDBOX_NETWORK": "true",
+            "DEAR_AGENT_SANDBOX_READABLE": "/opt/agent, /srv/tools",
+            "DEAR_AGENT_SANDBOX_ENV": "OPENAI_API_KEY",
         }
     )
 
@@ -86,7 +86,7 @@ def test_policy_from_env_can_allow_network_and_extend_paths_and_env() -> None:
 def test_policy_from_env_adds_the_harness_binary_directory() -> None:
     import sys
 
-    policy = sandbox_policy_from_env({"HERALD_HARNESS_BINARY": sys.executable})
+    policy = sandbox_policy_from_env({"DEAR_AGENT_HARNESS_BINARY": sys.executable})
 
     assert str(Path(sys.executable).resolve().parent) in policy.readable_paths
 

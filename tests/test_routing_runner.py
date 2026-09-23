@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from herald.decision.port import Answer, Decision, DecisionError, DecisionKind
-from herald.queue.models import Task, TaskSpec
-from herald.runners.routing import RoutingRunner
-from herald.runners.worktree import RunResult, Worktree
+from dear_agent.decision.port import Answer, Decision, DecisionError, DecisionKind
+from dear_agent.queue.models import Task, TaskSpec
+from dear_agent.runners.routing import RoutingRunner
+from dear_agent.runners.worktree import RunResult, Worktree
 
 
 @dataclass
@@ -40,7 +40,7 @@ def _task() -> tuple[Task, TaskSpec, Worktree]:
     return (
         Task(id="e1", transport_id="<m1@x>", subject="fix the typo"),
         TaskSpec(repo_url="https://example.com/o/r", instructions="fix the typo"),
-        Worktree(repo_path=Path("/tmp"), path=Path("/tmp"), branch="herald/x"),
+        Worktree(repo_path=Path("/tmp"), path=Path("/tmp"), branch="dear-agent/x"),
     )
 
 

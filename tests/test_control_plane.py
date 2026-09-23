@@ -2,16 +2,16 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from herald.approvals import MemoryApprovalStore
-from herald.approvals_service import ApprovalService
-from herald.auth import InboundAuthorizer, InboundGate, RateLimiter, sign
-from herald.control_plane import REJECT_BODIES, ControlPlane
-from herald.normalizer import RejectReason
-from herald.notify.notifier import Notifier
-from herald.queue.memory import MemoryQueue
-from herald.queue.models import Task, TaskState
-from herald.transports.base import Attachment, RawMessage
-from herald.transports.memory import MemoryTransport
+from dear_agent.approvals import MemoryApprovalStore
+from dear_agent.approvals_service import ApprovalService
+from dear_agent.auth import InboundAuthorizer, InboundGate, RateLimiter, sign
+from dear_agent.control_plane import REJECT_BODIES, ControlPlane
+from dear_agent.normalizer import RejectReason
+from dear_agent.notify.notifier import Notifier
+from dear_agent.queue.memory import MemoryQueue
+from dear_agent.queue.models import Task, TaskState
+from dear_agent.transports.base import Attachment, RawMessage
+from dear_agent.transports.memory import MemoryTransport
 
 BASE = datetime(2026, 1, 1, tzinfo=UTC)
 SENDER = "dev@example.com"
@@ -24,9 +24,9 @@ def make_message(body: str = BODY, **overrides: object) -> RawMessage:
         "transport_id": "<m1@x>",
         "thread_id": "t1",
         "sender": SENDER,
-        "subject": "[herald] owner/repo: fix the build",
+        "subject": "[dear-agent] owner/repo: fix the build",
         "body": body,
-        "headers": {"X-Herald-Signature": sign(body, SECRET, sender=SENDER)},
+        "headers": {"X-Dear-Agent-Signature": sign(body, SECRET, sender=SENDER)},
         "received_at": BASE,
     }
     values.update(overrides)
@@ -85,7 +85,7 @@ def test_message_with_attachments_is_rejected_with_a_reply() -> None:
     )
     message = make_message(
         attachments=[Attachment(name="patch.diff", content_type="text/x-patch")],
-        headers={"X-Herald-Signature": sign(BODY, SECRET, sender=SENDER)},
+        headers={"X-Dear-Agent-Signature": sign(BODY, SECRET, sender=SENDER)},
     )
 
     report = plane.ingest([message], recipient="ops@example.com")
@@ -103,7 +103,7 @@ def test_message_without_repo_is_rejected() -> None:
     )
     body = "just do something"
     message = make_message(
-        body=body, headers={"X-Herald-Signature": sign(body, SECRET, sender=SENDER)}
+        body=body, headers={"X-Dear-Agent-Signature": sign(body, SECRET, sender=SENDER)}
     )
 
     report = plane.ingest([message], recipient="ops@example.com")
@@ -113,7 +113,7 @@ def test_message_without_repo_is_rejected() -> None:
 
 
 def test_sender_allowlist_denies_an_unlisted_sender() -> None:
-    from herald.auth import SenderAllowlist
+    from dear_agent.auth import SenderAllowlist
 
     queue = MemoryQueue()
     transport = MemoryTransport()
@@ -132,7 +132,7 @@ def test_sender_allowlist_denies_an_unlisted_sender() -> None:
 
 
 def test_sender_allowlist_admits_a_listed_sender() -> None:
-    from herald.auth import SenderAllowlist
+    from dear_agent.auth import SenderAllowlist
 
     queue = MemoryQueue()
     plane = ControlPlane(
@@ -164,7 +164,7 @@ def test_ingest_acknowledges_the_messages_it_handled() -> None:
 
 
 def test_ingest_records_typed_events() -> None:
-    from herald.events import MemoryEventLog
+    from dear_agent.events import MemoryEventLog
 
     log = MemoryEventLog()
     plane = ControlPlane(transport=MemoryTransport(), queue=MemoryQueue(), events=log)
@@ -175,7 +175,7 @@ def test_ingest_records_typed_events() -> None:
 
 
 def test_rejection_is_recorded_as_an_event() -> None:
-    from herald.events import MemoryEventLog
+    from dear_agent.events import MemoryEventLog
 
     log = MemoryEventLog()
     plane = ControlPlane(transport=MemoryTransport(), queue=MemoryQueue(), events=log)
@@ -187,7 +187,7 @@ def test_rejection_is_recorded_as_an_event() -> None:
 
 
 def test_a_suspicious_message_is_gated_for_approval() -> None:
-    from herald.security import InjectionScanner
+    from dear_agent.security import InjectionScanner
 
     queue = MemoryQueue()
     store = MemoryApprovalStore()
@@ -210,7 +210,7 @@ def test_a_suspicious_message_is_gated_for_approval() -> None:
 
 
 def test_a_repo_not_in_the_policy_is_rejected() -> None:
-    from herald.policy import MemoryPolicyStore, ProjectPolicy
+    from dear_agent.policy import MemoryPolicyStore, ProjectPolicy
 
     queue = MemoryQueue()
     transport = MemoryTransport()
@@ -229,7 +229,7 @@ def test_a_repo_not_in_the_policy_is_rejected() -> None:
 
 
 def test_a_repo_in_the_policy_is_accepted() -> None:
-    from herald.policy import MemoryPolicyStore, ProjectPolicy
+    from dear_agent.policy import MemoryPolicyStore, ProjectPolicy
 
     queue = MemoryQueue()
     plane = ControlPlane(
@@ -283,7 +283,11 @@ def test_approval_reply_decides_the_task() -> None:
     body = f"approve {token}"
 
     report = plane.ingest(
-        [make_message(body=body, headers={"X-Herald-Signature": sign(body, SECRET, sender=SENDER)})]
+        [
+            make_message(
+                body=body, headers={"X-Dear-Agent-Signature": sign(body, SECRET, sender=SENDER)}
+            )
+        ]
     )
 
     assert report.decided == ["<m1@x>"]
@@ -298,7 +302,11 @@ def test_rejection_reply_decides_the_task() -> None:
     body = f"reject {token}"
 
     plane.ingest(
-        [make_message(body=body, headers={"X-Herald-Signature": sign(body, SECRET, sender=SENDER)})]
+        [
+            make_message(
+                body=body, headers={"X-Dear-Agent-Signature": sign(body, SECRET, sender=SENDER)}
+            )
+        ]
     )
 
     assert queue.get("e1").state is TaskState.REJECTED
@@ -311,7 +319,7 @@ def test_reused_token_is_reported_back_not_silently_ignored() -> None:
     make_action_task(queue)
     token = approvals.request("e1", "land")
     body = f"approve {token}"
-    headers = {"X-Herald-Signature": sign(body, SECRET, sender=SENDER)}
+    headers = {"X-Dear-Agent-Signature": sign(body, SECRET, sender=SENDER)}
     plane.ingest([make_message(body=body, headers=headers)], recipient="ops@example.com")
     transport.outbox.clear()
 
@@ -334,7 +342,7 @@ def test_approval_for_a_task_that_moved_on_does_not_crash() -> None:
     report = plane.ingest(
         [
             make_message(
-                body=body, headers={"X-Herald-Signature": sign(body, SECRET, sender=SENDER)}
+                body=body, headers={"X-Dear-Agent-Signature": sign(body, SECRET, sender=SENDER)}
             )
         ],
         recipient="ops@example.com",
@@ -355,8 +363,8 @@ def test_approval_reply_without_a_service_is_treated_as_a_normal_message() -> No
 
 
 def test_suspicious_message_is_ingested_and_flagged() -> None:
-    from herald.control_plane import ControlPlane
-    from herald.security import InjectionScanner
+    from dear_agent.control_plane import ControlPlane
+    from dear_agent.security import InjectionScanner
 
     queue = MemoryQueue()
     plane = ControlPlane(
@@ -376,8 +384,8 @@ def test_suspicious_message_is_ingested_and_flagged() -> None:
 
 
 def test_clean_message_is_not_flagged() -> None:
-    from herald.control_plane import ControlPlane
-    from herald.security import InjectionScanner
+    from dear_agent.control_plane import ControlPlane
+    from dear_agent.security import InjectionScanner
 
     queue = MemoryQueue()
     plane = ControlPlane(transport=MemoryTransport(), queue=queue, scanner=InjectionScanner())
@@ -388,9 +396,9 @@ def test_clean_message_is_not_flagged() -> None:
 
 
 def test_security_decider_adds_a_suspicious_flag() -> None:
-    from herald.control_plane import ControlPlane
-    from herald.decision.port import Answer, Decision, DecisionKind
-    from herald.decision.security import SecurityDecider
+    from dear_agent.control_plane import ControlPlane
+    from dear_agent.decision.port import Answer, Decision, DecisionKind
+    from dear_agent.decision.security import SecurityDecider
 
     class _Model:
         def decide(self, state, questions):
@@ -416,9 +424,9 @@ def test_security_decider_adds_a_suspicious_flag() -> None:
 
 
 def test_a_needs_human_verdict_gates_the_task() -> None:
-    from herald.control_plane import ControlPlane
-    from herald.decision.port import Answer, Decision, DecisionKind
-    from herald.decision.router import HumanGate
+    from dear_agent.control_plane import ControlPlane
+    from dear_agent.decision.port import Answer, Decision, DecisionKind
+    from dear_agent.decision.router import HumanGate
 
     class _Model:
         def decide(self, state, questions):
@@ -442,8 +450,8 @@ def test_a_needs_human_verdict_gates_the_task() -> None:
 
 
 def test_the_human_gate_fails_open_without_a_decider() -> None:
-    from herald.control_plane import ControlPlane
-    from herald.decision.router import HumanGate
+    from dear_agent.control_plane import ControlPlane
+    from dear_agent.decision.router import HumanGate
 
     queue = MemoryQueue()
     store = MemoryApprovalStore()

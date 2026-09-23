@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from herald.normalizer import NormalizedTask, Rejected, RejectReason, normalize
-from herald.transports.base import Attachment, RawMessage
+from dear_agent.normalizer import NormalizedTask, Rejected, RejectReason, normalize
+from dear_agent.transports.base import Attachment, RawMessage
 
 BASE = datetime(2026, 1, 1, tzinfo=UTC)
 
@@ -13,7 +13,7 @@ def make_message(body: str, **overrides: object) -> RawMessage:
         "transport_id": "<m1@x>",
         "thread_id": "t1",
         "sender": "dev@example.com",
-        "subject": "[herald] owner/repo: add health endpoint",
+        "subject": "[dear-agent] owner/repo: add health endpoint",
         "body": body,
         "received_at": BASE,
     }
@@ -96,9 +96,9 @@ def test_task_carries_identity_from_the_message() -> None:
 
 
 def test_infers_repo_from_recipient_owner_repo_address() -> None:
-    message = make_message("add healthz", subject="[herald] add healthz")
+    message = make_message("add healthz", subject="[dear-agent] add healthz")
 
-    result = normalize(message, recipient="owner-repo@herald.example.com")
+    result = normalize(message, recipient="owner-repo@dear-agent.example.com")
 
     assert isinstance(result, NormalizedTask)
     assert result.spec.repo_url == "owner/repo"
@@ -107,7 +107,7 @@ def test_infers_repo_from_recipient_owner_repo_address() -> None:
 def test_header_repo_wins_over_the_routing_address() -> None:
     message = make_message("repo: https://github.com/actual/repo\n\nfix tests")
 
-    result = normalize(message, recipient="other-repo@herald.example.com")
+    result = normalize(message, recipient="other-repo@dear-agent.example.com")
 
     assert isinstance(result, NormalizedTask)
     assert result.spec.repo_url == "https://github.com/actual/repo"

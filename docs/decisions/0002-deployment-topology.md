@@ -8,7 +8,7 @@
 
 ## Context
 
-Herald's thesis is that **email is the queue and Git is the artifact plane**. A durable
+Dear Agent's thesis is that **email is the queue and Git is the artifact plane**. A durable
 queue must provide: durability across restarts, store-and-forward, deduplication of
 re-delivery, an atomic claim, lease/resume after a crash, and well-defined state
 transitions.
@@ -26,7 +26,7 @@ the queue is built on top of it.
 
 2. **State is modelled as mailboxes + keywords.** Mailboxes (or equivalent filters)
    `Queued`, `Running`, `Action`, `Done`, `Failed`, `Rejected`, plus companion keywords
-   `$herald-queued`, `$herald-running`, `$herald-action`, `$herald-done`, … The lifecycle
+   `$dear-agent-queued`, `$dear-agent-running`, `$dear-agent-action`, `$dear-agent-done`, … The lifecycle
    mirrors [architecture.md](../architecture.md) without a table.
 
 3. **Dedupe is the RFC 5322 `Message-ID`** (and the JMAP `Email` id). A message exists
@@ -44,7 +44,7 @@ the queue is built on top of it.
 
 6. **Execution is one Kubernetes Job per task** (OpenShift). Jobs are ephemeral, run
    non-root under an arbitrary UID (OpenShift SCCs), keep the Git worktree in an
-   `emptyDir`, and deliver an `herald/<slug>` branch plus a **draft PR**. The mailbox
+   `emptyDir`, and deliver an `dear-agent/<slug>` branch plus a **draft PR**. The mailbox
    carries only state and links; harness logs go to object storage, never over the
    transport.
 
@@ -87,14 +87,14 @@ the queue is built on top of it.
 - **The first slice** is `Task` + a `Queue` port over JMAP + claim/sweep semantics.
 - **Metadata is coarse.** JMAP has no mutable structured fields, so per-task artifact
   values (branch, SHA, PR url) are **not** stored on the email; they are threaded replies
-  with links. Attempts are tracked with numbered keywords (`$herald-attempt-2`, …).
+  with links. Attempts are tracked with numbered keywords (`$dear-agent-attempt-2`, …).
 - **The mailbox is an external dependency.** Provider retention, quota, rate limits and
   account availability bound the queue. Terminal messages must be retained long enough to
   serve as tombstones so a redelivery cannot resurrect a task.
 - **`ifInState` for `Email` is account-scoped.** Heavy churn causes `stateMismatch`
-  retries; acceptable at Herald's expected volume, revisit if it is not.
+  retries; acceptable at Dear Agent's expected volume, revisit if it is not.
 - **No SQL reporting.** Observability is derived from mailbox state and external metrics,
   not from queries.
-- **Verified against Fastmail** (`scripts/verify_fastmail_jmap.py`): custom `$herald-*`
+- **Verified against Fastmail** (`scripts/verify_fastmail_jmap.py`): custom `$dear-agent-*`
   keywords, `Email/query` by `Message-ID`, and `Email/set` `ifInState` (a stale state
   yields `stateMismatch`) all behave as required.

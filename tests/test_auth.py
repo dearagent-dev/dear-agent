@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from herald.auth import (
+from dear_agent.auth import (
     SIGNATURE_HEADER,
     BadSignatureError,
     EmailAuthError,
@@ -313,8 +313,8 @@ def test_email_auth_gate_applies_the_sender_allowlist() -> None:
 def test_email_auth_gate_from_env() -> None:
     gate = EmailAuthGate.from_env(
         {
-            "HERALD_AUTH_DOMAINS": "gmail.com",
-            "HERALD_ALLOWED_SENDERS": "ricardo.arguello@gmail.com",
+            "DEAR_AGENT_AUTH_DOMAINS": "gmail.com",
+            "DEAR_AGENT_ALLOWED_SENDERS": "ricardo.arguello@gmail.com",
         }
     )
 
@@ -325,7 +325,7 @@ def test_email_auth_gate_from_env() -> None:
 
 def test_email_auth_gate_from_env_is_none_without_domains() -> None:
     assert EmailAuthGate.from_env({}) is None
-    assert EmailAuthGate.from_env({"HERALD_ALLOWED_SENDERS": "x@y.com"}) is None
+    assert EmailAuthGate.from_env({"DEAR_AGENT_ALLOWED_SENDERS": "x@y.com"}) is None
 
 
 def test_gate_runs_auth_before_rate_limit() -> None:

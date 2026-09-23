@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from herald.providers.registry import (
+from dear_agent.providers.registry import (
     Provider,
     ProviderError,
     ProviderKind,
@@ -26,7 +26,7 @@ def registry() -> ProviderRegistry:
             id="local",
             base_url="http://127.0.0.1:8000/v1",
             model="deepseek",
-            api_key_env="HERALD_LOCAL_KEY",
+            api_key_env="DEAR_AGENT_LOCAL_KEY",
         )
     )
     return reg
@@ -44,9 +44,9 @@ def test_task_hint_wins() -> None:
 def test_project_default_beats_global() -> None:
     reg = registry()
     reg.set_global_default("anthropic")
-    reg.set_project_default("herald", "local")
+    reg.set_project_default("dear-agent", "local")
 
-    assert reg.resolve(project="herald").id == "local"
+    assert reg.resolve(project="dear-agent").id == "local"
 
 
 def test_global_default_is_the_fallback() -> None:

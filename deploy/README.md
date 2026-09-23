@@ -1,6 +1,6 @@
-# Deploying Herald on Kubernetes / OpenShift
+# Deploying Dear Agent on Kubernetes / OpenShift
 
-Herald is Kubernetes/OpenShift by design (ADR 0002, ADR 0005): one `Job` per task, a `CronJob`
+Dear Agent is Kubernetes/OpenShift by design (ADR 0002, ADR 0005): one `Job` per task, a `CronJob`
 sweep, no always-on daemon, and a PostgreSQL `StatefulSet` for durable state. The transport
 mailbox is ingress only.
 
@@ -24,7 +24,7 @@ oc apply -k deploy/overlays/dev
 
 ## Prerequisites
 
-1. Set the image in the overlay (`quay.io/rarguello/herald`). The image is built from
+1. Set the image in the overlay (`quay.io/rarguello/dear-agent`). The image is built from
    `registry.access.redhat.com/ubi9/python-312`, so it matches the OpenShift platform; it
    runs as an arbitrary UID with group 0 for OpenShift's SCC.
 2. Create the Secrets out of band (never commit values). They are **not** part of the
@@ -37,20 +37,20 @@ PostgreSQL is the durable queue; the mailbox is ingress. The `postgresql` compon
 opt-in and already included by the `dev`/`prod` overlays:
 
 - `deploy/components/postgresql/` — a `StatefulSet` (`registry.redhat.io/rhel9/postgresql-18`)
-  plus a headless `Service` and a `PVC`. The name is `herald-postgres`, reachable at
-  `herald-postgres:5432` inside the namespace and **never** exposed with a Route/NodePort.
+  plus a headless `Service` and a `PVC`. The name is `dear-agent-postgres`, reachable at
+  `dear-agent-postgres:5432` inside the namespace and **never** exposed with a Route/NodePort.
 - The PVC uses the cluster default storage class. Pin one per environment with the patch
   commented in `overlays/prod/kustomization.yaml`.
-- Credentials come from the `herald-postgres` Secret: `POSTGRESQL_USER`, `POSTGRESQL_PASSWORD`,
+- Credentials come from the `dear-agent-postgres` Secret: `POSTGRESQL_USER`, `POSTGRESQL_PASSWORD`,
   `POSTGRESQL_DATABASE` and `POSTGRESQL_ADMIN_PASSWORD` feed the StatefulSet, and `DATABASE_URL`
-  is the DSN the application reads as `HERALD_DATABASE_URL`.
-- The workloads select the backend with `HERALD_QUEUE=postgres` (set in `base/config.yaml`)
-  and get `HERALD_DATABASE_URL` from the Secret; the mailbox is ingress, not the queue.
+  is the DSN the application reads as `DEAR_AGENT_DATABASE_URL`.
+- The workloads select the backend with `DEAR_AGENT_QUEUE=postgres` (set in `base/config.yaml`)
+  and get `DEAR_AGENT_DATABASE_URL` from the Secret; the mailbox is ingress, not the queue.
 
 For local development without a cluster, run the same image with podman:
 
 ```sh
-scripts/dev-postgres.sh up     # prints HERALD_DATABASE_URL
+scripts/dev-postgres.sh up     # prints DEAR_AGENT_DATABASE_URL
 scripts/dev-postgres.sh psql
 scripts/dev-postgres.sh down   # keeps the named volume
 ```
@@ -63,29 +63,29 @@ One credential per purpose, least privilege, referenced by `secretKeyRef`:
 
 | Secret | Key | Purpose | Scope |
 |---|---|---|---|
-| `herald-git-read` | `ssh-privatekey` | clone/read repositories | read-only deploy key |
-| `herald-git-push` | `ssh-privatekey` | push `herald/<slug>`, open draft PR | write deploy key, `herald/*` only |
-| `herald-jmap` | `FASTMAIL_API_TOKEN` | read/send mail | `Email` (+ `Email submission`) |
-| `herald-model` | provider-specific | model calls | scoped provider key |
-| `herald-postgres` | `POSTGRESQL_*`, `DATABASE_URL` | database credentials | one database, least privilege |
+| `dear-agent-git-read` | `ssh-privatekey` | clone/read repositories | read-only deploy key |
+| `dear-agent-git-push` | `ssh-privatekey` | push `dear-agent/<slug>`, open draft PR | write deploy key, `dear-agent/*` only |
+| `dear-agent-jmap` | `FASTMAIL_API_TOKEN` | read/send mail | `Email` (+ `Email submission`) |
+| `dear-agent-model` | provider-specific | model calls | scoped provider key |
+| `dear-agent-postgres` | `POSTGRESQL_*`, `DATABASE_URL` | database credentials | one database, least privilege |
 
 Create them without putting values in git, for example:
 
 ```sh
-oc create secret generic herald-jmap \
+oc create secret generic dear-agent-jmap \
   --from-literal=FASTMAIL_API_TOKEN="$FASTMAIL_API_TOKEN"
-oc create secret generic herald-git-read \
-  --from-file=ssh-privatekey="$HOME/.ssh/herald_read"
-oc create secret generic herald-git-push \
-  --from-file=ssh-privatekey="$HOME/.ssh/herald_push"
-oc create secret generic herald-model \
+oc create secret generic dear-agent-git-read \
+  --from-file=ssh-privatekey="$HOME/.ssh/dear_agent_read"
+oc create secret generic dear-agent-git-push \
+  --from-file=ssh-privatekey="$HOME/.ssh/dear_agent_push"
+oc create secret generic dear-agent-model \
   --from-literal=API_KEY="$MODEL_API_KEY"
-oc create secret generic herald-postgres \
-  --from-literal=POSTGRESQL_USER=herald \
-  --from-literal=POSTGRESQL_PASSWORD="$HERALD_POSTGRES_PASSWORD" \
-  --from-literal=POSTGRESQL_DATABASE=herald \
-  --from-literal=POSTGRESQL_ADMIN_PASSWORD="$HERALD_POSTGRES_ADMIN_PASSWORD" \
-  --from-literal=DATABASE_URL="postgresql://herald:$HERALD_POSTGRES_PASSWORD@herald-postgres:5432/herald"
+oc create secret generic dear-agent-postgres \
+  --from-literal=POSTGRESQL_USER=dear-agent \
+  --from-literal=POSTGRESQL_PASSWORD="$DEAR_AGENT_POSTGRES_PASSWORD" \
+  --from-literal=POSTGRESQL_DATABASE=dear-agent \
+  --from-literal=POSTGRESQL_ADMIN_PASSWORD="$DEAR_AGENT_POSTGRES_ADMIN_PASSWORD" \
+  --from-literal=DATABASE_URL="postgresql://dear-agent:$DEAR_AGENT_POSTGRES_PASSWORD@dear-agent-postgres:5432/dear-agent"
 ```
 
 For production, project these from an external store (External Secrets Operator, Secrets
@@ -93,7 +93,7 @@ Store CSI driver, SealedSecrets) so rotation is automated and values never sit i
 cluster as plain objects.
 
 **Do not use a classic PAT with the `repo` scope**: it reaches every repository and cannot
-be limited to `herald/*`. Prefer a GitHub App installation, or a fine-grained PAT limited to
+be limited to `dear-agent/*`. Prefer a GitHub App installation, or a fine-grained PAT limited to
 selected repositories.
 
 ## Hardening already baked into the manifests
@@ -103,8 +103,8 @@ selected repositories.
 - Separate `ServiceAccount`s for the control plane, the runner (read) and the publisher.
 - `runAsNonRoot`, `seccompProfile: RuntimeDefault`, all capabilities dropped.
 - Runner worktree is an `emptyDir`; nothing persists in the pod except the pushed branch.
-- The inbound webhook rejects oversized bodies (`HERALD_MAX_BODY_BYTES`) before reading
-  them and times out idle connections (`HERALD_HTTP_TIMEOUT`).
+- The inbound webhook rejects oversized bodies (`DEAR_AGENT_MAX_BODY_BYTES`) before reading
+  them and times out idle connections (`DEAR_AGENT_HTTP_TIMEOUT`).
 - `GIT_SSH_COMMAND` pins the mounted key and `StrictHostKeyChecking=yes`, so a run cannot
   be redirected to another host.
 - A dedicated read-only secret is mounted into the runner; the write key stays out of it.
@@ -114,22 +114,22 @@ selected repositories.
 
 ## Not yet wired
 
-- The runner is a **`JobTemplate`** (`herald-runner-template` ConfigMap), not a static Job:
+- The runner is a **`JobTemplate`** (`dear-agent-runner-template` ConfigMap), not a static Job:
   a Job is immutable and one-per-task, so the scheduler renders it per claimed task. The
-  template invokes `herald run <task-id>` (the transport defaults to memory; the queue comes
-  from `HERALD_QUEUE`), which claims the task, runs the harness in a worktree and opens the
-  draft PR. `herald sweep` (the CronJob) creates one Job per queued task with the task id
+  template invokes `dear-agent run <task-id>` (the transport defaults to memory; the queue comes
+  from `DEAR_AGENT_QUEUE`), which claims the task, runs the harness in a worktree and opens the
+  draft PR. `dear-agent sweep` (the CronJob) creates one Job per queued task with the task id
   injected.
 - The runner carries **no mail credential**: the parsed spec is on the task row, and without
   `--recipient` it sends no notifications. To notify from the runner, add `--recipient` and
-  `--backend jmap` and mount `herald-jmap`.
+  `--backend jmap` and mount `dear-agent-jmap`.
 - The runner's `--repo /work/source` is cloned read-only on first use from the task's
-  `repo:` URL, using the mounted `herald-git-read` key (`GIT_SSH_COMMAND`).
-- Approvals and the decision log live in Postgres (`herald_approval`, `herald_decision`);
+  `repo:` URL, using the mounted `dear-agent-git-read` key (`GIT_SSH_COMMAND`).
+- Approvals and the decision log live in Postgres (`dear_agent_approval`, `dear_agent_decision`);
   the file stores are a single-process fallback only. The parsed `TaskSpec` is persisted on
   the task row, so a runner needs no mailbox access to run.
 - **The base image ships no harness.** Build a derived runner image that installs OpenCode
-  (or Claude Code / Codex), or set `HERALD_HARNESS=command` with `HERALD_HARNESS_COMMAND`.
+  (or Claude Code / Codex), or set `DEAR_AGENT_HARNESS=command` with `DEAR_AGENT_HARNESS_COMMAND`.
   Without one, runs fail as `HARNESS_MISSING` and escalate to a human.
 
 ## Verified on a live OpenShift cluster

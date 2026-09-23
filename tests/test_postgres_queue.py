@@ -5,12 +5,12 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from herald.queue.models import Task, TaskState
-from herald.queue.port import Queue, StateConflictError, TaskNotFoundError
+from dear_agent.queue.models import Task, TaskState
+from dear_agent.queue.port import Queue, StateConflictError, TaskNotFoundError
 
-DSN = os.environ.get("HERALD_TEST_DATABASE_URL")
+DSN = os.environ.get("DEAR_AGENT_TEST_DATABASE_URL")
 
-pytestmark = pytest.mark.skipif(not DSN, reason="HERALD_TEST_DATABASE_URL is not set")
+pytestmark = pytest.mark.skipif(not DSN, reason="DEAR_AGENT_TEST_DATABASE_URL is not set")
 
 START = datetime(2026, 1, 1, tzinfo=UTC)
 LEASE = timedelta(hours=1)
@@ -41,12 +41,12 @@ def clock() -> FakeClock:
 @pytest.fixture()
 def queue(clock: FakeClock):
     pytest.importorskip("psycopg")
-    from herald.queue.postgres import PostgresQueue, apply_schema, connect
+    from dear_agent.queue.postgres import PostgresQueue, apply_schema, connect
 
     conn = connect(DSN)
     apply_schema(conn)
     with conn.cursor() as cur:
-        cur.execute("TRUNCATE herald_task")
+        cur.execute("TRUNCATE dear_agent_task")
     conn.commit()
     yield PostgresQueue(conn, clock=clock)
     conn.close()
@@ -100,7 +100,7 @@ def test_get_unknown_id_returns_none(queue) -> None:
 
 
 def test_enqueue_persists_the_parsed_spec(queue) -> None:
-    from herald.queue.models import TaskSpec
+    from dear_agent.queue.models import TaskSpec
 
     spec = TaskSpec(
         repo_url="git@github.com:o/r.git",
@@ -207,7 +207,7 @@ def test_transition_clears_the_lease_when_leaving_running(queue) -> None:
 
 
 def test_transition_records_delivery_evidence(queue) -> None:
-    from herald.queue.models import Evidence
+    from dear_agent.queue.models import Evidence
 
     task = queue.enqueue(make_task())
     assert task is not None
@@ -218,14 +218,14 @@ def test_transition_records_delivery_evidence(queue) -> None:
     done = queue.transition(
         running,
         TaskState.DONE,
-        evidence=Evidence(branch="herald/x", commit="abc", pr_url="https://example.com/pr/1"),
+        evidence=Evidence(branch="dear-agent/x", commit="abc", pr_url="https://example.com/pr/1"),
     )
 
     assert done.evidence is not None
     assert done.evidence.pr_url == "https://example.com/pr/1"
     fetched = queue.get(task.id)
     assert fetched is not None
-    assert fetched.evidence.branch == "herald/x"
+    assert fetched.evidence.branch == "dear-agent/x"
 
 
 def test_release_stale_requeues_expired_running_and_bumps_attempts(queue, clock: FakeClock) -> None:
@@ -247,8 +247,8 @@ def test_release_stale_requeues_expired_running_and_bumps_attempts(queue, clock:
 def test_concurrent_claim_next_takes_different_tasks(queue, clock: FakeClock) -> None:
     # Two workers, two connections: SKIP LOCKED must hand them different tasks.
     pytest.importorskip("psycopg")
-    from herald.db import connect
-    from herald.queue.postgres import PostgresQueue
+    from dear_agent.db import connect
+    from dear_agent.queue.postgres import PostgresQueue
 
     queue.enqueue(make_task(id="e1"))
     queue.enqueue(make_task(id="e2", transport_id="<msg-2@example.com>"))

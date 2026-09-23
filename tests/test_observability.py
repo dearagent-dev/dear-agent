@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from herald.observability.health import Health, Metrics
-from herald.queue.memory import MemoryQueue
-from herald.queue.models import Task, TaskState
+from dear_agent.observability.health import Health, Metrics
+from dear_agent.queue.memory import MemoryQueue
+from dear_agent.queue.models import Task, TaskState
 
 
 def enqueue(queue: MemoryQueue, task_id: str) -> Task:

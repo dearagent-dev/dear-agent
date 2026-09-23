@@ -4,23 +4,23 @@ from datetime import timedelta
 
 import yaml
 
-from herald.dispatch import WORKER_ANNOTATION, TaskDispatcher, job_name, render_job
-from herald.queue.memory import MemoryQueue
-from herald.queue.models import Task
+from dear_agent.dispatch import WORKER_ANNOTATION, TaskDispatcher, job_name, render_job
+from dear_agent.queue.memory import MemoryQueue
+from dear_agent.queue.models import Task
 
 TEMPLATE = """
 apiVersion: batch/v1
 kind: Job
 metadata:
-  generateName: herald-task-
+  generateName: dear-agent-task-
 spec:
   template:
     spec:
       containers:
         - name: runner
-          image: herald:latest
+          image: dear-agent:latest
           env:
-            - name: HERALD_TASK_ID
+            - name: DEAR_AGENT_TASK_ID
               value: ""
 """
 
@@ -31,7 +31,7 @@ def test_render_job_injects_the_task_id() -> None:
     job = render_job(TEMPLATE, task)
 
     env = job["spec"]["template"]["spec"]["containers"][0]["env"]
-    assert env == [{"name": "HERALD_TASK_ID", "value": "e1"}]
+    assert env == [{"name": "DEAR_AGENT_TASK_ID", "value": "e1"}]
     assert job["spec"]["template"]["metadata"]["annotations"][WORKER_ANNOTATION] == "e1"
 
 
@@ -46,7 +46,7 @@ def test_render_job_names_the_job_deterministically() -> None:
 
 
 def test_job_name_is_dns1123_and_distinct() -> None:
-    assert job_name("Stm_un1pB0X-").startswith("herald-task-")
+    assert job_name("Stm_un1pB0X-").startswith("dear-agent-task-")
     assert len(job_name("x" * 200)) <= 63
     assert job_name("a/b") != job_name("a-b")
 
@@ -97,7 +97,7 @@ def test_render_job_is_valid_yaml() -> None:
 
 
 def test_dispatch_skips_a_blocked_task() -> None:
-    from herald.queue.models import TaskSpec, TaskState
+    from dear_agent.queue.models import TaskSpec, TaskState
 
     queue = MemoryQueue()
     dependency = queue.enqueue(Task(id="d1", transport_id="<d1@x>"))
@@ -115,7 +115,7 @@ def test_dispatch_skips_a_blocked_task() -> None:
 
 
 def test_dispatch_fails_a_task_whose_dependency_failed() -> None:
-    from herald.queue.models import TaskSpec, TaskState
+    from dear_agent.queue.models import TaskSpec, TaskState
 
     queue = MemoryQueue()
     dependency = queue.enqueue(Task(id="d1", transport_id="<d1@x>"))

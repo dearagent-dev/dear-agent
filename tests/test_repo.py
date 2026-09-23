@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from herald.repo import RepoError, RepoPreparer
+from dear_agent.repo import RepoError, RepoPreparer
 
 
 def _git(path: Path, *args: str) -> None:

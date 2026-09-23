@@ -5,7 +5,7 @@
 
 ## Context
 
-Herald's runner must clone a repository, and the git plane must push an `herald/<slug>`
+Dear Agent's runner must clone a repository, and the git plane must push an `dear-agent/<slug>`
 branch and open a draft PR. The control plane must read and send mail. Every one of these
 needs a credential, and a run may execute untrusted, attacker-influenced instructions. A
 single broad credential is therefore the highest-value target in the system: stealing it
@@ -22,7 +22,7 @@ would let an injected run write to any repository, including `main`.
    - Model: a scoped provider key.
 
 2. **Prefer a GitHub App over a personal access token.** A classic PAT with the `repo`
-   scope grants access to *every* repository and cannot be limited to `herald/*`. A GitHub
+   scope grants access to *every* repository and cannot be limited to `dear-agent/*`. A GitHub
    App installation token is repository-scoped and short-lived. If a PAT is unavoidable,
    use a **fine-grained PAT** limited to selected repositories with the minimum permissions.
 

@@ -6,14 +6,14 @@ from pathlib import Path
 
 import pytest
 
-from herald.executor import TaskExecutor, _slug
-from herald.gitplane.plane import GitError, GitPlane, PullRequest
-from herald.notify.escalate import Escalator, FailureKind
-from herald.notify.notifier import Notifier
-from herald.queue.memory import MemoryQueue
-from herald.queue.models import Task, TaskSpec, TaskState
-from herald.runners.worktree import RunResult, Worktree
-from herald.transports.memory import MemoryTransport
+from dear_agent.executor import TaskExecutor, _slug
+from dear_agent.gitplane.plane import GitError, GitPlane, PullRequest
+from dear_agent.notify.escalate import Escalator, FailureKind
+from dear_agent.notify.notifier import Notifier
+from dear_agent.queue.memory import MemoryQueue
+from dear_agent.queue.models import Task, TaskSpec, TaskState
+from dear_agent.runners.worktree import RunResult, Worktree
+from dear_agent.transports.memory import MemoryTransport
 
 
 def git(repo: Path, *args: str) -> None:
@@ -108,7 +108,7 @@ def test_successful_run_marks_done_and_opens_a_draft_pr(repo: Path) -> None:
     assert stored.evidence.pr_url == "https://example.com/pr/1"
     assert evidence.commit is not None
     assert evidence.pr_url == "https://example.com/pr/1"
-    assert forge.calls[0]["branch"].startswith("herald/")
+    assert forge.calls[0]["branch"].startswith("dear-agent/")
     assert transport.outbox[0].body.find("PR: https://example.com/pr/1") != -1
 
 
@@ -184,7 +184,7 @@ def test_worktree_creation_failure_fails_the_task(repo: Path, monkeypatch) -> No
     executor = make_executor(queue, repo, RecordingForge(), FakeRunner(), MemoryTransport())
 
     with (
-        mock.patch("herald.executor.Worktree.create", side_effect=OSError("read-only")),
+        mock.patch("dear_agent.executor.Worktree.create", side_effect=OSError("read-only")),
         pytest.raises(OSError),
     ):
         executor.execute(task, make_spec())
@@ -193,11 +193,11 @@ def test_worktree_creation_failure_fails_the_task(repo: Path, monkeypatch) -> No
 
 
 def test_verify_must_pass_before_the_pr(repo: Path) -> None:
-    from herald.verify import CommandVerifier
+    from dear_agent.verify import CommandVerifier
 
     queue = MemoryQueue()
     task = make_task(queue)
-    verifier = CommandVerifier.from_env({"HERALD_VERIFY_ALLOW": "python"})
+    verifier = CommandVerifier.from_env({"DEAR_AGENT_VERIFY_ALLOW": "python"})
     executor = make_executor(
         queue, repo, RecordingForge(), FakeRunner(ok=True), MemoryTransport(), verifier
     )
@@ -211,13 +211,13 @@ def test_verify_must_pass_before_the_pr(repo: Path) -> None:
 
 
 def test_verify_failure_fails_the_task_and_opens_no_pr(repo: Path) -> None:
-    from herald.verify import CommandVerifier
+    from dear_agent.verify import CommandVerifier
 
     queue = MemoryQueue()
     task = make_task(queue)
     transport = MemoryTransport()
     forge = RecordingForge()
-    verifier = CommandVerifier.from_env({"HERALD_VERIFY_ALLOW": "python"})
+    verifier = CommandVerifier.from_env({"DEAR_AGENT_VERIFY_ALLOW": "python"})
     executor = make_executor(queue, repo, forge, FakeRunner(ok=True), transport, verifier)
     spec = make_spec()
     spec.verify = 'python -c "import sys; sys.exit(1)"'
@@ -231,12 +231,12 @@ def test_verify_failure_fails_the_task_and_opens_no_pr(repo: Path) -> None:
 
 
 def test_verify_command_not_allowlisted_is_blocked(repo: Path) -> None:
-    from herald.verify import CommandVerifier
+    from dear_agent.verify import CommandVerifier
 
     queue = MemoryQueue()
     task = make_task(queue)
     forge = RecordingForge()
-    verifier = CommandVerifier.from_env({"HERALD_VERIFY_ALLOW": "pytest"})
+    verifier = CommandVerifier.from_env({"DEAR_AGENT_VERIFY_ALLOW": "pytest"})
     executor = make_executor(queue, repo, forge, FakeRunner(ok=True), MemoryTransport(), verifier)
     spec = make_spec()
     spec.verify = "rm -rf /"
@@ -249,7 +249,7 @@ def test_verify_command_not_allowlisted_is_blocked(repo: Path) -> None:
 
 
 def test_executor_records_typed_events(repo: Path) -> None:
-    from herald.events import MemoryEventLog
+    from dear_agent.events import MemoryEventLog
 
     queue = MemoryQueue()
     task = make_task(queue)
@@ -362,9 +362,9 @@ def test_publish_failure_fails_the_task_and_escalates(repo: Path) -> None:
 
 def test_report_skips_an_empty_recipient(tmp_path) -> None:
 
-    from herald.executor import TaskExecutor
-    from herald.gitplane.plane import GitPlane
-    from herald.queue.memory import MemoryQueue
+    from dear_agent.executor import TaskExecutor
+    from dear_agent.gitplane.plane import GitPlane
+    from dear_agent.queue.memory import MemoryQueue
 
     repo = tmp_path / "repo"
     repo.mkdir()

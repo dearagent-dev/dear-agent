@@ -7,9 +7,9 @@ from datetime import UTC, datetime
 
 import pytest
 
-from herald.http_server import HealthServer
-from herald.queue.memory import MemoryQueue
-from herald.queue.models import Task
+from dear_agent.http_server import HealthServer
+from dear_agent.queue.memory import MemoryQueue
+from dear_agent.queue.models import Task
 
 
 @pytest.fixture()
@@ -96,7 +96,9 @@ def test_inbound_route_delegates_to_the_handler() -> None:
     instance = HealthServer(queue=MemoryQueue(), host="127.0.0.1", port=0, inbound=handler)
     instance.start()
     try:
-        status, payload = post(instance, "/inbound", b'{"id": "e1"}', {"X-Herald-Signature": "x"})
+        status, payload = post(
+            instance, "/inbound", b'{"id": "e1"}', {"X-Dear-Agent-Signature": "x"}
+        )
     finally:
         instance.stop()
 

@@ -1,17 +1,17 @@
-# Headless Service governing the herald-postgres StatefulSet. Clients connect to
-# `herald-postgres:5432`; the name is never exposed outside the cluster (no Route/NodePort).
+# Headless Service governing the dear-agent-postgres StatefulSet. Clients connect to
+# `dear-agent-postgres:5432`; the name is never exposed outside the cluster (no Route/NodePort).
 apiVersion: v1
 kind: Service
 metadata:
-  name: herald-postgres
+  name: dear-agent-postgres
   labels:
-    app.kubernetes.io/name: herald-postgres
+    app.kubernetes.io/name: dear-agent-postgres
     app.kubernetes.io/component: database
-    app.kubernetes.io/part-of: herald
+    app.kubernetes.io/part-of: dear-agent
 spec:
   clusterIP: None
   selector:
-    app.kubernetes.io/name: herald-postgres
+    app.kubernetes.io/name: dear-agent-postgres
   ports:
     - name: postgresql
       port: 5432

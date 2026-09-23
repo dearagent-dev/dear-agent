@@ -1,6 +1,6 @@
 # Architecture
 
-Herald has one job: turn an **asynchronous inbound message** into a **reviewable Git pull
+Dear Agent has one job: turn an **asynchronous inbound message** into a **reviewable Git pull
 request**, then tell the sender. Everything else is a detail of how that is done safely
 and idempotently.
 
@@ -24,7 +24,7 @@ threaded to the original conversation. See [transports.md](transports.md).
 
 Concretely, inbound has two entrypoints: `JmapTransport.poll()` (the mailbox is ingress)
 and `POST /inbound` on the control-plane HTTP server for push transports, authenticated
-with an HMAC over the raw body and disabled (503) when `HERALD_INBOUND_SECRET` is unset.
+with an HMAC over the raw body and disabled (503) when `DEAR_AGENT_INBOUND_SECRET` is unset.
 Both feed the same `ControlPlane.ingest`.
 
 **Interface (to implement):**
@@ -40,7 +40,7 @@ resolvable repo. Never trusts the message for commands. See [security.md](securi
 
 The `ControlPlane` wires the inbound loop: authorize (`InboundGate`) → normalize → enqueue.
 A rejected message gets a threaded explanation; an unauthorized one is dropped without a
-reply, so a forged sender cannot use Herald as a backscatter amplifier.
+reply, so a forged sender cannot use Dear Agent as a backscatter amplifier.
 
 ### Queue
 The durable source of truth is **PostgreSQL**; the transport mailbox is **ingress** only.
@@ -55,16 +55,16 @@ same database. See [queue.md](queue.md) and
 A Kubernetes `CronJob` sweep lists `queued` tasks and starts one Job per task, claiming
 each atomically before the work begins. The default is **one running task at a time**.
 
-Concretely: `herald sweep` returns stale `Running` tasks to `Queued` and renders the runner
+Concretely: `dear-agent sweep` returns stale `Running` tasks to `Queued` and renders the runner
 `JobTemplate` (a ConfigMap) once per queued task, injecting the task id through a parsed
-YAML value (never string interpolation); the Job runs `herald run <task-id>`, which claims
+YAML value (never string interpolation); the Job runs `dear-agent run <task-id>`, which claims
 the task, clones the repo read-only, creates a worktree and drives the executor. Creation
 is idempotent per task id, so a re-run after a restart is safe.
 
 ### Runner
 Executes a harness for a claimed task inside an isolated Git worktree and returns
 evidence (branch, commit, logs, PR). The runner is a thin adapter over a harness CLI.
-Herald must not embed a harness. A `HarnessCatalog` describes the available harnesses
+Dear Agent must not embed a harness. A `HarnessCatalog` describes the available harnesses
 (OpenCode, Claude Code, Codex, or a custom `command`) with their metadata; the model is
 passed only to a harness that accepts one (OpenCode), never to a subscription harness.
 
@@ -81,7 +81,7 @@ Hosted or local. See [providers.md](providers.md).
 
 ### Git plane
 Owns worktrees, branches and pull requests. **Agents never write `main`.** Every result is
-an `herald/<slug>` branch and a draft PR.
+an `dear-agent/<slug>` branch and a draft PR.
 
 ### Notifier
 Threads status and approval requests back over the transport. Approvals are replied to and
@@ -108,7 +108,7 @@ received ─▶ queued ─▶ running ─▶ (draft PR) ─▶ action? ─▶ do
 
 ### The human wall
 
-Herald never lands a change. The pipeline stops at a **draft PR**: opening, approving or
+Dear Agent never lands a change. The pipeline stops at a **draft PR**: opening, approving or
 merging it is a human action. The approval token authorises a *decision about a task*
 (e.g. proceed, or land a plan), never a write to `main`. `GitPlane` refuses any commit,
 push or PR whose branch is protected, so even a compromised run cannot land itself. This is
@@ -125,25 +125,25 @@ travels over the transport.
   **resumable** (a sweep returns a stale `running` task to `queued`), never a lost task.
 - Worktrees are disposable (`emptyDir` inside a Job); the branch/PR is durable.
 - Serial execution is the default and is not a bug.
-- Every task emits an append-only **event log** (`herald_event`): claimed, verify
+- Every task emits an append-only **event log** (`dear_agent_event`): claimed, verify
   passed/failed, publish failed, done/failed, plus ingest accept/reject/deny. It is the
-  history a state column cannot express; `herald task events <id>` reads it.
+  history a state column cannot express; `dear-agent task events <id>` reads it.
 - An **error budget** (circuit breaker) stops starting new runs when too many tasks failed
-  recently (`HERALD_ERROR_BUDGET_*`), so a systemic failure does not grind on.
-- `herald health` reports a `stalled` count (running tasks whose lease is about to expire)
+  recently (`DEAR_AGENT_ERROR_BUDGET_*`), so a systemic failure does not grind on.
+- `dear-agent health` reports a `stalled` count (running tasks whose lease is about to expire)
   as a soft watchdog; the sweep is the hard one.
 - A task may declare `depends-on:` task ids; it stays `queued` (skipped by the sweep and
-  `herald run`) until they are `done`, and is failed if a dependency fails. A small typed
+  `dear-agent run`) until they are `done`, and is failed if a dependency fails. A small typed
   dependency graph, not a workflow engine.
 - **Per-project policy** is markdown (YAML front matter + prose) under `policy/`, projected
-  into `herald_policy` with `herald policy sync`; the worker reads the row. A policy can
+  into `dear_agent_policy` with `dear-agent policy sync`; the worker reads the row. A policy can
   enable/disable a repo (a disabled repo's tasks fail), default the base branch, and extend
   the verify allowlist for that repo — it only *narrows* or *defaults*, never widens what an
   untrusted message may do.
 
 ## Deployment
 
-Herald is **Kubernetes/OpenShift by design**. The control plane and the runner are standard
+Dear Agent is **Kubernetes/OpenShift by design**. The control plane and the runner are standard
 workloads: one Job per task, a `CronJob` sweep to claim work, and no always-on daemon. Durable
 state is a PostgreSQL `StatefulSet` (or a local podman container). See
 [ADR 0002](decisions/0002-deployment-topology.md) and

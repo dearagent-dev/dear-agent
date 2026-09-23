@@ -3,23 +3,23 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: herald-control-plane
+  name: dear-agent-control-plane
   labels:
-    app.kubernetes.io/name: herald
+    app.kubernetes.io/name: dear-agent
     app.kubernetes.io/component: control-plane
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: herald
+      app.kubernetes.io/name: dear-agent
       app.kubernetes.io/component: control-plane
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: herald
+        app.kubernetes.io/name: dear-agent
         app.kubernetes.io/component: control-plane
     spec:
-      serviceAccountName: herald-control-plane
+      serviceAccountName: dear-agent-control-plane
       automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
@@ -27,31 +27,31 @@ spec:
           type: RuntimeDefault
       containers:
         - name: control-plane
-          image: quay.io/rarguello/herald:latest
+          image: quay.io/rarguello/dear-agent:latest
           imagePullPolicy: IfNotPresent
-          command: ["herald-http"]
+          command: ["dear-agent-http"]
           args: []
           envFrom:
             - configMapRef:
-                name: herald-config
+                name: dear-agent-config
           env:
             - name: FASTMAIL_API_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: herald-jmap
+                  name: dear-agent-jmap
                   key: FASTMAIL_API_TOKEN
                   optional: true
-            - name: HERALD_DATABASE_URL
+            - name: DEAR_AGENT_DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: herald-postgres
+                  name: dear-agent-postgres
                   key: DATABASE_URL
                   optional: true
-            - name: HERALD_INBOUND_SECRET
+            - name: DEAR_AGENT_INBOUND_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: herald-inbound
-                  key: HERALD_INBOUND_SECRET
+                  name: dear-agent-inbound
+                  key: DEAR_AGENT_INBOUND_SECRET
                   optional: true
           ports:
             - containerPort: 8080
@@ -77,10 +77,10 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: herald-control-plane
+  name: dear-agent-control-plane
 spec:
   selector:
-    app.kubernetes.io/name: herald
+    app.kubernetes.io/name: dear-agent
     app.kubernetes.io/component: control-plane
   ports:
     - name: http

@@ -5,12 +5,12 @@ from datetime import timedelta
 
 import pytest
 
-from herald.auth import InboundAuthorizer, InboundGate, RateLimiter
-from herald.control_plane import ControlPlane
-from herald.inbound import InboundError, InboundWebhook, parse_message
-from herald.queue.memory import MemoryQueue
-from herald.queue.models import TaskState
-from herald.transports.memory import MemoryTransport
+from dear_agent.auth import InboundAuthorizer, InboundGate, RateLimiter
+from dear_agent.control_plane import ControlPlane
+from dear_agent.inbound import InboundError, InboundWebhook, parse_message
+from dear_agent.queue.memory import MemoryQueue
+from dear_agent.queue.models import TaskState
+from dear_agent.transports.memory import MemoryTransport
 
 
 def _gate(secret: str = "s3cret") -> InboundGate:
@@ -44,7 +44,7 @@ def test_parse_rejects_non_json() -> None:
 
 
 def _signed(secret: str, message: dict) -> tuple[bytes, dict[str, str]]:
-    from herald.auth import SIGNATURE_HEADER, sign
+    from dear_agent.auth import SIGNATURE_HEADER, sign
 
     body = json.dumps(message)
     signature = sign(body, secret, sender=message.get("sender"))

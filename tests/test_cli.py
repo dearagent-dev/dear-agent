@@ -4,9 +4,9 @@ import io
 import json
 from datetime import timedelta
 
-from herald.cli.main import main
-from herald.queue.memory import MemoryQueue
-from herald.queue.models import Task, TaskState
+from dear_agent.cli.main import main
+from dear_agent.queue.memory import MemoryQueue
+from dear_agent.queue.models import Task, TaskState
 
 
 def run(argv: list[str], queue: MemoryQueue) -> tuple[int, str]:
@@ -15,7 +15,7 @@ def run(argv: list[str], queue: MemoryQueue) -> tuple[int, str]:
 
     buffer = io.StringIO()
     with (
-        mock.patch("herald.cli.main.build_queue", return_value=queue),
+        mock.patch("dear_agent.cli.main.build_queue", return_value=queue),
         contextlib.redirect_stdout(buffer),
     ):
         code = main(argv)
@@ -128,17 +128,17 @@ def test_postgres_queue_without_dsn_errors_cleanly() -> None:
     env = {
         "PATH": "",
         "PYTHONPATH": str(repo_root / "src"),
-        "HERALD_QUEUE": "postgres",
-        "HERALD_DATABASE_URL": "",
+        "DEAR_AGENT_QUEUE": "postgres",
+        "DEAR_AGENT_DATABASE_URL": "",
     }
     result = subprocess.run(
-        [sys.executable, "-m", "herald.cli.main", "task", "ls"],
+        [sys.executable, "-m", "dear_agent.cli.main", "task", "ls"],
         capture_output=True,
         text=True,
         env=env,
     )
     assert result.returncode == 2
-    assert "HERALD_DATABASE_URL" in result.stderr
+    assert "DEAR_AGENT_DATABASE_URL" in result.stderr
 
 
 def test_run_executes_a_task_via_the_worker(monkeypatch) -> None:
@@ -146,8 +146,8 @@ def test_run_executes_a_task_via_the_worker(monkeypatch) -> None:
     import io
     from unittest import mock
 
-    from herald.executor import ExecutedTask
-    from herald.runners.worktree import RunResult
+    from dear_agent.executor import ExecutedTask
+    from dear_agent.runners.worktree import RunResult
 
     queue = MemoryQueue()
     seed(queue, "e1")
@@ -159,17 +159,17 @@ def test_run_executes_a_task_via_the_worker(monkeypatch) -> None:
             captured["task_id"] = task_id
             return ExecutedTask(
                 task_id=task_id,
-                branch="herald/e1",
+                branch="dear-agent/e1",
                 commit="deadbeef",
                 pr_url="https://example.com/pr/1",
-                run=RunResult(exit_code=0, branch="herald/e1"),
+                run=RunResult(exit_code=0, branch="dear-agent/e1"),
             )
 
     buffer = io.StringIO()
     with (
-        mock.patch("herald.cli.main.build_queue", return_value=queue),
-        mock.patch("herald.worker_factory.build_transport", return_value=object()),
-        mock.patch("herald.worker_factory.build_worker", return_value=FakeWorker()),
+        mock.patch("dear_agent.cli.main.build_queue", return_value=queue),
+        mock.patch("dear_agent.worker_factory.build_transport", return_value=object()),
+        mock.patch("dear_agent.worker_factory.build_worker", return_value=FakeWorker()),
         contextlib.redirect_stdout(buffer),
     ):
         code = main(["--json", "run", "e1", "--repo", "/repos/source"])
@@ -185,9 +185,9 @@ def test_run_returns_nonzero_when_the_task_fails() -> None:
     import io
     from unittest import mock
 
-    from herald.executor import ExecutedTask
-    from herald.notify.escalate import FailureKind
-    from herald.runners.worktree import RunResult
+    from dear_agent.executor import ExecutedTask
+    from dear_agent.notify.escalate import FailureKind
+    from dear_agent.runners.worktree import RunResult
 
     queue = MemoryQueue()
     seed(queue, "e1")
@@ -196,17 +196,17 @@ def test_run_returns_nonzero_when_the_task_fails() -> None:
         def run(self, task_id: str) -> ExecutedTask:
             return ExecutedTask(
                 task_id=task_id,
-                branch="herald/e1",
+                branch="dear-agent/e1",
                 commit=None,
                 pr_url=None,
-                run=RunResult(exit_code=1, branch="herald/e1"),
+                run=RunResult(exit_code=1, branch="dear-agent/e1"),
                 failure=FailureKind.HARNESS_FAILED,
             )
 
     with (
-        mock.patch("herald.cli.main.build_queue", return_value=queue),
-        mock.patch("herald.worker_factory.build_transport", return_value=object()),
-        mock.patch("herald.worker_factory.build_worker", return_value=FakeWorker()),
+        mock.patch("dear_agent.cli.main.build_queue", return_value=queue),
+        mock.patch("dear_agent.worker_factory.build_transport", return_value=object()),
+        mock.patch("dear_agent.worker_factory.build_worker", return_value=FakeWorker()),
         contextlib.redirect_stdout(io.StringIO()),
     ):
         code = main(["run", "e1", "--repo", "/repos/source"])
@@ -219,9 +219,9 @@ def test_run_uses_the_task_model_hint() -> None:
     import io
     from unittest import mock
 
-    from herald.executor import ExecutedTask
-    from herald.queue.models import TaskSpec
-    from herald.runners.worktree import RunResult
+    from dear_agent.executor import ExecutedTask
+    from dear_agent.queue.models import TaskSpec
+    from dear_agent.runners.worktree import RunResult
 
     queue = MemoryQueue()
     queue.enqueue(
@@ -237,10 +237,10 @@ def test_run_uses_the_task_model_hint() -> None:
         def run(self, task_id: str) -> ExecutedTask:
             return ExecutedTask(
                 task_id=task_id,
-                branch="herald/e1",
+                branch="dear-agent/e1",
                 commit="deadbeef",
                 pr_url=None,
-                run=RunResult(exit_code=0, branch="herald/e1"),
+                run=RunResult(exit_code=0, branch="dear-agent/e1"),
             )
 
     def fake_build_worker(**kwargs: object):
@@ -248,9 +248,9 @@ def test_run_uses_the_task_model_hint() -> None:
         return FakeWorker()
 
     with (
-        mock.patch("herald.cli.main.build_queue", return_value=queue),
-        mock.patch("herald.worker_factory.build_transport", return_value=object()),
-        mock.patch("herald.worker_factory.build_worker", side_effect=fake_build_worker),
+        mock.patch("dear_agent.cli.main.build_queue", return_value=queue),
+        mock.patch("dear_agent.worker_factory.build_transport", return_value=object()),
+        mock.patch("dear_agent.worker_factory.build_worker", side_effect=fake_build_worker),
         contextlib.redirect_stdout(io.StringIO()),
     ):
         code = main(["run", "e1", "--repo", "/repos/source"])
@@ -264,8 +264,8 @@ def test_run_without_a_task_id_picks_the_oldest_queued() -> None:
     import io
     from unittest import mock
 
-    from herald.executor import ExecutedTask
-    from herald.runners.worktree import RunResult
+    from dear_agent.executor import ExecutedTask
+    from dear_agent.runners.worktree import RunResult
 
     queue = MemoryQueue()
     seed(queue, "e1")
@@ -278,10 +278,10 @@ def test_run_without_a_task_id_picks_the_oldest_queued() -> None:
             captured["task_id"] = task_id
             return ExecutedTask(
                 task_id=task_id,
-                branch=f"herald/{task_id}",
+                branch=f"dear-agent/{task_id}",
                 commit="deadbeef",
                 pr_url=None,
-                run=RunResult(exit_code=0, branch=f"herald/{task_id}"),
+                run=RunResult(exit_code=0, branch=f"dear-agent/{task_id}"),
             )
 
         def run_next(self) -> ExecutedTask:
@@ -290,9 +290,9 @@ def test_run_without_a_task_id_picks_the_oldest_queued() -> None:
 
     buffer = io.StringIO()
     with (
-        mock.patch("herald.cli.main.build_queue", return_value=queue),
-        mock.patch("herald.worker_factory.build_transport", return_value=object()),
-        mock.patch("herald.worker_factory.build_worker", return_value=FakeWorker()),
+        mock.patch("dear_agent.cli.main.build_queue", return_value=queue),
+        mock.patch("dear_agent.worker_factory.build_transport", return_value=object()),
+        mock.patch("dear_agent.worker_factory.build_worker", return_value=FakeWorker()),
         contextlib.redirect_stdout(buffer),
     ):
         code = main(["run", "--repo", "/repos/source"])
@@ -305,7 +305,7 @@ def test_decide_routes_with_the_rule_decider(monkeypatch) -> None:
     import contextlib
     import io
 
-    monkeypatch.setenv("HERALD_DECIDER", "rules")
+    monkeypatch.setenv("DEAR_AGENT_DECIDER", "rules")
     buffer = io.StringIO()
     with contextlib.redirect_stdout(buffer):
         code = main(["--json", "decide", "audit the auth module for timing side-channels"])
@@ -320,7 +320,7 @@ def test_decide_can_be_disabled(monkeypatch) -> None:
     import contextlib
     import io
 
-    monkeypatch.setenv("HERALD_DECIDER", "none")
+    monkeypatch.setenv("DEAR_AGENT_DECIDER", "none")
     buffer = io.StringIO()
     with contextlib.redirect_stderr(buffer):
         code = main(["decide", "anything"])
@@ -356,12 +356,12 @@ def test_enqueue_creates_a_queued_task_with_a_spec() -> None:
 
 
 def test_approval_pending_lists_issued_tokens(tmp_path, monkeypatch) -> None:
-    from herald.approvals import FileApprovalStore
+    from dear_agent.approvals import FileApprovalStore
 
     path = tmp_path / "approvals.json"
     FileApprovalStore(path).issue("e1", "land")
-    monkeypatch.setenv("HERALD_APPROVALS_FILE", str(path))
-    monkeypatch.delenv("HERALD_QUEUE", raising=False)
+    monkeypatch.setenv("DEAR_AGENT_APPROVALS_FILE", str(path))
+    monkeypatch.delenv("DEAR_AGENT_QUEUE", raising=False)
 
     code, output = run(["--json", "approval", "pending"], MemoryQueue())
 
@@ -373,12 +373,12 @@ def test_approval_pending_lists_issued_tokens(tmp_path, monkeypatch) -> None:
 
 
 def test_approval_approve_redeems_the_token(tmp_path, monkeypatch) -> None:
-    from herald.approvals import FileApprovalStore
-    from herald.approvals_service import ApprovalService
+    from dear_agent.approvals import FileApprovalStore
+    from dear_agent.approvals_service import ApprovalService
 
     path = tmp_path / "approvals.json"
-    monkeypatch.setenv("HERALD_APPROVALS_FILE", str(path))
-    monkeypatch.delenv("HERALD_QUEUE", raising=False)
+    monkeypatch.setenv("DEAR_AGENT_APPROVALS_FILE", str(path))
+    monkeypatch.delenv("DEAR_AGENT_QUEUE", raising=False)
     queue = MemoryQueue()
     seed(queue, "e1")
     task = queue.get("e1")
@@ -397,12 +397,12 @@ def test_approval_approve_redeems_the_token(tmp_path, monkeypatch) -> None:
 
 
 def test_approval_redeeming_twice_fails_cleanly(tmp_path, monkeypatch) -> None:
-    from herald.approvals import FileApprovalStore
-    from herald.approvals_service import ApprovalService
+    from dear_agent.approvals import FileApprovalStore
+    from dear_agent.approvals_service import ApprovalService
 
     path = tmp_path / "approvals.json"
-    monkeypatch.setenv("HERALD_APPROVALS_FILE", str(path))
-    monkeypatch.delenv("HERALD_QUEUE", raising=False)
+    monkeypatch.setenv("DEAR_AGENT_APPROVALS_FILE", str(path))
+    monkeypatch.delenv("DEAR_AGENT_QUEUE", raising=False)
     queue = MemoryQueue()
     seed(queue, "e1")
     task = queue.get("e1")
@@ -435,12 +435,12 @@ def test_health_reports_queue_counts() -> None:
 
 
 def test_task_events_prints_the_history(monkeypatch) -> None:
-    from herald.events import MemoryEventLog
+    from dear_agent.events import MemoryEventLog
 
     log = MemoryEventLog()
     log.record("e1", "task.claimed")
     log.record("e1", "task.done", pr_url="https://pr/1")
-    monkeypatch.setattr("herald.events.build_event_log", lambda: log)
+    monkeypatch.setattr("dear_agent.events.build_event_log", lambda: log)
 
     code, output = run(["--json", "task", "events", "e1"], MemoryQueue())
 
@@ -450,11 +450,11 @@ def test_task_events_prints_the_history(monkeypatch) -> None:
 
 
 def test_policy_sync_and_match(tmp_path, monkeypatch) -> None:
-    from herald.policy import MemoryPolicyStore
+    from dear_agent.policy import MemoryPolicyStore
 
     (tmp_path / "lab.md").write_text("---\nproject: lab\nrepos: ['acme/*']\n---\n")
     store = MemoryPolicyStore()
-    monkeypatch.setattr("herald.policy.build_policy_store", lambda: store)
+    monkeypatch.setattr("dear_agent.policy.build_policy_store", lambda: store)
 
     code, output = run(["policy", "sync", "--dir", str(tmp_path)], MemoryQueue())
 
@@ -512,8 +512,8 @@ def _todo_repo(tmp_path):
 
 
 def test_idle_parks_proposals_for_approval(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("HERALD_APPROVALS_FILE", str(tmp_path / "approvals.json"))
-    monkeypatch.delenv("HERALD_QUEUE", raising=False)
+    monkeypatch.setenv("DEAR_AGENT_APPROVALS_FILE", str(tmp_path / "approvals.json"))
+    monkeypatch.delenv("DEAR_AGENT_QUEUE", raising=False)
     repo = _todo_repo(tmp_path)
     queue = MemoryQueue()
 
@@ -531,15 +531,15 @@ def test_idle_parks_proposals_for_approval(tmp_path, monkeypatch) -> None:
 def test_idle_gate_emails_the_approval_request(tmp_path, monkeypatch) -> None:
     from unittest import mock
 
-    from herald.transports.memory import MemoryTransport
+    from dear_agent.transports.memory import MemoryTransport
 
-    monkeypatch.setenv("HERALD_APPROVALS_FILE", str(tmp_path / "approvals.json"))
-    monkeypatch.delenv("HERALD_QUEUE", raising=False)
+    monkeypatch.setenv("DEAR_AGENT_APPROVALS_FILE", str(tmp_path / "approvals.json"))
+    monkeypatch.delenv("DEAR_AGENT_QUEUE", raising=False)
     repo = _todo_repo(tmp_path)
     queue = MemoryQueue()
     transport = MemoryTransport()
 
-    with mock.patch("herald.worker_factory.build_transport", return_value=transport):
+    with mock.patch("dear_agent.worker_factory.build_transport", return_value=transport):
         code, _ = run(["idle", "--repo", str(repo), "--recipient", "ops@example.com"], queue)
 
     assert code == 0
@@ -558,10 +558,10 @@ def test_idle_no_gate_enqueues_a_runnable_task(tmp_path) -> None:
 
 
 def test_idle_gate_round_trip_releases_to_queued(tmp_path, monkeypatch) -> None:
-    from herald.approvals import build_approval_store
+    from dear_agent.approvals import build_approval_store
 
-    monkeypatch.setenv("HERALD_APPROVALS_FILE", str(tmp_path / "approvals.json"))
-    monkeypatch.delenv("HERALD_QUEUE", raising=False)
+    monkeypatch.setenv("DEAR_AGENT_APPROVALS_FILE", str(tmp_path / "approvals.json"))
+    monkeypatch.delenv("DEAR_AGENT_QUEUE", raising=False)
     repo = _todo_repo(tmp_path)
     queue = MemoryQueue()
     run(["idle", "--repo", str(repo)], queue)
@@ -575,8 +575,8 @@ def test_idle_gate_round_trip_releases_to_queued(tmp_path, monkeypatch) -> None:
 
 
 def test_idle_does_not_re_propose_the_same_work(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("HERALD_APPROVALS_FILE", str(tmp_path / "approvals.json"))
-    monkeypatch.delenv("HERALD_QUEUE", raising=False)
+    monkeypatch.setenv("DEAR_AGENT_APPROVALS_FILE", str(tmp_path / "approvals.json"))
+    monkeypatch.delenv("DEAR_AGENT_QUEUE", raising=False)
     repo = _todo_repo(tmp_path)
     queue = MemoryQueue()
     run(["idle", "--repo", str(repo)], queue)
@@ -597,7 +597,7 @@ def test_enqueue_is_idempotent_on_transport_id() -> None:
         "--repo",
         "o/r",
         "--transport-id",
-        "<manual-1@herald.local>",
+        "<manual-1@dear-agent.local>",
     ]
 
     first, _ = run(argv, queue)

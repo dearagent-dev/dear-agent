@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from herald.gitplane.plane import GitPlane, ProtectedBranchError, PullRequest
-from herald.runners.worktree import Worktree
+from dear_agent.gitplane.plane import GitPlane, ProtectedBranchError, PullRequest
+from dear_agent.runners.worktree import Worktree
 
 
 def git(repo: Path, *args: str) -> None:
@@ -93,7 +93,7 @@ def test_open_draft_pr_delegates_to_the_forge(worktree: Worktree) -> None:
     pr = plane.open_draft_pr(worktree, base_branch="main", title="add healthz", body="see branch")
 
     assert pr.is_draft
-    assert forge.calls[0]["branch"] == "herald/add-healthz"
+    assert forge.calls[0]["branch"] == "dear-agent/add-healthz"
     assert forge.calls[0]["base_branch"] == "main"
 
 

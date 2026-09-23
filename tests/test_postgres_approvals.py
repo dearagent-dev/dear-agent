@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from herald.approvals import (
+from dear_agent.approvals import (
     ApprovalStore,
     ExpiredTokenError,
     PostgresApprovalStore,
@@ -13,9 +13,9 @@ from herald.approvals import (
     UnknownTokenError,
 )
 
-DSN = os.environ.get("HERALD_TEST_DATABASE_URL")
+DSN = os.environ.get("DEAR_AGENT_TEST_DATABASE_URL")
 
-pytestmark = pytest.mark.skipif(not DSN, reason="HERALD_TEST_DATABASE_URL is not set")
+pytestmark = pytest.mark.skipif(not DSN, reason="DEAR_AGENT_TEST_DATABASE_URL is not set")
 
 START = datetime(2026, 1, 1, tzinfo=UTC)
 
@@ -39,12 +39,12 @@ def clock() -> FakeClock:
 @pytest.fixture()
 def conn():
     pytest.importorskip("psycopg")
-    from herald.db import connect, init_schema
+    from dear_agent.db import connect, init_schema
 
     connection = connect(DSN)
     init_schema(connection)
     with connection.cursor() as cur:
-        cur.execute("TRUNCATE herald_approval")
+        cur.execute("TRUNCATE dear_agent_approval")
     connection.commit()
     yield connection
     connection.close()
@@ -101,7 +101,7 @@ def test_pending_excludes_used(store) -> None:
 def test_token_is_shared_across_connections(clock: FakeClock) -> None:
     # The point of the database store: the control plane issues, another process redeems.
     pytest.importorskip("psycopg")
-    from herald.db import connect
+    from dear_agent.db import connect
 
     issuer = PostgresApprovalStore(connect(DSN), clock=clock)
     redeemer_conn = connect(DSN)

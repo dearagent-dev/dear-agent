@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from herald.idle.signals import SignalCollector, SignalKind
+from dear_agent.idle.signals import SignalCollector, SignalKind
 
 
 def git(repo: Path, *args: str) -> None:

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from herald.control_plane import ControlPlane
-from herald.jmap.trigger import IngestOnChange, _touches_email
-from herald.queue.memory import MemoryQueue
-from herald.transports.base import RawMessage
-from herald.transports.memory import MemoryTransport
+from dear_agent.control_plane import ControlPlane
+from dear_agent.jmap.trigger import IngestOnChange, _touches_email
+from dear_agent.queue.memory import MemoryQueue
+from dear_agent.transports.base import RawMessage
+from dear_agent.transports.memory import MemoryTransport
 
 
 def test_touches_email_only_for_email_state_changes() -> None:

@@ -4,12 +4,12 @@ from datetime import timedelta
 
 import pytest
 
-from herald.approvals import MemoryApprovalStore
-from herald.approvals_service import ApprovalService, parse_reply
-from herald.notify.notifier import Notifier, TaskLinks
-from herald.queue.memory import MemoryQueue
-from herald.queue.models import Task, TaskState
-from herald.transports.memory import MemoryTransport
+from dear_agent.approvals import MemoryApprovalStore
+from dear_agent.approvals_service import ApprovalService, parse_reply
+from dear_agent.notify.notifier import Notifier, TaskLinks
+from dear_agent.queue.memory import MemoryQueue
+from dear_agent.queue.models import Task, TaskState
+from dear_agent.transports.memory import MemoryTransport
 
 
 def make_task(queue: MemoryQueue, state: TaskState = TaskState.RUNNING) -> Task:
@@ -37,7 +37,7 @@ def test_status_message_is_threaded_and_carries_links() -> None:
         recipient="dev@example.com",
         summary="draft PR opened",
         links=TaskLinks(
-            branch="herald/add-healthz",
+            branch="dear-agent/add-healthz",
             commit="abc123",
             pr_url="https://example.com/o/r/pull/7",
         ),

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Local PostgreSQL 18 (UBI 9) for Herald development, matching the in-cluster StatefulSet
+# Local PostgreSQL 18 (UBI 9) for Dear Agent development, matching the in-cluster StatefulSet
 # (deploy/components/postgresql). The mailbox is ingress; Postgres is the durable queue
 # (ADR 0005). Data lives in a named volume, so `down` does not destroy it.
 #
@@ -13,14 +13,14 @@
 set -euo pipefail
 
 IMAGE="${IMAGE:-registry.redhat.io/rhel9/postgresql-18:latest}"
-CONTAINER="${CONTAINER:-herald-postgres}"
-VOLUME="${VOLUME:-herald-postgres-data}"
+CONTAINER="${CONTAINER:-dear-agent-postgres}"
+VOLUME="${VOLUME:-dear-agent-postgres-data}"
 PORT="${PORT:-5432}"
 
 # Development-only defaults. Override with real values; never reuse them outside dev.
-POSTGRESQL_USER="${POSTGRESQL_USER:-herald}"
-POSTGRESQL_PASSWORD="${POSTGRESQL_PASSWORD:-herald}"
-POSTGRESQL_DATABASE="${POSTGRESQL_DATABASE:-herald}"
+POSTGRESQL_USER="${POSTGRESQL_USER:-dear-agent}"
+POSTGRESQL_PASSWORD="${POSTGRESQL_PASSWORD:-dear-agent}"
+POSTGRESQL_DATABASE="${POSTGRESQL_DATABASE:-dear-agent}"
 
 command="${1:-up}"
 
@@ -39,7 +39,7 @@ case "$command" in
         -v "${VOLUME}:/var/lib/pgsql/data:Z" \
         "$IMAGE"
     fi
-    echo "HERALD_DATABASE_URL=postgresql://${POSTGRESQL_USER}:${POSTGRESQL_PASSWORD}@127.0.0.1:${PORT}/${POSTGRESQL_DATABASE}"
+    echo "DEAR_AGENT_DATABASE_URL=postgresql://${POSTGRESQL_USER}:${POSTGRESQL_PASSWORD}@127.0.0.1:${PORT}/${POSTGRESQL_DATABASE}"
     ;;
   down)
     podman rm -f "$CONTAINER" >/dev/null 2>&1 || true

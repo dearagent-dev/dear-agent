@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from herald.queue.models import Task, TaskSpec
-from herald.runners.command import CommandRunner
-from herald.runners.port import Runner
-from herald.runners.worktree import Worktree, WorktreeError
+from dear_agent.queue.models import Task, TaskSpec
+from dear_agent.runners.command import CommandRunner
+from dear_agent.runners.port import Runner
+from dear_agent.runners.worktree import Worktree, WorktreeError
 
 
 def git(repo: Path, *args: str) -> None:
@@ -42,10 +42,10 @@ def make_spec() -> TaskSpec:
     return TaskSpec(repo_url="https://example.com/o/r", instructions="fix the build")
 
 
-def test_worktree_is_created_on_a_herald_branch(repo: Path, tmp_path: Path) -> None:
+def test_worktree_is_created_on_a_dear_agent_branch(repo: Path, tmp_path: Path) -> None:
     worktree = Worktree.create(repo, tmp_path / "wt", slug="add-healthz", base_branch="main")
 
-    assert worktree.branch == "herald/add-healthz"
+    assert worktree.branch == "dear-agent/add-healthz"
     assert worktree.path.exists()
     assert (worktree.path / "README.md").exists()
 
@@ -93,7 +93,7 @@ def test_command_runner_captures_output(repo: Path, tmp_path: Path) -> None:
 
     assert result.ok
     assert "done" in result.stdout
-    assert result.branch == "herald/s"
+    assert result.branch == "dear-agent/s"
 
 
 def test_command_runner_reports_a_nonzero_exit(repo: Path, tmp_path: Path) -> None:
@@ -141,39 +141,39 @@ def test_worktree_can_be_recreated_for_the_same_slug(repo: Path, tmp_path: Path)
 
     second = Worktree.create(repo, tmp_path / "wt", slug="s", base_branch="main")
     try:
-        assert second.branch == "herald/s"
+        assert second.branch == "dear-agent/s"
     finally:
         second.remove()
 
 
 def test_harness_env_points_pwd_at_the_worktree(tmp_path: Path) -> None:
     # OpenCode (and shell-based tools) resolve the project from $PWD, so it must be the
-    # worktree, never Herald's own working directory.
-    from herald.runners.harness import harness_env
+    # worktree, never Dear Agent's own working directory.
+    from dear_agent.runners.harness import harness_env
 
     assert harness_env(str(tmp_path))["PWD"] == str(tmp_path)
 
 
-def test_harness_env_does_not_leak_herald_secrets(monkeypatch, tmp_path: Path) -> None:
-    from herald.runners.harness import harness_env
+def test_harness_env_does_not_leak_dear_agent_secrets(monkeypatch, tmp_path: Path) -> None:
+    from dear_agent.runners.harness import harness_env
 
     monkeypatch.setenv("FASTMAIL_API_TOKEN", "mail-secret")
-    monkeypatch.setenv("HERALD_DATABASE_URL", "postgres://secret")
+    monkeypatch.setenv("DEAR_AGENT_DATABASE_URL", "postgres://secret")
     monkeypatch.setenv("GIT_SSH_COMMAND", "ssh -i /run/secrets/git/key")
 
     env = harness_env(str(tmp_path))
 
     assert "FASTMAIL_API_TOKEN" not in env
-    assert "HERALD_DATABASE_URL" not in env
+    assert "DEAR_AGENT_DATABASE_URL" not in env
     assert "GIT_SSH_COMMAND" not in env
     assert env["PATH"] == __import__("os").environ["PATH"]
     assert env["PWD"] == str(tmp_path)
 
 
 def test_harness_env_can_pass_named_variables(monkeypatch, tmp_path: Path) -> None:
-    from herald.runners.harness import harness_env
+    from dear_agent.runners.harness import harness_env
 
-    monkeypatch.setenv("HERALD_HARNESS_ENV", "OPENAI_API_KEY, ANTHROPIC_API_KEY")
+    monkeypatch.setenv("DEAR_AGENT_HARNESS_ENV", "OPENAI_API_KEY, ANTHROPIC_API_KEY")
     monkeypatch.setenv("OPENAI_API_KEY", "model-key")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "other-key")
     monkeypatch.setenv("SECRET_TOKEN", "nope")
@@ -186,7 +186,7 @@ def test_harness_env_can_pass_named_variables(monkeypatch, tmp_path: Path) -> No
 
 
 def test_default_execute_passes_pwd_to_the_child(tmp_path: Path) -> None:
-    from herald.runners.harness import default_execute
+    from dear_agent.runners.harness import default_execute
 
     result = default_execute(["sh", "-c", 'printf %s "$PWD"'], str(tmp_path), 10)
 

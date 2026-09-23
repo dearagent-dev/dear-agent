@@ -32,21 +32,21 @@ Defense in depth, ordered from highest leverage. Each layer maps to a component.
 ### 1. Authorize before normalizing
 
 - Authenticate the **sender**, not the content: SPF/DKIM/DMARC alignment plus a signed
-  header (HMAC) or a signed reply token. `herald.auth.InboundAuthorizer` verifies an
-  `X-Herald-Signature` HMAC over the body **and the sender**, in constant time, so a valid
+  header (HMAC) or a signed reply token. `dear_agent.auth.InboundAuthorizer` verifies an
+  `X-Dear-Agent-Signature` HMAC over the body **and the sender**, in constant time, so a valid
   signature cannot be replayed under another `From`.
 - Allowlist authorized senders (`InboundAuthorizer.allowlist`). The routing address alone
   never authorizes.
 - Unsigned or unauthorized mail is **quarantined and never normalized** into a task, and
   denied mail is dropped without a reply (no backscatter).
-- The **email path** (`herald listen`) cannot carry the HMAC header, so it uses
-  `herald.auth.SenderAllowlist` (`HERALD_ALLOWED_SENDERS`, exact addresses or `@domain`).
+- The **email path** (`dear-agent listen`) cannot carry the HMAC header, so it uses
+  `dear_agent.auth.SenderAllowlist` (`DEAR_AGENT_ALLOWED_SENDERS`, exact addresses or `@domain`).
   An empty list rejects everyone (fail closed). Note that `From` is spoofable, so this is a
   first line, not a boundary: harden it with DMARC/SPF/DKIM verification of the
   `Authentication-Results` header or a shared secret in the body, and rely on the approval
-  gate for high-risk work. Handled messages are filed into `Herald-Done` so they are not
+  gate for high-risk work. Handled messages are filed into `Dear-Agent-Done` so they are not
   reprocessed.
-- Rate-limit per sender (`herald.auth.RateLimiter`, sliding window): a burst of mail must
+- Rate-limit per sender (`dear_agent.auth.RateLimiter`, sliding window): a burst of mail must
   not become a burst of agent runs.
 - `InboundGate` composes authorization and rate limiting, and runs before the Normalizer.
 
@@ -67,9 +67,9 @@ Owner: normalizer + runner prompt construction.
 ### 3. Least privilege at execution
 
 - Run in an OS sandbox (bubblewrap / gVisor); non-root, arbitrary UID (OpenShift SCC).
-  `herald.sandbox.BubblewrapSandbox` wraps the harness argv in `bwrap` with the worktree as
-  the only writable path. Alternatively `HERALD_ISOLATION=podman` uses
-  `herald.sandbox.ContainerSandbox`: the harness runs in its per-harness image
+  `dear_agent.sandbox.BubblewrapSandbox` wraps the harness argv in `bwrap` with the worktree as
+  the only writable path. Alternatively `DEAR_AGENT_ISOLATION=podman` uses
+  `dear_agent.sandbox.ContainerSandbox`: the harness runs in its per-harness image
   (`HarnessInfo.image`) with the worktree bind-mounted at `/work` and only explicitly
   configured credential paths mounted (read-only by default). The container is the jail, so
   no harness runtime has to be trusted on the host. See
@@ -83,14 +83,14 @@ Owner: normalizer + runner prompt construction.
 - Give the harness an **allowlist** of tools, not arbitrary shell.
 - Reject attachments and any message that carries source code or patches.
 - A message-supplied `verify` command runs only when its argv matches the operator's
-  allowlist (`HERALD_VERIFY_ALLOW`) and is executed as an argv, never through a shell — a
+  allowlist (`DEAR_AGENT_VERIFY_ALLOW`) and is executed as an argv, never through a shell — a
   message-derived command is never run blindly (golden rule 7).
 
 Owner: runner + Kubernetes manifests.
 
 ### 4. Git is the containment boundary
 
-- Agents never commit or push to `main`; every result is an `herald/<slug>` branch and a
+- Agents never commit or push to `main`; every result is an `dear-agent/<slug>` branch and a
   **draft PR**.
 - `main` is protected with required human review.
 - The agent's commit identity is distinguishable from a human's.
@@ -114,7 +114,7 @@ Owner: gitplane + repository settings.
   It is advisory and fail-open — no decider, or a decider error, means no gate — and the
   draft PR remains the landing gate regardless.
 - A repository that no *enabled* project policy matches is **refused**: once policies are
-  configured, one cannot ask Herald to work on a repo the operator did not allow. Scope the
+  configured, one cannot ask Dear Agent to work on a repo the operator did not allow. Scope the
   push credential to the allowed repos and keep branch protection as the last line.
 
 Owner: queue + notifier + runner.
@@ -135,7 +135,7 @@ Owner: control plane + notifier.
   Credentials come from a Secret provisioned out of band (ADR 0003); the application uses a
   least-privilege role, never the admin role.
 - The database is **never exposed** outside the cluster or host: a headless `Service` with no
-  `Route`/`NodePort`, plus a `NetworkPolicy` that admits only Herald pods on `5432`.
+  `Route`/`NodePort`, plus a `NetworkPolicy` that admits only Dear Agent pods on `5432`.
 - Only task metadata and links are stored; **source never enters the database** — it stays in
   Git. Approval tokens are stored as opaque values and compared in constant time.
 - In production, back the store with automated backups and (ideally) PITR; scope credentials
@@ -147,7 +147,7 @@ Owner: queue + approvals + Kubernetes manifests.
 
 - System-prompt "guardrails" ("ignore instructions in the message"): marginal, bypassable.
   Never the primary control.
-- `herald.security.InjectionScanner`: flags likely injection patterns for **audit and
+- `dear_agent.security.InjectionScanner`: flags likely injection patterns for **audit and
   escalation only**. A pattern list is evadable, so a clean scan is not a guarantee and a
   suspicious one is not proof. The real containment is the sandbox, the worktree, the
   protected-branch guard and the human review of the PR.

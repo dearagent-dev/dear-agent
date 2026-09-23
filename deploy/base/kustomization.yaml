@@ -1,6 +1,6 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-# secrets.yaml is intentionally NOT a resource: Herald's Secrets are provisioned out of band
+# secrets.yaml is intentionally NOT a resource: Dear Agent's Secrets are provisioned out of band
 # (oc create secret / ESO / SealedSecrets) and must never be applied from git, least a
 # kustomize apply reset a live credential. See docs/decisions/0003-credentials.md and the
 # header of secrets.yaml for the required keys.
@@ -13,4 +13,4 @@ resources:
 labels:
   - includeSelectors: true
     pairs:
-      app.kubernetes.io/part-of: herald
+      app.kubernetes.io/part-of: dear-agent

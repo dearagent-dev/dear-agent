@@ -2,16 +2,16 @@ from __future__ import annotations
 
 import pytest
 
-from herald.runners.catalog import (
+from dear_agent.runners.catalog import (
     EnvHarnessCatalog,
     HarnessCatalog,
     build_runner_for,
     select_harness,
 )
-from herald.runners.claude import ClaudeCodeRunner
-from herald.runners.codex import CodexRunner
-from herald.runners.opencode import OpenCodeRunner
-from herald.sandbox import NoSandbox
+from dear_agent.runners.claude import ClaudeCodeRunner
+from dear_agent.runners.codex import CodexRunner
+from dear_agent.runners.opencode import OpenCodeRunner
+from dear_agent.sandbox import NoSandbox
 
 
 def test_catalog_satisfies_the_port() -> None:
@@ -30,7 +30,7 @@ def test_catalog_lists_the_first_class_harnesses() -> None:
 def test_catalog_lists_command_only_when_configured() -> None:
     assert "command" not in {i.id for i in EnvHarnessCatalog(env={}).list_harnesses()}
 
-    catalog = EnvHarnessCatalog(env={"HERALD_HARNESS_COMMAND": "my-agent --flag"})
+    catalog = EnvHarnessCatalog(env={"DEAR_AGENT_HARNESS_COMMAND": "my-agent --flag"})
 
     assert "command" in {i.id for i in catalog.list_harnesses()}
 
@@ -79,11 +79,11 @@ def test_the_model_is_passed_only_to_harnesses_that_accept_one() -> None:
 
 
 def test_build_runner_honors_the_binary_override(monkeypatch) -> None:
-    from herald.worker_factory import build_runner
+    from dear_agent.worker_factory import build_runner
 
-    monkeypatch.setenv("HERALD_HARNESS", "opencode")
-    monkeypatch.setenv("HERALD_HARNESS_BINARY", "/opt/oc")
-    monkeypatch.setenv("HERALD_SANDBOX", "none")
+    monkeypatch.setenv("DEAR_AGENT_HARNESS", "opencode")
+    monkeypatch.setenv("DEAR_AGENT_HARNESS_BINARY", "/opt/oc")
+    monkeypatch.setenv("DEAR_AGENT_SANDBOX", "none")
 
     runner = build_runner(None, sandbox=NoSandbox())
 
@@ -92,12 +92,12 @@ def test_build_runner_honors_the_binary_override(monkeypatch) -> None:
 
 
 def test_build_runner_auto_selects_an_available_agent(monkeypatch) -> None:
-    from herald.worker_factory import build_runner
+    from dear_agent.worker_factory import build_runner
 
-    monkeypatch.setenv("HERALD_HARNESS", "auto")
-    monkeypatch.setenv("HERALD_SANDBOX", "none")
+    monkeypatch.setenv("DEAR_AGENT_HARNESS", "auto")
+    monkeypatch.setenv("DEAR_AGENT_SANDBOX", "none")
     monkeypatch.setattr(
-        "herald.runners.catalog.shutil.which",
+        "dear_agent.runners.catalog.shutil.which",
         lambda name: "/usr/bin/opencode" if name == "opencode" else None,
     )
 

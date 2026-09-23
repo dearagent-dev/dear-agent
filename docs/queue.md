@@ -1,13 +1,13 @@
 # Queue and task model
 
-Herald's durable queue is **PostgreSQL**. The transport mailbox is **ingress**: email/JMAP/
+Dear Agent's durable queue is **PostgreSQL**. The transport mailbox is **ingress**: email/JMAP/
 webhook delivers a task request, and everything mutable — state, attempts, lease, approvals,
 the decision log — lives in the database. Git remains the only artifact plane. See
 [ADR 0005](decisions/0005-state-store.md), which supersedes the mailbox-as-queue design of
 [ADR 0002](decisions/0002-deployment-topology.md) in part.
 
-> **Status:** implemented. `PostgresQueue` (`src/herald/queue/postgres.py`) is the queue
-> backend, selected with `HERALD_QUEUE=postgres` + `HERALD_DATABASE_URL`; the JMAP queue
+> **Status:** implemented. `PostgresQueue` (`src/dear_agent/queue/postgres.py`) is the queue
+> backend, selected with `DEAR_AGENT_QUEUE=postgres` + `DEAR_AGENT_DATABASE_URL`; the JMAP queue
 > adapter is retired. The mailbox is ingress only.
 
 ## Task
@@ -40,7 +40,7 @@ TaskSpec  (content — parsed from the message body by the Normalizer)
 ```
 
 The delivered branch, commit and PR url are stored as links on the task when the run
-finishes, so `herald task show` points at the artifact without reading the mailbox. They are
+finishes, so `dear-agent task show` points at the artifact without reading the mailbox. They are
 links only — never source.
 
 ## States
@@ -86,7 +86,7 @@ Claiming a specific task is one guarded `UPDATE` (compare-and-swap): a lost race
 never a double claim, and there is no read-then-write window.
 
 ```sql
-UPDATE herald_task
+UPDATE dear_agent_task
    SET state = 'running', lease_until = now() + $lease, updated_at = now()
  WHERE id = $id AND state = 'queued'
 RETURNING *;
@@ -112,7 +112,7 @@ empty.
 - A reply matching the thread and token (`approve <token>` / `reject <token>`) decides the
   task. The approval's **action** says what "approved" means: a `run` gate releases the task
   to `queued` (how approval-gated proposals start), a `land` gate records `approved`.
-  Locally, `herald approval approve|reject <token>` does the same without email.
+  Locally, `dear-agent approval approve|reject <token>` does the same without email.
 - A used, unknown or expired token is rejected explicitly, and a token for a task that is no
   longer awaiting a decision (not in `action`) is refused without consuming it; an expired
   token triggers a new request, not a silent failure. The approval path never touches `main`:
@@ -140,6 +140,6 @@ empty.
   (`registry.redhat.io/rhel9/postgresql-18`), deployed as a kustomize component
   (`deploy/components/postgresql`).
 - **Local:** an equivalent podman container (`scripts/dev-postgres.sh`).
-- The application selects the backend with `HERALD_QUEUE=memory|postgres` (default `memory`)
-  and connects with a single `HERALD_DATABASE_URL`; Postgres is never exposed outside the
+- The application selects the backend with `DEAR_AGENT_QUEUE=memory|postgres` (default `memory`)
+  and connects with a single `DEAR_AGENT_DATABASE_URL`; Postgres is never exposed outside the
   cluster or host.

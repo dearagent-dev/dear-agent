@@ -20,7 +20,7 @@ But the state that cannot fit an immutable email kept leaking out of the mailbox
   `MemoryApprovalStore`; the code admits "a token cannot live on the immutable email".
 - **Decision records and their labels** live in a JSONL file (`DecisionLog`), and labeling
   rewrites the whole file.
-- **Attempts and lease** are encoded as keywords (`$herald-attempt-N`, `$herald-lease-<epoch>`)
+- **Attempts and lease** are encoded as keywords (`$dear-agent-attempt-N`, `$dear-agent-lease-<epoch>`)
   with read-modify-write and no atomic increment.
 - `Task.id` (the server-assigned JMAP email id) is distinct from `transport_id`
   (`Message-ID`) only because the mailbox is the store.
@@ -31,14 +31,14 @@ neither durable nor visible to another. Any state store must be reachable over t
 and concurrency-safe.
 
 In short: the mailbox is an excellent **ingress** and **audit** medium, and a poor **state**
-medium. Herald has outgrown it as the source of truth.
+medium. Dear Agent has outgrown it as the source of truth.
 
 ## Decision
 
 **The durable queue and the source of truth for task state is PostgreSQL. The mailbox is an
 ingress transport only.**
 
-1. **Email/JMAP/webhook delivers a task request.** On receipt Herald parses it and inserts a
+1. **Email/JMAP/webhook delivers a task request.** On receipt Dear Agent parses it and inserts a
    task row. Dedupe is the transport message id (`Message-ID`) enforced by a **unique index**;
    a redelivered message is a conflict, never a second task (golden rule 4).
 2. **All lifecycle state lives in Postgres:** states, attempts, lease deadline, timestamps,
@@ -54,7 +54,7 @@ ingress transport only.**
    implies a new queue backend.
 6. **Deployment.** PostgreSQL 18 on UBI 9 (`registry.redhat.io/rhel9/postgresql-18`) as a
    `StatefulSet` + `Service` + `PVC` in-cluster (a kustomize component), or an equivalent
-   podman container locally. The application sees a single `HERALD_DATABASE_URL`; the same
+   podman container locally. The application sees a single `DEAR_AGENT_DATABASE_URL`; the same
    schema and migrations run in both. Postgres is never exposed outside the cluster or host.
 
 ## Rationale
@@ -78,8 +78,8 @@ ingress transport only.**
   This is the cost the "no database" stance was avoiding; it is now paid deliberately.
 - **Retention is ours again:** tombstones no longer depend on the email provider's retention,
   so a redelivery cannot resurrect a task even if mail is purged.
-- **Retired:** JMAP `ifInState` claiming and the keyword encoding (`$herald-attempt-N`,
-  `$herald-lease-<epoch>`). `Task` gains a single stable internal id.
+- **Retired:** JMAP `ifInState` claiming and the keyword encoding (`$dear-agent-attempt-N`,
+  `$dear-agent-lease-<epoch>`). `Task` gains a single stable internal id.
 - **Follow-ups:** a one-time backfill of in-flight tasks from the mailbox, a migration tool,
   and runner-Job connectivity/credentials to the database.
 

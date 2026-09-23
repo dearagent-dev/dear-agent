@@ -1,8 +1,8 @@
-# Herald
+# Dear Agent
 
 **An async, email-first inbox that turns messages into Git pull requests produced by coding agents.**
 
-Herald is the **control plane** for background coding work. You send an email (or any
+Dear Agent is the **control plane** for background coding work. You send an email (or any
 async message), an agent works in its own Git worktree, and the result comes back as a
 **pull request you review**. Code never travels over the transport — only task metadata,
 status, and links. **Git is the artifact plane; the mailbox is ingress and PostgreSQL is the
@@ -13,9 +13,9 @@ New here? See [docs/getting-started.md](docs/getting-started.md) for a local run
 > Why: existing coding-agent harnesses (OpenCode, Claude Code, Codex) are excellent at
 > running a task, but the *enqueue* side is unsolved for unattended, offline-first work.
 > Chat transports (Telegram/OpenClaw/Hermes) are synchronous and carry code badly.
-> Herald makes the inbox the entry point and the PR the deliverable.
+> Dear Agent makes the inbox the entry point and the PR the deliverable.
 
-## Why Herald
+## Why Dear Agent
 
 - **Fully asynchronous.** Send a task and disconnect. Work survives restarts, reboots and
   client disconnects; results wait in an inbox.
@@ -25,11 +25,11 @@ New here? See [docs/getting-started.md](docs/getting-started.md) for a local run
 - **Pluggable models.** A hosted frontier model (Anthropic/OpenAI/OpenRouter) or a **local
   model** (llama.cpp / Colibri / vLLM behind an OpenAI-compatible endpoint). Slow local
   models are first-class for overnight batches.
-- **Pluggable harnesses.** OpenCode, Claude Code, Codex, or a custom runner. Herald does
+- **Pluggable harnesses.** OpenCode, Claude Code, Codex, or a custom runner. Dear Agent does
   not replace your harness; it wraps it.
 - **Human-gated.** Approval requests land in an *Action* queue; a reply approves or
   rejects. `main` is never written by an agent.
-- **Creative when idle.** With an empty queue, Herald can propose its own work from recent
+- **Creative when idle.** With an empty queue, Dear Agent can propose its own work from recent
   repository activity and trends (a "night shift"), instead of idling.
 
 ## Architecture (conceptual)
@@ -70,19 +70,19 @@ See [`docs/architecture.md`](docs/architecture.md).
 
 ## CLI
 
-The `herald` CLI is the operator entry point. Queue backend from
-`HERALD_QUEUE=memory|postgres`; transport from `HERALD_BACKEND=memory|jmap`.
+The `dear-agent` CLI is the operator entry point. Queue backend from
+`DEAR_AGENT_QUEUE=memory|postgres`; transport from `DEAR_AGENT_BACKEND=memory|jmap`.
 
 | Command | Purpose |
 |---|---|
-| `herald task ls\|show\|enqueue\|claim\|complete\|fail\|requeue` | inspect and drive tasks |
-| `herald run [<id>] --repo <path>` | execute a task (oldest queued when no id) |
-| `herald sweep` | dispatch queued tasks to runner Jobs (Kubernetes) |
-| `herald listen` | ingest on JMAP push events instead of polling |
-| `herald idle --repo <path>` | propose work from recent activity (approval-gated) |
-| `herald approval pending\|approve\|reject` | handle approval requests |
-| `herald decide` / `herald decision` | decision model and calibration |
-| `herald health` | queue health and per-state counts |
+| `dear-agent task ls\|show\|enqueue\|claim\|complete\|fail\|requeue` | inspect and drive tasks |
+| `dear-agent run [<id>] --repo <path>` | execute a task (oldest queued when no id) |
+| `dear-agent sweep` | dispatch queued tasks to runner Jobs (Kubernetes) |
+| `dear-agent listen` | ingest on JMAP push events instead of polling |
+| `dear-agent idle --repo <path>` | propose work from recent activity (approval-gated) |
+| `dear-agent approval pending\|approve\|reject` | handle approval requests |
+| `dear-agent decide` / `dear-agent decision` | decision model and calibration |
+| `dear-agent health` | queue health and per-state counts |
 
 Local end-to-end quickstart: [docs/getting-started.md](docs/getting-started.md).
 
@@ -93,7 +93,7 @@ Local end-to-end quickstart: [docs/getting-started.md](docs/getting-started.md).
 | **Cloudflare Email Service** | REST/SMTP/Worker binding | Email Routing → Worker `email()` | Optional forwarder; contains no business logic. |
 | **AgentMail.to** | API | webhooks/WebSockets/IMAP | Drop-in "inbox API for agents". |
 | **Fastmail (JMAP)** | JMAP | JMAP Push | **Recommended primary ingress.** Durable state is PostgreSQL. |
-| **Any IMAP/SMTP** | SMTP | IMAP poll | Universal (Gmail, Outlook, Yahoo, iCloud, self-hosted, Proton via Bridge); `HERALD_BACKEND=imap`. |
+| **Any IMAP/SMTP** | SMTP | IMAP poll | Universal (Gmail, Outlook, Yahoo, iCloud, self-hosted, Proton via Bridge); `DEAR_AGENT_BACKEND=imap`. |
 | **forwardemail.net** | API/SMTP/IMAP | webhook/forward | Usable fallback. |
 | **Postmark / Resend / SES** | API | inbound webhooks (some) | Good for outbound notifications. |
 | **IRC** | — | bouncer history | Fun, but not store-and-forward; secondary. |
@@ -102,7 +102,7 @@ Local end-to-end quickstart: [docs/getting-started.md](docs/getting-started.md).
 
 Hosted (Anthropic, OpenAI, OpenRouter) or **local** via any OpenAI-compatible endpoint
 (llama.cpp `llama-server`, Colibri `coli serve`, vLLM). A local, slow model is a valid
-target: Herald's queue tolerates hours-long tasks.
+target: Dear Agent's queue tolerates hours-long tasks.
 
 ## Status
 
@@ -123,7 +123,7 @@ MIT — see [`LICENSE`](LICENSE).
 
 ## Prior art
 
-Herald learns from `ElectricJack/agent-queue` (durable task graph, review gates, rate-limit
+Dear Agent learns from `ElectricJack/agent-queue` (durable task graph, review gates, rate-limit
 recovery), `voundbrand/overnight` (a review-driven PR loop that never merges to `main`) and
 `a20185/OvernightAgent` (resumable, worktree-isolated runs). It shares their core pieces —
 a durable task graph, gates, resumability, one reviewable PR per task — and adds:
@@ -136,5 +136,5 @@ a durable task graph, gates, resumability, one reviewable PR per task — and ad
 - **Git-first, human-gated landing** as a hard invariant: every result is a draft PR the
   human lands; agents never write a protected branch.
 
-The shared pieces are table stakes; Herald's bet is transport-agnostic enqueue plus a
+The shared pieces are table stakes; Dear Agent's bet is transport-agnostic enqueue plus a
 decision layer, with all durable state outside the transport.

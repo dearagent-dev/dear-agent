@@ -7,8 +7,8 @@ from typing import Any
 
 import pytest
 
-from herald.dispatch import kubernetes_launcher
-from herald.kube import KubernetesClient, KubernetesError
+from dear_agent.dispatch import kubernetes_launcher
+from dear_agent.kube import KubernetesClient, KubernetesError
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -26,7 +26,7 @@ class _Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         length = int(self.headers.get("Content-Length", "0"))
         self.server.received = json.loads(self.rfile.read(length))  # type: ignore[attr-defined]
-        body = json.dumps({"metadata": {"name": "herald-task-x"}}).encode()
+        body = json.dumps({"metadata": {"name": "dear-agent-task-x"}}).encode()
         self.send_response(201)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
@@ -49,44 +49,44 @@ def api() -> Any:
 
 def client(api: Any) -> KubernetesClient:
     return KubernetesClient(
-        namespace="herald",
+        namespace="dear-agent",
         token="sa-token",
         host=f"http://127.0.0.1:{api.server_address[1]}",
     )
 
 
 def test_get_configmap_returns_data(api: Any) -> None:
-    assert client(api).get_configmap("herald-runner-template") == {"job.yaml": "kind: Job\n"}
+    assert client(api).get_configmap("dear-agent-runner-template") == {"job.yaml": "kind: Job\n"}
 
 
 def test_create_job_posts_the_manifest(api: Any) -> None:
     result = client(api).create_job({"kind": "Job"})
 
-    assert result["metadata"]["name"] == "herald-task-x"
+    assert result["metadata"]["name"] == "dear-agent-task-x"
     assert api.received == {"kind": "Job"}
 
 
 def test_from_cluster_requires_a_token(tmp_path: Any) -> None:
     with pytest.raises(KubernetesError):
-        KubernetesClient.from_cluster("herald", sa_dir=tmp_path)
+        KubernetesClient.from_cluster("dear-agent", sa_dir=tmp_path)
 
 
 def test_from_cluster_prefers_the_pod_namespace(tmp_path: Any) -> None:
     (tmp_path / "token").write_text("abc\n")
-    (tmp_path / "namespace").write_text("herald-validate\n")
+    (tmp_path / "namespace").write_text("dear-agent-validate\n")
 
-    built = KubernetesClient.from_cluster("herald", sa_dir=tmp_path)
+    built = KubernetesClient.from_cluster("dear-agent", sa_dir=tmp_path)
 
     assert built.token == "abc"
-    assert built.namespace == "herald-validate"
+    assert built.namespace == "dear-agent-validate"
 
 
 def test_from_cluster_uses_the_argument_when_there_is_no_namespace_file(tmp_path: Any) -> None:
     (tmp_path / "token").write_text("abc\n")
 
-    built = KubernetesClient.from_cluster("herald", sa_dir=tmp_path)
+    built = KubernetesClient.from_cluster("dear-agent", sa_dir=tmp_path)
 
-    assert built.namespace == "herald"
+    assert built.namespace == "dear-agent"
 
 
 def test_kubernetes_launcher_delegates_to_create_job() -> None:
@@ -107,7 +107,7 @@ def test_create_job_treats_already_exists_as_success() -> None:
 
     class Once409(KubernetesClient):
         def __init__(self) -> None:
-            super().__init__(namespace="herald", token="t", host="http://127.0.0.1:1")
+            super().__init__(namespace="dear-agent", token="t", host="http://127.0.0.1:1")
             self.first = True
 
         def _request(self, method: str, path: str, **_: Any) -> dict:
@@ -115,9 +115,9 @@ def test_create_job_treats_already_exists_as_success() -> None:
             if method == "POST" and self.first:
                 self.first = False
                 raise KubernetesError("POST /jobs failed: 409 AlreadyExists")
-            return {"metadata": {"name": "herald-task-x"}}
+            return {"metadata": {"name": "dear-agent-task-x"}}
 
-    result = Once409().create_job({"metadata": {"name": "herald-task-x"}})
+    result = Once409().create_job({"metadata": {"name": "dear-agent-task-x"}})
 
-    assert result["metadata"]["name"] == "herald-task-x"
+    assert result["metadata"]["name"] == "dear-agent-task-x"
     assert calls == ["POST", "GET"]

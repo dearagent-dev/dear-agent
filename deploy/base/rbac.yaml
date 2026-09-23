@@ -4,11 +4,11 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: herald-dispatcher
+  name: dear-agent-dispatcher
 rules:
   - apiGroups: [""]
     resources: ["configmaps"]
-    resourceNames: ["herald-runner-template"]
+    resourceNames: ["dear-agent-runner-template"]
     verbs: ["get"]
   - apiGroups: ["batch"]
     resources: ["jobs"]
@@ -17,11 +17,11 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: herald-dispatcher
+  name: dear-agent-dispatcher
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: herald-dispatcher
+  name: dear-agent-dispatcher
 subjects:
   - kind: ServiceAccount
-    name: herald-control-plane
+    name: dear-agent-control-plane

@@ -8,21 +8,21 @@ from email.utils import make_msgid
 
 import pytest
 
-from herald.auth import EmailAuthGate
-from herald.imap.client import ImapClient
-from herald.smtp.client import SmtpClient
-from herald.transports.base import OutboundMessage
-from herald.transports.imap import ImapSmtpTransport
+from dear_agent.auth import EmailAuthGate
+from dear_agent.imap.client import ImapClient
+from dear_agent.smtp.client import SmtpClient
+from dear_agent.transports.base import OutboundMessage
+from dear_agent.transports.imap import ImapSmtpTransport
 
-HOST = os.environ.get("HERALD_TEST_IMAP_HOST")
-pytestmark = pytest.mark.skipif(not HOST, reason="HERALD_TEST_IMAP_HOST is not set")
+HOST = os.environ.get("DEAR_AGENT_TEST_IMAP_HOST")
+pytestmark = pytest.mark.skipif(not HOST, reason="DEAR_AGENT_TEST_IMAP_HOST is not set")
 
-IMAP_PORT = int(os.environ.get("HERALD_TEST_IMAP_PORT", "3143"))
-SMTP_PORT = int(os.environ.get("HERALD_TEST_SMTP_PORT", "3025"))
-USER = os.environ.get("HERALD_TEST_IMAP_USER", "green")
-PASSWORD = os.environ.get("HERALD_TEST_IMAP_PASSWORD", "pwd")
-ADDRESS = os.environ.get("HERALD_TEST_IMAP_TO", "green@example.com")
-USE_SSL = os.environ.get("HERALD_TEST_IMAP_SSL", "0") == "1"
+IMAP_PORT = int(os.environ.get("DEAR_AGENT_TEST_IMAP_PORT", "3143"))
+SMTP_PORT = int(os.environ.get("DEAR_AGENT_TEST_SMTP_PORT", "3025"))
+USER = os.environ.get("DEAR_AGENT_TEST_IMAP_USER", "green")
+PASSWORD = os.environ.get("DEAR_AGENT_TEST_IMAP_PASSWORD", "pwd")
+ADDRESS = os.environ.get("DEAR_AGENT_TEST_IMAP_TO", "green@example.com")
+USE_SSL = os.environ.get("DEAR_AGENT_TEST_IMAP_SSL", "0") == "1"
 
 AUTH_RESULTS = "mx.test; dkim=pass header.d=gmail.com; dmarc=pass header.from=gmail.com"
 
@@ -47,7 +47,7 @@ def transport() -> ImapSmtpTransport:
         host=HOST, port=SMTP_PORT, user=USER, password=PASSWORD, starttls=False, ssl=False
     )
     return ImapSmtpTransport(
-        imap=imap, smtp=smtp, mailbox="INBOX", done_mailbox="Herald-Done", sender=ADDRESS
+        imap=imap, smtp=smtp, mailbox="INBOX", done_mailbox="Dear-Agent-Done", sender=ADDRESS
     )
 
 
@@ -69,7 +69,7 @@ def test_receive_the_dmarc_gate_and_ack(transport: ImapSmtpTransport) -> None:
     message_id = make_msgid()
     raw["Message-ID"] = message_id
     raw["Authentication-Results"] = AUTH_RESULTS
-    raw.set_content("repo: https://github.com/rarguello/herald-lab-python\n\nfix the tests")
+    raw.set_content("repo: https://github.com/rarguello/dear-agent-lab-python\n\nfix the tests")
     transport.smtp.send(raw.as_bytes(), sender="ricardo.arguello@gmail.com", recipients=[ADDRESS])
 
     messages = _poll_until(transport, lambda message: message.transport_id == message_id)

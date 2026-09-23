@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from herald.executor import ExecutedTask
-from herald.queue.memory import MemoryQueue
-from herald.queue.models import Task, TaskSpec
-from herald.runners.worktree import RunResult
-from herald.worker import TaskWorker, TaskWorkerError
+from dear_agent.executor import ExecutedTask
+from dear_agent.queue.memory import MemoryQueue
+from dear_agent.queue.models import Task, TaskSpec
+from dear_agent.runners.worktree import RunResult
+from dear_agent.worker import TaskWorker, TaskWorkerError
 
 
 class CapturingExecutor:
@@ -29,10 +29,10 @@ class CapturingExecutor:
         self.calls.append((task.id, spec, recipient))
         return ExecutedTask(
             task_id=task.id,
-            branch="herald/add-healthz",
+            branch="dear-agent/add-healthz",
             commit="abc",
             pr_url="https://example.com/pr/1",
-            run=RunResult(exit_code=0, branch="herald/add-healthz"),
+            run=RunResult(exit_code=0, branch="dear-agent/add-healthz"),
         )
 
 
@@ -59,7 +59,7 @@ def test_worker_resolves_and_executes() -> None:
 def test_worker_run_next_claims_the_oldest_without_double_claiming() -> None:
     from datetime import UTC, datetime, timedelta
 
-    from herald.queue.models import TaskState
+    from dear_agent.queue.models import TaskState
 
     class Clock:
         def __init__(self) -> None:
@@ -114,10 +114,10 @@ def test_worker_rejects_an_unknown_task() -> None:
 
 
 def test_build_transport_honors_the_backend_argument(monkeypatch) -> None:
-    from herald.transports.memory import MemoryTransport
-    from herald.worker_factory import build_transport
+    from dear_agent.transports.memory import MemoryTransport
+    from dear_agent.worker_factory import build_transport
 
-    monkeypatch.setenv("HERALD_BACKEND", "memory")
+    monkeypatch.setenv("DEAR_AGENT_BACKEND", "memory")
 
     assert isinstance(build_transport("memory"), MemoryTransport)
 
@@ -125,14 +125,14 @@ def test_build_transport_honors_the_backend_argument(monkeypatch) -> None:
 def test_build_transport_prefers_the_backend_argument_over_env(monkeypatch) -> None:
     from unittest import mock
 
-    from herald.worker_factory import build_transport
+    from dear_agent.worker_factory import build_transport
 
-    monkeypatch.setenv("HERALD_BACKEND", "memory")
+    monkeypatch.setenv("DEAR_AGENT_BACKEND", "memory")
     monkeypatch.setenv("FASTMAIL_API_TOKEN", "token")
 
     with (
-        mock.patch("herald.jmap.client.JmapClient.connect"),
-        mock.patch("herald.jmap.client.JmapClient.__init__", return_value=None),
+        mock.patch("dear_agent.jmap.client.JmapClient.connect"),
+        mock.patch("dear_agent.jmap.client.JmapClient.__init__", return_value=None),
     ):
         transport = build_transport("jmap")
 
@@ -140,11 +140,11 @@ def test_build_transport_prefers_the_backend_argument_over_env(monkeypatch) -> N
 
 
 def test_build_runner_selects_the_command_harness(monkeypatch) -> None:
-    from herald.runners.command import CommandRunner
-    from herald.worker_factory import build_runner
+    from dear_agent.runners.command import CommandRunner
+    from dear_agent.worker_factory import build_runner
 
-    monkeypatch.setenv("HERALD_HARNESS", "command")
-    monkeypatch.setenv("HERALD_HARNESS_COMMAND", "my-agent --flag")
+    monkeypatch.setenv("DEAR_AGENT_HARNESS", "command")
+    monkeypatch.setenv("DEAR_AGENT_HARNESS_COMMAND", "my-agent --flag")
 
     runner = build_runner("model", sandbox=object())  # type: ignore[arg-type]
 
@@ -153,49 +153,49 @@ def test_build_runner_selects_the_command_harness(monkeypatch) -> None:
 
 
 def test_build_runner_command_requires_the_command(monkeypatch) -> None:
-    from herald.worker_factory import build_runner
+    from dear_agent.worker_factory import build_runner
 
-    monkeypatch.setenv("HERALD_HARNESS", "command")
-    monkeypatch.delenv("HERALD_HARNESS_COMMAND", raising=False)
+    monkeypatch.setenv("DEAR_AGENT_HARNESS", "command")
+    monkeypatch.delenv("DEAR_AGENT_HARNESS_COMMAND", raising=False)
 
     with __import__("pytest").raises(RuntimeError):
         build_runner(None, sandbox=object())  # type: ignore[arg-type]
 
 
 def test_build_runner_selects_claude_and_codex(monkeypatch) -> None:
-    from herald.runners.claude import ClaudeCodeRunner
-    from herald.runners.codex import CodexRunner
-    from herald.worker_factory import build_runner
+    from dear_agent.runners.claude import ClaudeCodeRunner
+    from dear_agent.runners.codex import CodexRunner
+    from dear_agent.worker_factory import build_runner
 
-    monkeypatch.setenv("HERALD_HARNESS", "claude")
+    monkeypatch.setenv("DEAR_AGENT_HARNESS", "claude")
     assert isinstance(build_runner(None, sandbox=object()), ClaudeCodeRunner)  # type: ignore[arg-type]
 
-    monkeypatch.setenv("HERALD_HARNESS", "codex")
+    monkeypatch.setenv("DEAR_AGENT_HARNESS", "codex")
     assert isinstance(build_runner(None, sandbox=object()), CodexRunner)  # type: ignore[arg-type]
 
 
 def test_build_runner_defaults_to_opencode(monkeypatch) -> None:
-    from herald.runners.opencode import OpenCodeRunner
-    from herald.worker_factory import build_runner
+    from dear_agent.runners.opencode import OpenCodeRunner
+    from dear_agent.worker_factory import build_runner
 
-    monkeypatch.delenv("HERALD_HARNESS", raising=False)
+    monkeypatch.delenv("DEAR_AGENT_HARNESS", raising=False)
     assert isinstance(build_runner(None, sandbox=object()), OpenCodeRunner)  # type: ignore[arg-type]
 
 
 def test_build_routing_runner_is_none_without_config(monkeypatch) -> None:
-    from herald.worker_factory import build_routing_runner
+    from dear_agent.worker_factory import build_routing_runner
 
-    monkeypatch.delenv("HERALD_HARNESSES", raising=False)
+    monkeypatch.delenv("DEAR_AGENT_HARNESSES", raising=False)
     assert build_routing_runner(sandbox=object()) is None  # type: ignore[arg-type]
 
 
 def test_build_routing_runner_maps_classes(monkeypatch) -> None:
-    from herald.runners.routing import RoutingRunner
-    from herald.worker_factory import build_routing_runner
+    from dear_agent.runners.routing import RoutingRunner
+    from dear_agent.worker_factory import build_routing_runner
 
-    monkeypatch.setenv("HERALD_HARNESSES", "local:opencode,hosted:command")
-    monkeypatch.setenv("HERALD_HARNESS_COMMAND", "my-agent")
-    monkeypatch.setenv("HERALD_DECIDER", "rules")
+    monkeypatch.setenv("DEAR_AGENT_HARNESSES", "local:opencode,hosted:command")
+    monkeypatch.setenv("DEAR_AGENT_HARNESS_COMMAND", "my-agent")
+    monkeypatch.setenv("DEAR_AGENT_DECIDER", "rules")
 
     runner = build_routing_runner(sandbox=object())  # type: ignore[arg-type]
 
@@ -205,8 +205,8 @@ def test_build_routing_runner_maps_classes(monkeypatch) -> None:
 
 
 def test_worker_fails_a_task_in_a_disabled_project() -> None:
-    from herald.policy import MemoryPolicyStore, ProjectPolicy
-    from herald.queue.models import TaskState
+    from dear_agent.policy import MemoryPolicyStore, ProjectPolicy
+    from dear_agent.queue.models import TaskState
 
     queue = MemoryQueue()
     queue.enqueue(
@@ -233,15 +233,15 @@ def test_worker_fails_a_task_in_a_disabled_project() -> None:
 
 
 def test_worker_applies_the_project_verify_allowlist() -> None:
-    from herald.policy import MemoryPolicyStore, ProjectPolicy
-    from herald.verify import CommandVerifier
+    from dear_agent.policy import MemoryPolicyStore, ProjectPolicy
+    from dear_agent.verify import CommandVerifier
 
     queue = MemoryQueue()
     queue.enqueue(
         Task(id="e1", transport_id="<e1@x>", spec=TaskSpec(repo_url="https://github.com/acme/w"))
     )
     executor = CapturingExecutor()
-    base = CommandVerifier.from_env({"HERALD_VERIFY_ALLOW": "pytest"})
+    base = CommandVerifier.from_env({"DEAR_AGENT_VERIFY_ALLOW": "pytest"})
     worker = TaskWorker(
         queue=queue,
         executor=executor,  # type: ignore[arg-type]
@@ -261,7 +261,7 @@ def test_worker_applies_the_project_verify_allowlist() -> None:
 
 
 def test_worker_applies_the_project_base_branch_default() -> None:
-    from herald.policy import MemoryPolicyStore, ProjectPolicy
+    from dear_agent.policy import MemoryPolicyStore, ProjectPolicy
 
     queue = MemoryQueue()
     queue.enqueue(
@@ -284,8 +284,8 @@ def test_worker_applies_the_project_base_branch_default() -> None:
 
 
 def test_worker_stops_when_the_error_budget_is_exhausted() -> None:
-    from herald.events import ErrorBudget, MemoryEventLog
-    from herald.queue.models import TaskState
+    from dear_agent.events import ErrorBudget, MemoryEventLog
+    from dear_agent.queue.models import TaskState
 
     log = MemoryEventLog()
     log.record("f1", "task.failed")
@@ -310,7 +310,7 @@ def test_worker_stops_when_the_error_budget_is_exhausted() -> None:
 def test_worker_fails_a_task_after_too_many_attempts() -> None:
     from datetime import UTC, datetime, timedelta
 
-    from herald.queue.models import TaskState
+    from dear_agent.queue.models import TaskState
 
     class Clock:
         def __init__(self) -> None:
@@ -343,7 +343,7 @@ def test_worker_fails_a_task_after_too_many_attempts() -> None:
 
 
 def test_worker_refuses_a_blocked_task() -> None:
-    from herald.queue.models import TaskState
+    from dear_agent.queue.models import TaskState
 
     queue = MemoryQueue()
     queue.enqueue(Task(id="d1", transport_id="<d1@x>"))
@@ -370,7 +370,7 @@ def test_worker_refuses_a_blocked_task() -> None:
 def test_run_next_skips_a_blocked_task_and_runs_the_ready_one() -> None:
     from datetime import timedelta
 
-    from herald.queue.models import TaskState
+    from dear_agent.queue.models import TaskState
 
     queue = MemoryQueue()
     dependency = queue.enqueue(Task(id="d1", transport_id="<d1@x>"))
@@ -396,7 +396,7 @@ def test_run_next_skips_a_blocked_task_and_runs_the_ready_one() -> None:
 def test_run_next_fails_a_task_whose_dependency_failed() -> None:
     from datetime import timedelta
 
-    from herald.queue.models import TaskState
+    from dear_agent.queue.models import TaskState
 
     queue = MemoryQueue()
     dependency = queue.enqueue(Task(id="d1", transport_id="<d1@x>"))
@@ -420,7 +420,7 @@ def test_run_next_fails_a_task_whose_dependency_failed() -> None:
 
 
 def test_spec_resolver_prefers_the_persisted_spec() -> None:
-    from herald.worker_factory import WorktreeSpecResolver
+    from dear_agent.worker_factory import WorktreeSpecResolver
 
     class ExplodingTransport:
         def poll(self):

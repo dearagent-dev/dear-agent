@@ -19,13 +19,13 @@ jobs:
       postgres:
         image: postgres:18
         env:
-          POSTGRES_USER: herald
-          POSTGRES_PASSWORD: herald
-          POSTGRES_DB: herald
+          POSTGRES_USER: dear-agent
+          POSTGRES_PASSWORD: dear-agent
+          POSTGRES_DB: dear-agent
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U herald"
+          --health-cmd "pg_isready -U dear-agent"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -40,14 +40,14 @@ jobs:
           - 3025:3025
           - 3143:3143
     env:
-      HERALD_TEST_DATABASE_URL: postgresql://herald:herald@localhost:5432/herald
-      HERALD_TEST_IMAP_HOST: 127.0.0.1
-      HERALD_TEST_IMAP_PORT: "3143"
-      HERALD_TEST_SMTP_PORT: "3025"
-      HERALD_TEST_IMAP_USER: green
-      HERALD_TEST_IMAP_PASSWORD: pwd
-      HERALD_TEST_IMAP_TO: green@example.com
-      HERALD_TEST_IMAP_SSL: "0"
+      DEAR_AGENT_TEST_DATABASE_URL: postgresql://dear-agent:dear-agent@localhost:5432/dear-agent
+      DEAR_AGENT_TEST_IMAP_HOST: 127.0.0.1
+      DEAR_AGENT_TEST_IMAP_PORT: "3143"
+      DEAR_AGENT_TEST_SMTP_PORT: "3025"
+      DEAR_AGENT_TEST_IMAP_USER: green
+      DEAR_AGENT_TEST_IMAP_PASSWORD: pwd
+      DEAR_AGENT_TEST_IMAP_TO: green@example.com
+      DEAR_AGENT_TEST_IMAP_SSL: "0"
     steps:
       - uses: actions/checkout@v7
 
@@ -76,9 +76,9 @@ jobs:
       - name: Build the container image
         uses: redhat-actions/buildah-build@v3
         with:
-          image: herald
+          image: dear-agent
           tags: ci
           containerfiles: ./Containerfile
 
       - name: Smoke-check the image
-        run: podman run --rm herald:ci herald --help
+        run: podman run --rm dear-agent:ci dear-agent --help

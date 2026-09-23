@@ -2,34 +2,34 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: herald-config
+  name: dear-agent-config
 data:
-  HERALD_QUEUE: "postgres"
-  HERALD_BACKEND: "jmap"
-  HERALD_MAILBOX: "Herald"
-  HERALD_WORKTREES_ROOT: "/work"
-  HERALD_MODEL: "local:model"
-  HERALD_GIT_HOST: "github.com"
-  HERALD_RUNNER_TEMPLATE_CONFIGMAP: "herald-runner-template"
-  HERALD_MAX_BODY_BYTES: "1048576"
-  HERALD_HTTP_TIMEOUT: "15"
+  DEAR_AGENT_QUEUE: "postgres"
+  DEAR_AGENT_BACKEND: "jmap"
+  DEAR_AGENT_MAILBOX: "Dear Agent"
+  DEAR_AGENT_WORKTREES_ROOT: "/work"
+  DEAR_AGENT_MODEL: "local:model"
+  DEAR_AGENT_GIT_HOST: "github.com"
+  DEAR_AGENT_RUNNER_TEMPLATE_CONFIGMAP: "dear-agent-runner-template"
+  DEAR_AGENT_MAX_BODY_BYTES: "1048576"
+  DEAR_AGENT_HTTP_TIMEOUT: "15"
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: herald-control-plane
+  name: dear-agent-control-plane
 automountServiceAccountToken: false
 ---
 # The runner only needs to read repositories and call the model.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: herald-runner
+  name: dear-agent-runner
 automountServiceAccountToken: false
 ---
 # The push/PR step needs write access, so it gets its own identity.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: herald-publisher
+  name: dear-agent-publisher
 automountServiceAccountToken: false
