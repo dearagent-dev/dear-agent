@@ -279,7 +279,7 @@ def add_idle_commands(
 
 
 def _handle_idle(args: argparse.Namespace, context: CliContext) -> int:
-    import uuid
+    import hashlib
     from pathlib import Path
 
     from herald.idle.loop import IdleBudget, IdleLoop
@@ -288,7 +288,11 @@ def _handle_idle(args: argparse.Namespace, context: CliContext) -> int:
     repo_path = Path(args.repo)
 
     def submit(proposal) -> str | None:
-        transport_id = f"<idle-{uuid.uuid4().hex}@herald.local>"
+        # Deterministic id: the same proposal must not be enqueued twice across ticks.
+        digest = hashlib.sha256(
+            f"{proposal.repo_path}|{proposal.title}|{proposal.instructions}".encode()
+        ).hexdigest()[:32]
+        transport_id = f"<idle-{digest}@herald.local>"
         task = Task(
             id=transport_id,
             transport_id=transport_id,

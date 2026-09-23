@@ -314,7 +314,7 @@ def test_requeue_returns_a_failed_task_to_queued() -> None:
     assert queue.get("e1").state is TaskState.QUEUED
 
 
-def test_idle_proposes_a_task_from_a_todo(tmp_path) -> None:
+def _todo_repo(tmp_path):
     import subprocess
 
     repo = tmp_path / "repo"
@@ -327,8 +327,13 @@ def test_idle_proposes_a_task_from_a_todo(tmp_path) -> None:
         cwd=repo,
         check=True,
     )
+    return repo
 
+
+def test_idle_proposes_a_task_from_a_todo(tmp_path) -> None:
+    repo = _todo_repo(tmp_path)
     queue = MemoryQueue()
+
     code, output = run(["idle", "--repo", str(repo)], queue)
 
     assert code == 0
@@ -337,6 +342,20 @@ def test_idle_proposes_a_task_from_a_todo(tmp_path) -> None:
     assert len(tasks) == 1
     assert tasks[0].spec is not None
     assert "app.py" in tasks[0].spec.instructions
+
+
+def test_idle_does_not_re_propose_the_same_work(tmp_path) -> None:
+    repo = _todo_repo(tmp_path)
+    queue = MemoryQueue()
+    run(["idle", "--repo", str(repo)], queue)
+    # Free the queue so a second tick would propose again if the id were random.
+    queue.claim(queue.list(TaskState.QUEUED)[0], lease=timedelta(hours=1))
+
+    code, output = run(["idle", "--repo", str(repo)], queue)
+
+    assert code == 0
+    assert "proposed 0" in output
+    assert len(queue.list(TaskState.RUNNING)) == 1
 
 
 def test_enqueue_is_idempotent_on_transport_id() -> None:
