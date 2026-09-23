@@ -59,7 +59,9 @@ class RuleDecider:
     def decide(self, state: str, questions: dict[str, Question]) -> Decision:
         answers: dict[str, Answer] = {}
         for question_id, question in questions.items():
-            if question_id == "model":
+            # "harness" and "model" ask the same shape (cheap/light vs strong), so the rules
+            # answer them identically; the caller maps the answer to its own targets.
+            if question_id in {"model", "harness"}:
                 answers[question_id] = self._route(state)
             elif question_id == "needs_human":
                 answers[question_id] = self._needs_human(state)

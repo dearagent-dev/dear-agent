@@ -293,3 +293,13 @@ def test_build_decider_openrouter_uses_the_selection_policy(monkeypatch) -> None
 
     assert isinstance(decider, FallbackDecider)
     assert decider.primary.model == "free/x:free"
+
+
+def test_rule_decider_answers_the_harness_question_like_model() -> None:
+    from herald.runners.routing import HARNESS_QUESTION
+
+    decision = RuleDecider().decide(
+        "audit the HMAC auth for timing side-channels", {"harness": HARNESS_QUESTION}
+    )
+
+    assert decision.choice("harness") == "hosted"
