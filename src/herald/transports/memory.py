@@ -27,6 +27,10 @@ class MemoryTransport:
     def send(self, message: OutboundMessage) -> None:
         self.outbox.append(message)
 
+    def ack(self, messages: list[RawMessage]) -> None:
+        # ``poll`` already drains pending messages, so there is nothing to mark.
+        return
+
     @property
     def pending_count(self) -> int:
         return len(self._pending)

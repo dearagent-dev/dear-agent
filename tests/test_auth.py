@@ -12,6 +12,7 @@ from herald.auth import (
     MissingSignatureError,
     RateLimitedError,
     RateLimiter,
+    SenderAllowlist,
     UnauthorizedSenderError,
     sign,
 )
@@ -105,6 +106,48 @@ def test_rate_limit_is_per_sender() -> None:
     limiter.check(SENDER)
 
     limiter.check("other@example.com")
+
+
+def test_sender_allowlist_admits_a_listed_sender() -> None:
+    SenderAllowlist(frozenset({SENDER})).admit(body=BODY, headers={}, sender=SENDER)
+
+
+def test_sender_allowlist_rejects_an_unlisted_sender() -> None:
+    allow = SenderAllowlist(frozenset({SENDER}))
+
+    with pytest.raises(UnauthorizedSenderError):
+        allow.admit(body=BODY, headers={}, sender="stranger@example.com")
+
+
+def test_sender_allowlist_is_case_insensitive() -> None:
+    SenderAllowlist(frozenset({"dev@example.com"})).admit(
+        body=BODY, headers={}, sender="DEV@Example.com"
+    )
+
+
+def test_sender_allowlist_supports_domains() -> None:
+    allow = SenderAllowlist(frozenset({"@example.com"}))
+
+    allow.admit(body=BODY, headers={}, sender="anyone@example.com")
+    with pytest.raises(UnauthorizedSenderError):
+        allow.admit(body=BODY, headers={}, sender="anyone@other.com")
+
+
+def test_sender_allowlist_from_env_parses_and_ignores_blanks() -> None:
+    allow = SenderAllowlist.from_env(" A@x.com , @y.com ;; ")
+
+    assert allow is not None
+    assert allow.senders == frozenset({"a@x.com", "@y.com"})
+
+
+def test_sender_allowlist_from_env_is_none_when_unset_or_empty() -> None:
+    assert SenderAllowlist.from_env(None) is None
+    assert SenderAllowlist.from_env("  ") is None
+
+
+def test_empty_sender_allowlist_fails_closed() -> None:
+    with pytest.raises(UnauthorizedSenderError):
+        SenderAllowlist(frozenset()).admit(body=BODY, headers={}, sender=SENDER)
 
 
 def test_gate_runs_auth_before_rate_limit() -> None:

@@ -112,6 +112,57 @@ def test_message_without_repo_is_rejected() -> None:
     assert "repository" in transport.outbox[0].body
 
 
+def test_sender_allowlist_denies_an_unlisted_sender() -> None:
+    from herald.auth import SenderAllowlist
+
+    queue = MemoryQueue()
+    transport = MemoryTransport()
+    plane = ControlPlane(
+        transport=transport,
+        queue=queue,
+        notifier=Notifier(transport),
+        gate=SenderAllowlist(frozenset({"boss@example.com"})),
+    )
+
+    report = plane.ingest([make_message()], recipient="ops@example.com")
+
+    assert report.denied == ["<m1@x>"]
+    assert queue.list(TaskState.QUEUED) == []
+    assert transport.outbox == []  # no backscatter to an unauthorized sender
+
+
+def test_sender_allowlist_admits_a_listed_sender() -> None:
+    from herald.auth import SenderAllowlist
+
+    queue = MemoryQueue()
+    plane = ControlPlane(
+        transport=MemoryTransport(),
+        queue=queue,
+        gate=SenderAllowlist(frozenset({SENDER})),
+    )
+
+    report = plane.ingest([make_message()])
+
+    assert report.accepted == ["<m1@x>"]
+
+
+def test_ingest_acknowledges_the_messages_it_handled() -> None:
+    class AckingTransport(MemoryTransport):
+        def __init__(self) -> None:
+            super().__init__()
+            self.acked: list[RawMessage] = []
+
+        def ack(self, messages: list[RawMessage]) -> None:
+            self.acked.extend(messages)
+
+    transport = AckingTransport()
+    plane = ControlPlane(transport=transport, queue=MemoryQueue())
+
+    plane.ingest([make_message(headers={})])
+
+    assert [message.transport_id for message in transport.acked] == ["<m1@x>"]
+
+
 def test_no_gate_means_no_auth() -> None:
     queue = MemoryQueue()
     plane = ControlPlane(transport=MemoryTransport(), queue=queue)

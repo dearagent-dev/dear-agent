@@ -27,7 +27,15 @@ Defense in depth, ordered from highest leverage. Each layer maps to a component.
   signature cannot be replayed under another `From`.
 - Allowlist authorized senders (`InboundAuthorizer.allowlist`). The routing address alone
   never authorizes.
-- Unsigned or unauthorized mail is **quarantined and never normalized** into a task.
+- Unsigned or unauthorized mail is **quarantined and never normalized** into a task, and
+  denied mail is dropped without a reply (no backscatter).
+- The **email path** (`herald listen`) cannot carry the HMAC header, so it uses
+  `herald.auth.SenderAllowlist` (`HERALD_ALLOWED_SENDERS`, exact addresses or `@domain`).
+  An empty list rejects everyone (fail closed). Note that `From` is spoofable, so this is a
+  first line, not a boundary: harden it with DMARC/SPF/DKIM verification of the
+  `Authentication-Results` header or a shared secret in the body, and rely on the approval
+  gate for high-risk work. Handled messages are filed into `Herald-Done` so they are not
+  reprocessed.
 - Rate-limit per sender (`herald.auth.RateLimiter`, sliding window): a burst of mail must
   not become a burst of agent runs.
 - `InboundGate` composes authorization and rate limiting, and runs before the Normalizer.

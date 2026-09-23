@@ -16,7 +16,11 @@ class FakeMailClient:
     def __init__(self) -> None:
         self.records: dict[str, EmailRecord] = {}
         self.sent: list[dict[str, object]] = []
-        self._mailboxes = {"Herald": "mbx:herald", "Sent": "mbx:sent"}
+        self._mailboxes = {
+            "Herald": "mbx:herald",
+            "Herald-Done": "mbx:done",
+            "Sent": "mbx:sent",
+        }
 
     def add(self, record: EmailRecord) -> EmailRecord:
         self.records[record.id] = record
@@ -39,7 +43,20 @@ class FakeMailClient:
         return "S1", [self.records[email_id] for email_id in ids if email_id in self.records]
 
     def get_or_create_mailbox(self, name: str) -> str:
+        if name not in self._mailboxes:
+            self._mailboxes[name] = f"mbx:{name.lower()}"
         return self._mailboxes[name]
+
+    def update(self, email_id: str, patch: dict, *, if_in_state: str) -> str:
+        record = self.records[email_id]
+        for key, value in patch.items():
+            kind, _, name = key.partition("/")
+            target = record.mailbox_ids if kind == "mailboxIds" else record.keywords
+            if value:
+                target.add(name)
+            else:
+                target.discard(name)
+        return "S2"
 
     def submit(
         self,
@@ -121,6 +138,18 @@ def test_poll_reports_attachments_so_the_normalizer_can_reject() -> None:
     polled = JmapTransport(client).poll()
 
     assert polled[0].has_attachments is True
+
+
+def test_ack_files_processed_messages_so_they_are_not_polled_again() -> None:
+    client = FakeMailClient()
+    client.add(record("e1"))
+    transport = JmapTransport(client)
+
+    messages = transport.poll()
+    transport.ack(messages)
+
+    assert client.records["e1"].mailbox_ids == {"mbx:done"}
+    assert transport.poll() == []
 
 
 def test_send_submits_threaded_mail() -> None:
