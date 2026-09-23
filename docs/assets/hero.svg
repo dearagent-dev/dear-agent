@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 440" width="760" height="440" role="img" aria-label="Dear Agent — a handwritten letter whose text is a git log">
+  <title>Dear Agent — a handwritten letter whose text is a git log</title>
+
+  <g transform="rotate(-2 280 220)">
+    <rect x="50" y="70" width="460" height="300" rx="12" fill="#FFFFFF" stroke="#D8DEE9" stroke-width="2"/>
+
+    <!-- branch graph -->
+    <g stroke="#1F2A44" stroke-width="3" fill="none" stroke-linecap="round">
+      <path d="M105 172 L105 336"/>
+    </g>
+    <g fill="#F2A93B">
+      <circle cx="105" cy="190" r="7"/>
+      <circle cx="105" cy="250" r="7"/>
+      <circle cx="105" cy="310" r="7"/>
+    </g>
+
+    <!-- handwritten salutation -->
+    <text x="138" y="140" font-family="'Caveat','Comic Sans MS','Bradley Hand',cursive" font-size="36" fill="#1F2A44">Dear Agent,</text>
+
+    <!-- the letter body is a git log -->
+    <g font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Consolas, monospace" font-size="20" fill="#3B4A66">
+      <text x="140" y="197">a1b2c3d  fix the failing build</text>
+      <text x="140" y="257">3f4e5d6  add a regression test</text>
+      <text x="140" y="317">2c1b0a9  open a draft PR</text>
+    </g>
+
+    <!-- handwritten sign-off -->
+    <text x="136" y="360" font-family="'Caveat','Comic Sans MS','Bradley Hand',cursive" font-size="30" fill="#1F2A44">— thanks, a human</text>
+  </g>
+
+  <!-- tagline -->
+  <g font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Consolas, monospace" font-size="19" fill="#1F2A44">
+    <text x="548" y="198">Email in.</text>
+    <text x="548" y="226">Pull requests out.</text>
+  </g>
+
+  <!-- small plane -->
+  <g transform="translate(600,352) scale(0.6)">
+    <path d="M110 22 L22 70 L60 76 L68 110 Z" fill="#F2A93B"/>
+    <path d="M110 22 L60 76" fill="none" stroke="#F5F7FA" stroke-width="5" stroke-linejoin="round"/>
+  </g>
+</svg>
