@@ -17,7 +17,7 @@ venv/
 .ruff_cache/
 .mypy_cache/
 
-# Herald runtime state
+# Dear Agent runtime state
 *.sqlite
 *.sqlite3
 var/

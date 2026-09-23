@@ -4,7 +4,7 @@ import os
 
 import pytest
 
-from herald.policy import (
+from dear_agent.policy import (
     MemoryPolicyStore,
     PolicyStore,
     ProjectPolicy,
@@ -14,7 +14,7 @@ from herald.policy import (
     sync_policies,
 )
 
-DSN = os.environ.get("HERALD_TEST_DATABASE_URL")
+DSN = os.environ.get("DEAR_AGENT_TEST_DATABASE_URL")
 
 TEXT = """---
 project: lab
@@ -89,16 +89,16 @@ def test_load_policies_requires_a_directory(tmp_path) -> None:
         load_policies(tmp_path / "missing")
 
 
-@pytest.mark.skipif(not DSN, reason="HERALD_TEST_DATABASE_URL is not set")
+@pytest.mark.skipif(not DSN, reason="DEAR_AGENT_TEST_DATABASE_URL is not set")
 def test_postgres_policy_projection_round_trip() -> None:
     pytest.importorskip("psycopg")
-    from herald.db import connect, init_schema
-    from herald.policy import PostgresPolicyStore
+    from dear_agent.db import connect, init_schema
+    from dear_agent.policy import PostgresPolicyStore
 
     conn = connect(DSN)
     init_schema(conn)
     with conn.cursor() as cur:
-        cur.execute("TRUNCATE herald_policy")
+        cur.execute("TRUNCATE dear_agent_policy")
     conn.commit()
     store = PostgresPolicyStore(conn)
     try:

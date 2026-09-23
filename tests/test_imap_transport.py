@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from email.message import EmailMessage
 
-from herald.transports.base import OutboundMessage
-from herald.transports.imap import ImapSmtpTransport
-from herald.transports.port import Transport
+from dear_agent.transports.base import OutboundMessage
+from dear_agent.transports.imap import ImapSmtpTransport
+from dear_agent.transports.port import Transport
 
 
 class FakeImapClient:
@@ -45,7 +45,7 @@ def build_raw(
     *,
     sender: str = "ricardo.arguello@gmail.com",
     subject: str = "a task",
-    body: str = "repo: https://github.com/rarguello/herald-lab-python\n\nfix it",
+    body: str = "repo: https://github.com/rarguello/dear-agent-lab-python\n\nfix it",
     message_id: str = "<m1@x>",
     in_reply_to: str | None = None,
     auth_results: str | None = None,
@@ -53,7 +53,7 @@ def build_raw(
 ) -> bytes:
     message = EmailMessage()
     message["From"] = sender
-    message["To"] = "herald@example.com"
+    message["To"] = "dear-agent@example.com"
     message["Subject"] = subject
     message["Message-ID"] = message_id
     if in_reply_to:
@@ -67,12 +67,12 @@ def build_raw(
 
 
 def make_transport(
-    messages: dict[bytes, bytes] | None = None, *, done: str = "Herald-Done"
+    messages: dict[bytes, bytes] | None = None, *, done: str = "Dear-Agent-Done"
 ) -> tuple[ImapSmtpTransport, FakeImapClient, FakeSmtpClient]:
     imap = FakeImapClient(messages)
     smtp = FakeSmtpClient()
     transport = ImapSmtpTransport(
-        imap=imap, smtp=smtp, done_mailbox=done, sender="herald@arguello.ec"
+        imap=imap, smtp=smtp, done_mailbox=done, sender="dear-agent@arguello.ec"
     )
     return transport, imap, smtp
 
@@ -128,7 +128,7 @@ def test_ack_moves_processed_messages_to_the_done_mailbox() -> None:
 
     transport.ack(messages)
 
-    assert imap.moved == [(b"1", "Herald-Done")]
+    assert imap.moved == [(b"1", "Dear-Agent-Done")]
 
 
 def test_send_threads_the_reply_and_sets_the_sender() -> None:
@@ -143,7 +143,7 @@ def test_send_threads_the_reply_and_sets_the_sender() -> None:
     transport.send(outbound)
 
     raw, sender, recipients = smtp.sent[0]
-    assert sender == "herald@arguello.ec"
+    assert sender == "dear-agent@arguello.ec"
     assert recipients == ["ricardo.arguello@gmail.com"]
     text = raw.decode()
     assert "In-Reply-To: <m1@x>" in text

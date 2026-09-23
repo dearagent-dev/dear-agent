@@ -1,6 +1,6 @@
 # PostgreSQL 18 (UBI 9) — the durable queue (ADR 0005). The mailbox is ingress only.
 #
-# Credentials come from the `herald-postgres` Secret, provisioned out of band (ADR 0003):
+# Credentials come from the `dear-agent-postgres` Secret, provisioned out of band (ADR 0003):
 #   POSTGRESQL_USER, POSTGRESQL_PASSWORD, POSTGRESQL_DATABASE, POSTGRESQL_ADMIN_PASSWORD
 #
 # The image is Red Hat's PostgreSQL container (sclorg), which runs on OpenShift with an
@@ -8,23 +8,23 @@
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: herald-postgres
+  name: dear-agent-postgres
   labels:
-    app.kubernetes.io/name: herald-postgres
+    app.kubernetes.io/name: dear-agent-postgres
     app.kubernetes.io/component: database
-    app.kubernetes.io/part-of: herald
+    app.kubernetes.io/part-of: dear-agent
 spec:
   replicas: 1
-  serviceName: herald-postgres
+  serviceName: dear-agent-postgres
   selector:
     matchLabels:
-      app.kubernetes.io/name: herald-postgres
+      app.kubernetes.io/name: dear-agent-postgres
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: herald-postgres
+        app.kubernetes.io/name: dear-agent-postgres
         app.kubernetes.io/component: database
-        app.kubernetes.io/part-of: herald
+        app.kubernetes.io/part-of: dear-agent
     spec:
       automountServiceAccountToken: false
       securityContext:
@@ -46,22 +46,22 @@ spec:
             - name: POSTGRESQL_USER
               valueFrom:
                 secretKeyRef:
-                  name: herald-postgres
+                  name: dear-agent-postgres
                   key: POSTGRESQL_USER
             - name: POSTGRESQL_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: herald-postgres
+                  name: dear-agent-postgres
                   key: POSTGRESQL_PASSWORD
             - name: POSTGRESQL_DATABASE
               valueFrom:
                 secretKeyRef:
-                  name: herald-postgres
+                  name: dear-agent-postgres
                   key: POSTGRESQL_DATABASE
             - name: POSTGRESQL_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: herald-postgres
+                  name: dear-agent-postgres
                   key: POSTGRESQL_ADMIN_PASSWORD
           resources:
             requests:

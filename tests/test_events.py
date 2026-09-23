@@ -5,10 +5,10 @@ from datetime import timedelta
 
 import pytest
 
-from herald.events import ErrorBudget, EventLog, MemoryEventLog
-from herald.queue.models import utcnow
+from dear_agent.events import ErrorBudget, EventLog, MemoryEventLog
+from dear_agent.queue.models import utcnow
 
-DSN = os.environ.get("HERALD_TEST_DATABASE_URL")
+DSN = os.environ.get("DEAR_AGENT_TEST_DATABASE_URL")
 
 
 def test_memory_event_log_satisfies_the_port() -> None:
@@ -58,23 +58,23 @@ def test_error_budget_trips_after_too_many_failures() -> None:
 
 def test_error_budget_from_env() -> None:
     budget = ErrorBudget.from_env(
-        {"HERALD_ERROR_BUDGET_FAILURES": "5", "HERALD_ERROR_BUDGET_WINDOW": "60"}
+        {"DEAR_AGENT_ERROR_BUDGET_FAILURES": "5", "DEAR_AGENT_ERROR_BUDGET_WINDOW": "60"}
     )
 
     assert budget.max_failures == 5
     assert budget.window_seconds == 60
 
 
-@pytest.mark.skipif(not DSN, reason="HERALD_TEST_DATABASE_URL is not set")
+@pytest.mark.skipif(not DSN, reason="DEAR_AGENT_TEST_DATABASE_URL is not set")
 def test_postgres_event_log_round_trip() -> None:
     pytest.importorskip("psycopg")
-    from herald.db import connect, init_schema
-    from herald.events import PostgresEventLog
+    from dear_agent.db import connect, init_schema
+    from dear_agent.events import PostgresEventLog
 
     conn = connect(DSN)
     init_schema(conn)
     with conn.cursor() as cur:
-        cur.execute("TRUNCATE herald_event")
+        cur.execute("TRUNCATE dear_agent_event")
     conn.commit()
     log = PostgresEventLog(conn)
     try:

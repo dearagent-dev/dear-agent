@@ -4,11 +4,11 @@ import os
 
 import pytest
 
-from herald.decision.log import DecisionRecord, PostgresDecisionLog
+from dear_agent.decision.log import DecisionRecord, PostgresDecisionLog
 
-DSN = os.environ.get("HERALD_TEST_DATABASE_URL")
+DSN = os.environ.get("DEAR_AGENT_TEST_DATABASE_URL")
 
-pytestmark = pytest.mark.skipif(not DSN, reason="HERALD_TEST_DATABASE_URL is not set")
+pytestmark = pytest.mark.skipif(not DSN, reason="DEAR_AGENT_TEST_DATABASE_URL is not set")
 
 
 def _record(choice: str, confidence: float, question_id: str = "model") -> DecisionRecord:
@@ -32,12 +32,12 @@ def _record(choice: str, confidence: float, question_id: str = "model") -> Decis
 @pytest.fixture()
 def log():
     pytest.importorskip("psycopg")
-    from herald.db import connect, init_schema
+    from dear_agent.db import connect, init_schema
 
     conn = connect(DSN)
     init_schema(conn)
     with conn.cursor() as cur:
-        cur.execute("TRUNCATE herald_decision")
+        cur.execute("TRUNCATE dear_agent_decision")
     conn.commit()
     yield PostgresDecisionLog(conn)
     conn.close()

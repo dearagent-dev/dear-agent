@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from herald.decision.factory import EnvDeciderCatalog, EnvDeciderProvider
-from herald.decision.jev import JevDecider
-from herald.decision.openai import OpenAICompatibleDecider
-from herald.decision.policy import DeciderPolicy
-from herald.decision.port import DeciderInfo, DecisionError
+from dear_agent.decision.factory import EnvDeciderCatalog, EnvDeciderProvider
+from dear_agent.decision.jev import JevDecider
+from dear_agent.decision.openai import OpenAICompatibleDecider
+from dear_agent.decision.policy import DeciderPolicy
+from dear_agent.decision.port import DeciderInfo, DecisionError
 
 
 class StaticCatalog:
@@ -82,7 +82,10 @@ def test_env_catalog_lists_a_native_decider_when_keyed() -> None:
 
 def test_env_catalog_marks_a_local_endpoint() -> None:
     catalog = EnvDeciderCatalog(
-        env={"HERALD_DECIDER_BASE_URL": "http://127.0.0.1:8080/v1", "HERALD_DECIDER_MODEL": "qwen"}
+        env={
+            "DEAR_AGENT_DECIDER_BASE_URL": "http://127.0.0.1:8080/v1",
+            "DEAR_AGENT_DECIDER_MODEL": "qwen",
+        }
     )
 
     emu = next(info for info in catalog.list_deciders() if info.id == "openai-compat")

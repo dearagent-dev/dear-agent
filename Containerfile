@@ -1,4 +1,4 @@
-# Herald container image: control plane and runner share one image.
+# Dear Agent container image: control plane and runner share one image.
 # Base is UBI 9 (Red Hat Universal Base Image) with the distro Python 3.12, so the image
 # matches the OpenShift platform it runs on. OpenShift runs containers with an arbitrary
 # UID, so the image must be group-writable where it writes and must not assume root.
@@ -31,11 +31,11 @@ RUN mkdir -p /work && chgrp -R 0 /work && chmod -R g+rwX /work
 # UBI's python image ships uid/gid 1001; OpenShift overrides it with a namespace UID.
 USER 1001
 
-ENV HERALD_BACKEND=memory \
-    HERALD_HOST=0.0.0.0 \
-    HERALD_PORT=8080
+ENV DEAR_AGENT_BACKEND=memory \
+    DEAR_AGENT_HOST=0.0.0.0 \
+    DEAR_AGENT_PORT=8080
 
 EXPOSE 8080
 
 # Default to the control plane; the runner Job overrides the command.
-CMD ["herald-http"]
+CMD ["dear-agent-http"]

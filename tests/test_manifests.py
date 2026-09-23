@@ -36,7 +36,7 @@ def pod_docs(docs: list[dict]) -> list[dict]:
 
 def runner_template(docs: list[dict]) -> dict:
     template = next(
-        doc for doc in docs if doc.get("metadata", {}).get("name") == "herald-runner-template"
+        doc for doc in docs if doc.get("metadata", {}).get("name") == "dear-agent-runner-template"
     )
     return yaml.safe_load(template["data"]["job.yaml"])
 
@@ -125,7 +125,7 @@ def test_sweep_invokes_the_dispatcher() -> None:
     for overlay in ("dev", "prod"):
         cron = next(doc for doc in build(overlay) if doc.get("kind") == "CronJob")
         container = cron["spec"]["jobTemplate"]["spec"]["template"]["spec"]["containers"][0]
-        assert container["command"] == ["herald"]
+        assert container["command"] == ["dear-agent"]
         assert container["args"][:1] == ["sweep"]
 
 
@@ -134,18 +134,18 @@ def test_config_selects_the_postgres_queue_and_jmap_transport() -> None:
     config = next(
         doc
         for doc in docs
-        if doc.get("kind") == "ConfigMap" and doc["metadata"]["name"] == "herald-config"
+        if doc.get("kind") == "ConfigMap" and doc["metadata"]["name"] == "dear-agent-config"
     )
 
-    assert config["data"]["HERALD_QUEUE"] == "postgres"
-    assert config["data"]["HERALD_BACKEND"] == "jmap"
+    assert config["data"]["DEAR_AGENT_QUEUE"] == "postgres"
+    assert config["data"]["DEAR_AGENT_BACKEND"] == "jmap"
 
 
 def postgres_statefulset(docs: list[dict]) -> dict:
     return next(
         doc
         for doc in docs
-        if doc.get("kind") == "StatefulSet" and doc["metadata"]["name"] == "herald-postgres"
+        if doc.get("kind") == "StatefulSet" and doc["metadata"]["name"] == "dear-agent-postgres"
     )
 
 
@@ -163,7 +163,7 @@ def test_postgres_is_never_exposed_outside_the_cluster(overlay: str) -> None:
     service = next(
         doc
         for doc in docs
-        if doc.get("kind") == "Service" and doc["metadata"]["name"] == "herald-postgres"
+        if doc.get("kind") == "Service" and doc["metadata"]["name"] == "dear-agent-postgres"
     )
 
     assert service["spec"]["clusterIP"] == "None"  # headless: no ClusterIP
@@ -180,12 +180,14 @@ def test_postgres_network_policy_restricts_ingress(overlay: str) -> None:
     policy = next(
         doc
         for doc in docs
-        if doc.get("kind") == "NetworkPolicy" and doc["metadata"]["name"] == "herald-postgres"
+        if doc.get("kind") == "NetworkPolicy" and doc["metadata"]["name"] == "dear-agent-postgres"
     )
 
     assert policy["spec"]["policyTypes"] == ["Ingress"]
     rule = policy["spec"]["ingress"][0]
-    assert rule["from"][0]["podSelector"]["matchLabels"]["app.kubernetes.io/part-of"] == "herald"
+    assert (
+        rule["from"][0]["podSelector"]["matchLabels"]["app.kubernetes.io/part-of"] == "dear-agent"
+    )
     assert [port["port"] for port in rule["ports"]] == [5432]
 
 

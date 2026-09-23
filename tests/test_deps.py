@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from herald.deps import dependency_status
-from herald.queue.memory import MemoryQueue
-from herald.queue.models import Task, TaskSpec, TaskState
+from dear_agent.deps import dependency_status
+from dear_agent.queue.memory import MemoryQueue
+from dear_agent.queue.models import Task, TaskSpec, TaskState
 
 
 def make(queue: MemoryQueue, task_id: str, *, depends_on: tuple[str, ...] = ()) -> Task:

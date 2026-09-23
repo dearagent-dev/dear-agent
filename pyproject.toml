@@ -3,13 +3,13 @@ requires = ["hatchling>=1.25"]
 build-backend = "hatchling.build"
 
 [project]
-name = "herald"
+name = "dear-agent"
 version = "0.0.1"
 description = "Async, email-first inbox that turns messages into Git pull requests produced by coding agents."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { file = "LICENSE" }
-authors = [{ name = "Herald contributors" }]
+authors = [{ name = "Dear Agent contributors" }]
 keywords = ["agents", "email", "queue", "git", "automation"]
 classifiers = [
   "Development Status :: 2 - Pre-Alpha",
@@ -21,14 +21,14 @@ classifiers = [
 dependencies = ["pyyaml>=6.0", "psycopg[binary]>=3.2"]
 
 [project.scripts]
-herald = "herald.cli.main:main"
-herald-http = "herald.http:main"
+dear-agent = "dear_agent.cli.main:main"
+dear-agent-http = "dear_agent.http:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "ruff>=0.6"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/herald"]
+packages = ["src/dear_agent"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -1,24 +1,24 @@
-# Only Herald pods may reach the database. The cluster-wide default is unchanged; this
-# narrows what can talk to herald-postgres:5432 (see docs/security.md: network is explicit).
+# Only Dear Agent pods may reach the database. The cluster-wide default is unchanged; this
+# narrows what can talk to dear-agent-postgres:5432 (see docs/security.md: network is explicit).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: herald-postgres
+  name: dear-agent-postgres
   labels:
-    app.kubernetes.io/name: herald-postgres
+    app.kubernetes.io/name: dear-agent-postgres
     app.kubernetes.io/component: database
-    app.kubernetes.io/part-of: herald
+    app.kubernetes.io/part-of: dear-agent
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: herald-postgres
+      app.kubernetes.io/name: dear-agent-postgres
   policyTypes:
     - Ingress
   ingress:
     - from:
         - podSelector:
             matchLabels:
-              app.kubernetes.io/part-of: herald
+              app.kubernetes.io/part-of: dear-agent
       ports:
         - protocol: TCP
           port: 5432

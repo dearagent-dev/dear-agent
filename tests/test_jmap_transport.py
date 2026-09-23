@@ -4,10 +4,10 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from herald.jmap.client import EmailRecord, _extract_text_body
-from herald.transports.base import OutboundMessage
-from herald.transports.jmap import JmapTransport
-from herald.transports.port import Transport
+from dear_agent.jmap.client import EmailRecord, _extract_text_body
+from dear_agent.transports.base import OutboundMessage
+from dear_agent.transports.jmap import JmapTransport
+from dear_agent.transports.port import Transport
 
 BASE = datetime(2026, 1, 1, tzinfo=UTC)
 
@@ -17,8 +17,8 @@ class FakeMailClient:
         self.records: dict[str, EmailRecord] = {}
         self.sent: list[dict[str, object]] = []
         self._mailboxes = {
-            "Herald": "mbx:herald",
-            "Herald-Done": "mbx:done",
+            "Dear Agent": "mbx:dear-agent",
+            "Dear-Agent-Done": "mbx:done",
             "Sent": "mbx:sent",
         }
 
@@ -86,7 +86,7 @@ def record(record_id: str = "e1", **overrides: object) -> EmailRecord:
         "subject": "a task",
         "received_at": BASE,
         "keywords": set(),
-        "mailbox_ids": {"mbx:herald"},
+        "mailbox_ids": {"mbx:dear-agent"},
         "body": "repo: https://github.com/owner/repo\n\nfix the build",
     }
     values.update(overrides)
@@ -126,7 +126,7 @@ def test_poll_orders_oldest_first() -> None:
 
 def test_poll_skips_seen_messages() -> None:
     client = FakeMailClient()
-    client.add(record("e1", keywords={"$herald-seen"}))
+    client.add(record("e1", keywords={"$dear-agent-seen"}))
 
     assert JmapTransport(client).poll() == []
 
@@ -141,7 +141,7 @@ def test_poll_reports_attachments_so_the_normalizer_can_reject() -> None:
 
 
 def test_to_headers_joins_duplicate_names() -> None:
-    from herald.jmap.client import _to_headers
+    from dear_agent.jmap.client import _to_headers
 
     headers = _to_headers(
         [

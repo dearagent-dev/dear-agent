@@ -3,13 +3,13 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
-from herald.idle.loop import IdleBudget, IdleLoop
-from herald.idle.proposals import Proposal
-from herald.idle.signals import Signal, SignalKind, Signals
-from herald.queue.memory import MemoryQueue
-from herald.queue.models import Task, TaskState
+from dear_agent.idle.loop import IdleBudget, IdleLoop
+from dear_agent.idle.proposals import Proposal
+from dear_agent.idle.signals import Signal, SignalKind, Signals
+from dear_agent.queue.memory import MemoryQueue
+from dear_agent.queue.models import Task, TaskState
 
-REPO = Path("/repos/herald")
+REPO = Path("/repos/dear-agent")
 
 
 def todo_signal(marker: str) -> Signal:
@@ -54,7 +54,7 @@ def test_tick_submits_a_proposal_when_the_queue_is_empty() -> None:
     queue = MemoryQueue()
     loop, submitted = make_loop(queue, make_signals([todo_signal("TODO: handle errors")]))
 
-    report = loop.tick("/repos/herald")
+    report = loop.tick("/repos/dear-agent")
 
     assert report.proposed == ["idle-0"]
     assert len(submitted) == 1
@@ -65,7 +65,7 @@ def test_tick_skips_when_real_work_is_waiting() -> None:
     queue.enqueue(Task(id="e1", transport_id="<m1@x>"))
     loop, submitted = make_loop(queue, make_signals([todo_signal("TODO: x")]))
 
-    report = loop.tick("/repos/herald")
+    report = loop.tick("/repos/dear-agent")
 
     assert report.skipped
     assert report.proposed == []
@@ -77,7 +77,7 @@ def test_budget_caps_proposals_per_run() -> None:
     signals = make_signals([todo_signal(f"TODO: item {n}") for n in range(5)])
     loop, submitted = make_loop(queue, signals, max_per_run=2)
 
-    report = loop.tick("/repos/herald")
+    report = loop.tick("/repos/dear-agent")
 
     assert len(report.proposed) == 2
     assert len(submitted) == 2
@@ -87,7 +87,7 @@ def test_no_signals_means_no_proposals() -> None:
     queue = MemoryQueue()
     loop, submitted = make_loop(queue, make_signals([]))
 
-    report = loop.tick("/repos/herald")
+    report = loop.tick("/repos/dear-agent")
 
     assert report.proposed == []
     assert submitted == []
@@ -97,7 +97,7 @@ def test_proposals_are_approval_gated_by_construction() -> None:
     queue = MemoryQueue()
     loop, submitted = make_loop(queue, make_signals([todo_signal("TODO: x")]))
 
-    loop.tick("/repos/herald")
+    loop.tick("/repos/dear-agent")
 
     # The proposal is submitted as an ordinary task; it is never claimed/executed here.
     assert queue.list(TaskState.RUNNING) == []

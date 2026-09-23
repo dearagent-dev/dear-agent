@@ -5,18 +5,18 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from herald.approvals import PostgresApprovalStore
-from herald.approvals_service import ApprovalService
-from herald.auth import InboundAuthorizer, InboundGate, RateLimiter, sign
-from herald.control_plane import ControlPlane
-from herald.notify.notifier import Notifier
-from herald.queue.models import TaskState
-from herald.transports.base import RawMessage
-from herald.transports.memory import MemoryTransport
+from dear_agent.approvals import PostgresApprovalStore
+from dear_agent.approvals_service import ApprovalService
+from dear_agent.auth import InboundAuthorizer, InboundGate, RateLimiter, sign
+from dear_agent.control_plane import ControlPlane
+from dear_agent.notify.notifier import Notifier
+from dear_agent.queue.models import TaskState
+from dear_agent.transports.base import RawMessage
+from dear_agent.transports.memory import MemoryTransport
 
-DSN = os.environ.get("HERALD_TEST_DATABASE_URL")
+DSN = os.environ.get("DEAR_AGENT_TEST_DATABASE_URL")
 
-pytestmark = pytest.mark.skipif(not DSN, reason="HERALD_TEST_DATABASE_URL is not set")
+pytestmark = pytest.mark.skipif(not DSN, reason="DEAR_AGENT_TEST_DATABASE_URL is not set")
 
 BASE = datetime(2026, 1, 1, tzinfo=UTC)
 SENDER = "dev@example.com"
@@ -29,9 +29,9 @@ def make_message(body: str = BODY, **overrides: object) -> RawMessage:
         "transport_id": "<m1@x>",
         "thread_id": "t1",
         "sender": SENDER,
-        "subject": "[herald] owner/repo: fix the build",
+        "subject": "[dear-agent] owner/repo: fix the build",
         "body": body,
-        "headers": {"X-Herald-Signature": sign(body, SECRET, sender=SENDER)},
+        "headers": {"X-Dear-Agent-Signature": sign(body, SECRET, sender=SENDER)},
         "received_at": BASE,
     }
     values.update(overrides)
@@ -48,12 +48,12 @@ def make_gate() -> InboundGate:
 @pytest.fixture()
 def conn():
     pytest.importorskip("psycopg")
-    from herald.db import connect, init_schema
+    from dear_agent.db import connect, init_schema
 
     connection = connect(DSN)
     init_schema(connection)
     with connection.cursor() as cur:
-        cur.execute("TRUNCATE herald_task, herald_approval")
+        cur.execute("TRUNCATE dear_agent_task, dear_agent_approval")
     connection.commit()
     yield connection
     connection.close()
@@ -61,7 +61,7 @@ def conn():
 
 @pytest.fixture()
 def queue(conn):
-    from herald.queue.postgres import PostgresQueue
+    from dear_agent.queue.postgres import PostgresQueue
 
     return PostgresQueue(conn)
 
@@ -111,7 +111,11 @@ def test_approval_round_trip_on_the_database(queue, conn) -> None:
     body = f"approve {token}"
 
     report = plane.ingest(
-        [make_message(body=body, headers={"X-Herald-Signature": sign(body, SECRET, sender=SENDER)})]
+        [
+            make_message(
+                body=body, headers={"X-Dear-Agent-Signature": sign(body, SECRET, sender=SENDER)}
+            )
+        ]
     )
 
     assert report.decided == ["<m1@x>"]

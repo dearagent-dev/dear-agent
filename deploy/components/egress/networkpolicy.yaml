@@ -8,11 +8,11 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: herald-runner-egress
+  name: dear-agent-runner-egress
   labels:
-    app.kubernetes.io/name: herald
+    app.kubernetes.io/name: dear-agent
     app.kubernetes.io/component: runner
-    app.kubernetes.io/part-of: herald
+    app.kubernetes.io/part-of: dear-agent
 spec:
   podSelector:
     matchLabels:

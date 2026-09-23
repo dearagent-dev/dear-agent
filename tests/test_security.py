@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from herald.security import InjectionKind, InjectionScanner
+from dear_agent.security import InjectionKind, InjectionScanner
 
 
 def test_clean_text_has_no_findings() -> None:

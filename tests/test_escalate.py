@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from herald.notify.escalate import Escalator, FailureKind, classify_failure
-from herald.queue.models import Task
-from herald.runners.worktree import RunResult
-from herald.transports.memory import MemoryTransport
+from dear_agent.notify.escalate import Escalator, FailureKind, classify_failure
+from dear_agent.queue.models import Task
+from dear_agent.runners.worktree import RunResult
+from dear_agent.transports.memory import MemoryTransport
 
 
 def make_task() -> Task:
@@ -53,10 +53,10 @@ def test_escalation_includes_the_branch_when_given() -> None:
     transport = MemoryTransport()
 
     Escalator(transport).escalate(
-        make_task(), RunResult(exit_code=2), recipient="ops@x.com", branch="herald/add-healthz"
+        make_task(), RunResult(exit_code=2), recipient="ops@x.com", branch="dear-agent/add-healthz"
     )
 
-    assert "herald/add-healthz" in transport.outbox[0].body
+    assert "dear-agent/add-healthz" in transport.outbox[0].body
 
 
 def test_escalation_honors_an_explicit_kind_without_an_exit_code() -> None:

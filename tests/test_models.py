@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC
 
-from herald.queue.models import Task, TaskSpec, TaskState
+from dear_agent.queue.models import Task, TaskSpec, TaskState
 
 
 def test_task_defaults() -> None:

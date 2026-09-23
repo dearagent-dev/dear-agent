@@ -10,15 +10,15 @@ unchecked slice** of the earliest milestone. One slice = one branch = one draft 
 
 ## M1 — Queue first (mailbox as the queue)
 
-- [x] **M1.1** Verify Fastmail JMAP: custom `$herald-*` keywords, `Email/query` by
+- [x] **M1.1** Verify Fastmail JMAP: custom `$dear-agent-*` keywords, `Email/query` by
   `Message-ID`, and `Email/set` `ifInState` (CAS) — verified against a real account
   (`scripts/verify_fastmail_jmap.py`); all checks pass.
 - [x] **M1.2** `Task` model + `Queue` port + `MemoryQueue` with idempotent enqueue
   (`Message-ID`), atomic claim, guarded transitions and the lease sweep; TDD, no network.
 - [x] **M1.3** `JmapQueue` backend: the same port over Fastmail mailboxes/keywords, using
-  `ifInState` for claims and `$herald-attempt-N` for attempts; unit-tested against a fake
+  `ifInState` for claims and `$dear-agent-attempt-N` for attempts; unit-tested against a fake
   client and verified live against Fastmail (enqueue, claim, get, stale-lease sweep).
-- [x] **M1.4** CLI: `herald task ls|show|claim|complete|fail` (no network; memory backend
+- [x] **M1.4** CLI: `dear-agent task ls|show|claim|complete|fail` (no network; memory backend
   by default, `--backend jmap` for Fastmail).
 - [x] **M1.5** Approvals: single-use, expiring tokens issued next to the queue and redeemed
   from a reply (`approve|reject <token>`); drives `action -> approved|rejected`.
@@ -40,7 +40,7 @@ unchecked slice** of the earliest milestone. One slice = one branch = one draft 
 
 ## M3 — Runner + Git plane
 
-- [x] **M3.1** `Runner` interface + `Worktree` (isolated `herald/<slug>` worktree created
+- [x] **M3.1** `Runner` interface + `Worktree` (isolated `dear-agent/<slug>` worktree created
   and removed without touching the main checkout) + a minimal `CommandRunner`.
 - [x] **M3.2** OpenCode runner adapter: headless `opencode run` with the prompt as a
   separate argv element (never a shell), configurable binary/model/timeout.
@@ -102,7 +102,7 @@ deterministic fallback. Advisory only — never a security boundary.
   `suspicious` report next to `InjectionScanner` and the attachment check, so inline
   diffs/encoded blobs get caught too.
 - [x] **M7.4** Earned thresholds: `DecisionLog` (JSONL for now; moves to Postgres in M8)
-  records every decision for tuning; `herald decide` lets an operator test the routing, with
+  records every decision for tuning; `dear-agent decide` lets an operator test the routing, with
   rules or the live model.
 
 ## M8 — Durable state in PostgreSQL (ADR 0005)
@@ -112,12 +112,12 @@ See [ADR 0005](decisions/0005-state-store.md).
 
 - [x] **M8.1** Postgres deployment: a kustomize component (`StatefulSet` + `Service` + `PVC`,
   `registry.redhat.io/rhel9/postgresql-18`) and a local podman equivalent
-  (`scripts/dev-postgres.sh`), sharing one `HERALD_DATABASE_URL`.
+  (`scripts/dev-postgres.sh`), sharing one `DEAR_AGENT_DATABASE_URL`.
 - [x] **M8.2** Schema and a `PostgresQueue` implementing the `Queue` port (unique
   `transport_id`, guarded `UPDATE` claim, lease sweep); `JmapQueue` retired and the queue
-  backend decoupled from the transport (`HERALD_QUEUE`). Verified against a live Postgres.
+  backend decoupled from the transport (`DEAR_AGENT_QUEUE`). Verified against a live Postgres.
 - [x] **M8.3** Approvals and the decision log/labels in Postgres; the file stores remain only
-  as a single-process fallback (`HERALD_APPROVALS_FILE`, `HERALD_DECIDER_LOG=<path>`).
+  as a single-process fallback (`DEAR_AGENT_APPROVALS_FILE`, `DEAR_AGENT_DECIDER_LOG=<path>`).
 - [x] **M8.4** The sweep and runner run on the database, and the parsed `TaskSpec` is
   persisted with the task, so a runner no longer reads the mailbox. No backfill is needed at
   the current scale (there is no production mailbox state to migrate).
@@ -126,7 +126,7 @@ See [ADR 0005](decisions/0005-state-store.md).
 
 - [x] **Gate high-risk inbound runs behind approval.** Inbound tasks whose decider verdict
   says a human should look are parked in `action` and released by a `run` approval, like
-  suspicious messages (`HumanGate`, `HERALD_DECIDER`).
+  suspicious messages (`HumanGate`, `DEAR_AGENT_DECIDER`).
 - **Connection resilience**: pool Postgres connections and reconnect on failure for the
   long-lived control plane; back the store with PITR.
 - Idle: persist the budget/metrics and dedupe proposals on the database.
@@ -136,7 +136,7 @@ See [ADR 0005](decisions/0005-state-store.md).
   fail-closed without a secret), request-body cap and timeouts.
 
 - [x] JMAP `PushSubscription`/EventSource for low-latency triggering (replaces the sweep):
-  `JmapClient` exposes `event_source_url`, `push_create` and `push_destroy`; `herald listen`
+  `JmapClient` exposes `event_source_url`, `push_create` and `push_destroy`; `dear-agent listen`
   opens the EventSource and re-polls (idempotently) on an `Email` `StateChange`.
 - IMAP transport as a secondary backend.
 - Self-hosted decision model (Simple Jev / Laya / NanoJev) as the reference local decider.

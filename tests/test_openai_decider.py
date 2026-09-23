@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-from herald.decision.openai import OpenAICompatibleDecider
-from herald.decision.port import DecisionError, DecisionKind, Question
+from dear_agent.decision.openai import OpenAICompatibleDecider
+from dear_agent.decision.port import DecisionError, DecisionKind, Question
 
 QUESTIONS = {
     "route": Question(

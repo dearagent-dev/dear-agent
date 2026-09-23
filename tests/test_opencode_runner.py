@@ -3,10 +3,10 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from herald.queue.models import Task, TaskSpec
-from herald.runners.opencode import OpenCodeRunner
-from herald.runners.port import Runner
-from herald.runners.worktree import Worktree
+from dear_agent.queue.models import Task, TaskSpec
+from dear_agent.runners.opencode import OpenCodeRunner
+from dear_agent.runners.port import Runner
+from dear_agent.runners.worktree import Worktree
 
 
 def make_task() -> Task:
@@ -20,7 +20,7 @@ def make_spec(instructions: str = "fix the build") -> TaskSpec:
 def make_worktree(tmp_path: Path) -> Worktree:
     path = tmp_path / "wt"
     path.mkdir()
-    return Worktree(repo_path=tmp_path, path=path, branch="herald/s")
+    return Worktree(repo_path=tmp_path, path=path, branch="dear-agent/s")
 
 
 def completed(returncode: int, stdout: str = "", stderr: str = "") -> subprocess.CompletedProcess:
@@ -58,7 +58,7 @@ def test_run_executes_in_the_worktree(tmp_path: Path) -> None:
 
     assert result.ok
     assert result.stdout == "ok"
-    assert result.branch == "herald/s"
+    assert result.branch == "dear-agent/s"
     assert calls[0][1] == str(worktree.path)
     assert calls[0][0] == ["opencode", "run", "fix the build"]
 

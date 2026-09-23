@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from herald.jmap.client import JmapClient, JmapError
+from dear_agent.jmap.client import JmapClient, JmapError
 
 SESSION = {
     "apiUrl": "https://example.com/jmap/api/",
@@ -58,10 +58,10 @@ def test_push_create_passes_a_webhook_url() -> None:
     client.connect()
     client.responses.append({"created": {"p": {"id": "sub-1"}}})
 
-    client.push_create(url="https://herald.example/inbound")
+    client.push_create(url="https://dear_agent.example/inbound")
 
     args = client.requests[0][0][1]
-    assert args["create"]["p"]["url"] == "https://herald.example/inbound"
+    assert args["create"]["p"]["url"] == "https://dear_agent.example/inbound"
 
 
 def test_push_create_surfaces_a_failure() -> None:

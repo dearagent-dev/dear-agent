@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""M1.1 spike: verify the Fastmail JMAP capabilities Herald depends on.
+"""M1.1 spike: verify the Fastmail JMAP capabilities Dear Agent depends on.
 
 Run against a real account; nothing is written to disk and no secret is printed.
 
 Checks:
   1. JMAP session and the mail-capable account id.
-  2. Custom keyword support (`$herald-queued` and `herald-queued`).
+  2. Custom keyword support (`$dear-agent-queued` and `dear-agent-queued`).
   3. ``Email/query`` filtering by the ``Message-ID`` header.
   4. ``Email/set`` optimistic concurrency: a stale ``ifInState`` must fail with
      ``stateMismatch`` and a fresh one must succeed.
@@ -14,7 +14,7 @@ Configuration (environment variables):
 
   FASTMAIL_API_TOKEN   required; a Fastmail API token with mail scope
   FASTMAIL_ACCOUNT_ID  optional; discovered from the session otherwise
-  FASTMAIL_MAILBOX     optional; probe mailbox name (default: HeraldProbe)
+  FASTMAIL_MAILBOX     optional; probe mailbox name (default: DearAgentProbe)
 
 Exit code 0 means every check passed.
 """
@@ -31,8 +31,8 @@ from typing import Any
 SESSION_URL = "https://api.fastmail.com/jmap/session"
 CORE = "urn:ietf:params:jmap:core"
 MAIL = "urn:ietf:params:jmap:mail"
-PROBE_SUBJECT = "herald jmap capability probe"
-PROBE_FROM = "herald-probe@example.invalid"
+PROBE_SUBJECT = "dear-agent jmap capability probe"
+PROBE_FROM = "dear-agent-probe@example.invalid"
 
 
 class JmapError(RuntimeError):
@@ -135,7 +135,7 @@ def create_probe_email(client: JmapClient, mailbox_id: str) -> tuple[str, str]:
         "from": [{"email": PROBE_FROM}],
         "to": [{"email": PROBE_FROM}],
         "subject": PROBE_SUBJECT,
-        "bodyValues": {"b1": {"value": "herald jmap probe"}},
+        "bodyValues": {"b1": {"value": "dear-agent jmap probe"}},
         "textBody": [{"partId": "b1", "type": "text/plain"}],
     }
     args = unwrap(
@@ -269,7 +269,7 @@ def check_ifinstate(client: JmapClient, email_id: str, state: str) -> bool:
                     "Email/set",
                     {
                         "accountId": client.account_id,
-                        "ifInState": "herald-deliberately-stale",
+                        "ifInState": "dear-agent-deliberately-stale",
                         "update": {email_id: {"keywords/$seen": True}},
                     },
                     "s0",
@@ -313,7 +313,7 @@ def _write_raw_email(client: Any, mailbox_id: str, message_id: str, body: str) -
         "from": [{"email": PROBE_FROM}],
         "to": [{"email": PROBE_FROM}],
         "messageId": [message_id],
-        "subject": "herald transport probe",
+        "subject": "dear-agent transport probe",
         "bodyValues": {"b1": {"value": body}},
         "textBody": [{"partId": "b1", "type": "text/plain"}],
     }
@@ -328,21 +328,21 @@ def _write_raw_email(client: Any, mailbox_id: str, message_id: str, body: str) -
 
 
 def check_transport_integration(token: str, account_id: str | None) -> bool:
-    """Validate :class:`herald.transports.jmap.JmapTransport` against the live account.
+    """Validate :class:`dear_agent.transports.jmap.JmapTransport` against the live account.
 
     Polls a throwaway mailbox for a probe message and, if the token has the submission
     scope, sends a threaded reply. A missing submission scope is reported, not failed.
     """
-    from herald.jmap.client import JmapClient as TransportJmapClient
-    from herald.transports.base import OutboundMessage
-    from herald.transports.jmap import JmapTransport
+    from dear_agent.jmap.client import JmapClient as TransportJmapClient
+    from dear_agent.transports.base import OutboundMessage
+    from dear_agent.transports.jmap import JmapTransport
 
-    probe_mailbox = os.environ.get("FASTMAIL_TRANSPORT_MAILBOX", "Herald-transport-probe")
+    probe_mailbox = os.environ.get("FASTMAIL_TRANSPORT_MAILBOX", "Dear Agent-transport-probe")
     client = TransportJmapClient(token, account_id=account_id)
     client.connect()
     mailbox_id = client.get_or_create_mailbox(probe_mailbox)
 
-    message_id = f"<herald-transport-probe-{os.getpid()}@example.invalid>"
+    message_id = f"<dear-agent-transport-probe-{os.getpid()}@example.invalid>"
     email_id = _write_raw_email(
         client, mailbox_id, message_id, "repo: https://example.com/o/r\n\nfix the build"
     )
@@ -363,7 +363,7 @@ def check_transport_integration(token: str, account_id: str | None) -> bool:
             transport.send(
                 OutboundMessage(
                     thread_id=match.thread_id,
-                    subject="re: herald transport probe",
+                    subject="re: dear-agent transport probe",
                     body="transport probe reply",
                     headers={"to": PROBE_FROM, "in-reply-to": message_id},
                 )
@@ -395,7 +395,7 @@ def main() -> int:
         return 2
 
     account_id = os.environ.get("FASTMAIL_ACCOUNT_ID")
-    mailbox_name = os.environ.get("FASTMAIL_MAILBOX", "HeraldProbe")
+    mailbox_name = os.environ.get("FASTMAIL_MAILBOX", "DearAgentProbe")
 
     client = JmapClient(token)
     print("Fastmail JMAP capability probe")
@@ -413,9 +413,9 @@ def main() -> int:
     print(f"  [PASS] created {email_id}")
 
     print("- custom keywords")
-    keyword_results = [check_keyword(client, email_id, state, "$herald-queued")]
+    keyword_results = [check_keyword(client, email_id, state, "$dear-agent-queued")]
     state = email_state(client, email_id)
-    keyword_results.append(check_keyword(client, email_id, state, "herald-queued"))
+    keyword_results.append(check_keyword(client, email_id, state, "dear-agent-queued"))
 
     print("- Message-ID query")
     query_ok = check_message_id_query(client, email_id)

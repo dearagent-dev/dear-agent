@@ -5,13 +5,13 @@ from pathlib import Path
 
 import pytest
 
-from herald.queue.models import Task, TaskSpec
-from herald.runners.claude import ClaudeCodeRunner
-from herald.runners.codex import CodexRunner
-from herald.runners.harness import HarnessRunner
-from herald.runners.opencode import OpenCodeRunner
-from herald.runners.port import Runner
-from herald.runners.worktree import Worktree
+from dear_agent.queue.models import Task, TaskSpec
+from dear_agent.runners.claude import ClaudeCodeRunner
+from dear_agent.runners.codex import CodexRunner
+from dear_agent.runners.harness import HarnessRunner
+from dear_agent.runners.opencode import OpenCodeRunner
+from dear_agent.runners.port import Runner
+from dear_agent.runners.worktree import Worktree
 
 RUNNERS: list[HarnessRunner] = [OpenCodeRunner(), ClaudeCodeRunner(), CodexRunner()]
 
@@ -27,7 +27,7 @@ def make_task() -> Task:
 def make_worktree(tmp_path: Path) -> Worktree:
     path = tmp_path / "wt"
     path.mkdir()
-    return Worktree(repo_path=tmp_path, path=path, branch="herald/s")
+    return Worktree(repo_path=tmp_path, path=path, branch="dear-agent/s")
 
 
 def test_all_harnesses_satisfy_the_port() -> None:

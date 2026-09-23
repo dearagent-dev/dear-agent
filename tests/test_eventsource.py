@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from herald.jmap.eventsource import EventSourceError, EventSourceListener, parse_events
+from dear_agent.jmap.eventsource import EventSourceError, EventSourceListener, parse_events
 
 STREAM = [
     ": keep-alive\n",

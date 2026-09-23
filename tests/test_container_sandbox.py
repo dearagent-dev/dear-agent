@@ -4,16 +4,16 @@ from pathlib import Path
 
 import pytest
 
-from herald.runners.catalog import (
+from dear_agent.runners.catalog import (
     EnvHarnessCatalog,
     HarnessInfo,
     build_runner_for,
     container_sandbox,
     select_harness,
 )
-from herald.runners.claude import ClaudeCodeRunner
-from herald.runners.opencode import OpenCodeRunner
-from herald.sandbox import (
+from dear_agent.runners.claude import ClaudeCodeRunner
+from dear_agent.runners.opencode import OpenCodeRunner
+from dear_agent.sandbox import (
     ContainerSandbox,
     Mount,
     NoSandbox,
@@ -112,7 +112,7 @@ def test_parse_mounts_rejects_malformed_entries(value: str) -> None:
 
 
 def test_container_relabels_the_worktree_on_selinux(monkeypatch) -> None:
-    monkeypatch.setattr("herald.sandbox._selinux_enabled", lambda: True)
+    monkeypatch.setattr("dear_agent.sandbox._selinux_enabled", lambda: True)
 
     wrapped = container_argv(["true"], selinux="auto")
 
@@ -120,7 +120,7 @@ def test_container_relabels_the_worktree_on_selinux(monkeypatch) -> None:
 
 
 def test_container_does_not_relabel_without_selinux(monkeypatch) -> None:
-    monkeypatch.setattr("herald.sandbox._selinux_enabled", lambda: False)
+    monkeypatch.setattr("dear_agent.sandbox._selinux_enabled", lambda: False)
 
     wrapped = container_argv(["true"], selinux="auto")
 
@@ -128,7 +128,7 @@ def test_container_does_not_relabel_without_selinux(monkeypatch) -> None:
 
 
 def test_container_auto_leaves_mounts_alone_on_selinux(monkeypatch) -> None:
-    monkeypatch.setattr("herald.sandbox._selinux_enabled", lambda: True)
+    monkeypatch.setattr("dear_agent.sandbox._selinux_enabled", lambda: True)
 
     wrapped = container_argv(["true"], selinux="auto", mounts=(Mount("/h/.cfg", "/root/.cfg"),))
 
@@ -150,7 +150,7 @@ def test_container_can_disable_selinux_labels() -> None:
 
 
 def test_container_selinux_none_never_relabels(monkeypatch) -> None:
-    monkeypatch.setattr("herald.sandbox._selinux_enabled", lambda: True)
+    monkeypatch.setattr("dear_agent.sandbox._selinux_enabled", lambda: True)
 
     wrapped = container_argv(["true"], selinux="none", mounts=(Mount("/h/.cfg", "/root/.cfg"),))
 
@@ -166,7 +166,7 @@ def test_container_rejects_an_unknown_selinux_mode() -> None:
 def test_container_sandbox_selinux_from_env() -> None:
     info = select_harness(EnvHarnessCatalog(env={}), "opencode")
 
-    sandbox = container_sandbox(info, {"HERALD_HARNESS_CONTAINER_SELINUX": "Z"})
+    sandbox = container_sandbox(info, {"DEAR_AGENT_HARNESS_CONTAINER_SELINUX": "Z"})
 
     assert sandbox.selinux == "Z"
 
@@ -187,7 +187,7 @@ def test_container_sandbox_requires_an_image_when_the_harness_has_none() -> None
     with pytest.raises(RuntimeError):
         container_sandbox(info, {})
 
-    sandbox = container_sandbox(info, {"HERALD_HARNESS_IMAGE": "img"})
+    sandbox = container_sandbox(info, {"DEAR_AGENT_HARNESS_IMAGE": "img"})
     assert sandbox.image == "img"
 
 
@@ -197,11 +197,11 @@ def test_container_sandbox_env_overrides_the_metadata() -> None:
     sandbox = container_sandbox(
         info,
         {
-            "HERALD_HARNESS_IMAGE": "custom:1",
-            "HERALD_HARNESS_MOUNTS": "/h:/c:rw",
-            "HERALD_HARNESS_CONTAINER_NETWORK": "none",
-            "HERALD_HARNESS_CONTAINER_HOME": "/home/node",
-            "HERALD_HARNESS_CONTAINER_ARGS": "--cpus,2",
+            "DEAR_AGENT_HARNESS_IMAGE": "custom:1",
+            "DEAR_AGENT_HARNESS_MOUNTS": "/h:/c:rw",
+            "DEAR_AGENT_HARNESS_CONTAINER_NETWORK": "none",
+            "DEAR_AGENT_HARNESS_CONTAINER_HOME": "/home/node",
+            "DEAR_AGENT_HARNESS_CONTAINER_ARGS": "--cpus,2",
         },
     )
 
@@ -213,10 +213,10 @@ def test_container_sandbox_env_overrides_the_metadata() -> None:
 
 
 def test_build_runner_uses_a_container_under_podman(monkeypatch) -> None:
-    from herald.worker_factory import build_runner
+    from dear_agent.worker_factory import build_runner
 
-    monkeypatch.setenv("HERALD_ISOLATION", "podman")
-    monkeypatch.setenv("HERALD_HARNESS", "opencode")
+    monkeypatch.setenv("DEAR_AGENT_ISOLATION", "podman")
+    monkeypatch.setenv("DEAR_AGENT_HARNESS", "opencode")
 
     runner = build_runner(None, sandbox=NoSandbox())
 
@@ -226,22 +226,22 @@ def test_build_runner_uses_a_container_under_podman(monkeypatch) -> None:
 
 
 def test_build_runner_container_requires_an_image_for_a_bare_harness(monkeypatch) -> None:
-    from herald.worker_factory import build_runner
+    from dear_agent.worker_factory import build_runner
 
-    monkeypatch.setenv("HERALD_ISOLATION", "podman")
-    monkeypatch.setenv("HERALD_HARNESS", "codex")
-    monkeypatch.delenv("HERALD_HARNESS_IMAGE", raising=False)
+    monkeypatch.setenv("DEAR_AGENT_ISOLATION", "podman")
+    monkeypatch.setenv("DEAR_AGENT_HARNESS", "codex")
+    monkeypatch.delenv("DEAR_AGENT_HARNESS_IMAGE", raising=False)
 
     with pytest.raises(RuntimeError):
         build_runner(None, sandbox=NoSandbox())
 
 
 def test_build_runner_bwrap_does_not_containerize(monkeypatch) -> None:
-    from herald.worker_factory import build_runner
+    from dear_agent.worker_factory import build_runner
 
-    monkeypatch.setenv("HERALD_HARNESS", "claude")
-    monkeypatch.delenv("HERALD_ISOLATION", raising=False)
-    monkeypatch.delenv("HERALD_HARNESS_IMAGE", raising=False)
+    monkeypatch.setenv("DEAR_AGENT_HARNESS", "claude")
+    monkeypatch.delenv("DEAR_AGENT_ISOLATION", raising=False)
+    monkeypatch.delenv("DEAR_AGENT_HARNESS_IMAGE", raising=False)
 
     runner = build_runner(None, sandbox=NoSandbox())
 

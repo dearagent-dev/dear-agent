@@ -7,7 +7,7 @@
 
 ## Context
 
-Herald makes several small judgments that sit awkwardly between a hand-written `if` (too
+Dear Agent makes several small judgments that sit awkwardly between a hand-written `if` (too
 brittle) and a full chat-LLM call (too slow and too expensive to do per message):
 
 - Is this inbound message a prompt-injection attempt? (`InjectionScanner`, M6.4)
@@ -20,7 +20,7 @@ brittle) and a full chat-LLM call (too slow and too expensive to do per message)
 
 A new class of model appeared in September 2026 — **System One models**, first shipped as
 **Jev** by TypeSafe AI — that targets exactly this shape of problem. This ADR records what
-we verified, what we measured, and the narrow, optional, fail-open way Herald would use it.
+we verified, what we measured, and the narrow, optional, fail-open way Dear Agent would use it.
 
 ## What Jev is (verified)
 
@@ -47,7 +47,7 @@ single-vendor, hosted-only.
 
 ## Measurements (2026-09-22, `jev-latest` / `jev-1.13.0`)
 
-We ran Herald-shaped tasks against the hosted API.
+We ran Dear Agent-shaped tasks against the hosted API.
 
 | Test | Result |
 |---|---|
@@ -70,7 +70,7 @@ messages reports ~96.5% accuracy / ROC-AUC 0.99, while TypeSafe's own workflows 
 
 2. **Wrap it behind a `Decider` port, like every other provider.** No core code imports a
    vendor SDK. Ship two adapters: `JevDecider` (hosted, via `TYPESAFE_API_KEY` /
-   `HERALD_DECIDER_*`) and a `RuleDecider` that reproduces today's deterministic behavior.
+   `DEAR_AGENT_DECIDER_*`) and a `RuleDecider` that reproduces today's deterministic behavior.
    Selecting a decider is configuration, per M6.1 and golden rule 5.
 
 3. **Local-first when self-hosting matters.** For deployments that cannot call a hosted
@@ -80,7 +80,7 @@ messages reports ~96.5% accuracy / ROC-AUC 0.99, while TypeSafe's own workflows 
    the vendor.
 
 4. **Fail open to the rule-based path.** If the decider is unreachable, over budget, or
-   returns low confidence, Herald falls back to the deterministic rule and continues. A
+   returns low confidence, Dear Agent falls back to the deterministic rule and continues. A
    decision model outage must never stop the queue.
 
 5. **Thresholds are earned, not guessed.** Every gate ships with a confidence cutoff
@@ -101,11 +101,11 @@ messages reports ~96.5% accuracy / ROC-AUC 0.99, while TypeSafe's own workflows 
   route work to local vs hosted models; a stronger, honest sensitivity signal for incoming
   mail — with confidence we can branch on.
 - **Cost:** one more optional external dependency (hosted, metered) and one more config
-  surface. Mitigated by the port + rule fallback: with no key configured, Herald behaves
+  surface. Mitigated by the port + rule fallback: with no key configured, Dear Agent behaves
   exactly as today.
 - **Risk:** over-trusting a classifier. Mitigated by (1)–(5): advisory only, fail open,
   earned thresholds, deterministic fallback, and never a boundary.
-- **Not a replacement for a harness.** Jev does not write code; it decides. Herald still
+- **Not a replacement for a harness.** Jev does not write code; it decides. Dear Agent still
   wraps OpenCode/Claude Code/Codex (golden rule 3).
 
 ## Alternatives considered

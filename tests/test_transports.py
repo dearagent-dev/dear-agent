@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from herald.transports.base import Attachment, OutboundMessage, RawMessage
-from herald.transports.memory import MemoryTransport
-from herald.transports.port import Transport
+from dear_agent.transports.base import Attachment, OutboundMessage, RawMessage
+from dear_agent.transports.memory import MemoryTransport
+from dear_agent.transports.port import Transport
 
 BASE = datetime(2026, 1, 1, tzinfo=UTC)
 
@@ -14,7 +14,7 @@ def make_message(message_id: str = "<m1@x>", **overrides: object) -> RawMessage:
         "transport_id": message_id,
         "thread_id": "t1",
         "sender": "dev@example.com",
-        "subject": "[herald] owner/repo: add health endpoint",
+        "subject": "[dear-agent] owner/repo: add health endpoint",
         "body": "please add a /healthz endpoint",
         "received_at": BASE,
     }
@@ -68,7 +68,7 @@ def test_send_records_the_outbound_message() -> None:
         thread_id="t1",
         subject="re: task",
         body="queued",
-        headers={"X-Herald-Task": "e1"},
+        headers={"X-Dear Agent-Task": "e1"},
     )
 
     transport.send(message)

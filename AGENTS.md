@@ -1,15 +1,15 @@
-# AGENTS.md — Herald
+# AGENTS.md — Dear Agent
 
 This file is the operating contract for any coding agent (OpenCode, Claude Code, Codex,
 or a future runner) working in this repository. Read it fully before changing anything.
-It is intentionally explicit: Herald is a background agent for *unattended* work, so its
+It is intentionally explicit: Dear Agent is a background agent for *unattended* work, so its
 own development must be safe to run with an empty chair.
 
 ---
 
-## 1. What Herald is
+## 1. What Dear Agent is
 
-Herald is an **async, email-first inbox that turns messages into Git pull requests
+Dear Agent is an **async, email-first inbox that turns messages into Git pull requests
 produced by coding agents**. A message enqueues a task; an agent works in its own Git
 worktree; the result is a **PR a human reviews**. The transport never carries source
 code — **Git is the only artifact plane**.
@@ -18,7 +18,7 @@ Two product goals drive every design decision:
 
 1. **Enqueueing is the hard problem.** Work must be able to arrive asynchronously
    (email/JMAP/webhook), be deduplicated, survive restarts, and be safe to re-deliver.
-2. **Creative when idle.** When nothing is queued, Herald must be able to *propose* work
+2. **Creative when idle.** When nothing is queued, Dear Agent must be able to *propose* work
    from recent repository activity and trends, instead of sitting idle.
 
 If a change does not serve one of those goals (or a milestone in
@@ -30,10 +30,10 @@ If a change does not serve one of those goals (or a milestone in
    files, or directory archives via email/JMAP/IRC. Only task metadata, status, and
    links (repo, branch, PR, commit SHA) travel. Code moves over Git only.
 2. **The deliverable is a PR.** Agents never commit or push directly to `main` (or any
-   protected base). Always an `herald-<slug>` branch + a PR. Landing is human-gated: a human
+   protected base). Always an `dear-agent-<slug>` branch + a PR. Landing is human-gated: a human
    reviews and explicitly approves, and only then does the agent merge (squash) — never
    before checks are green and approval is given.
-3. **Never replace the user's harness.** Herald *wraps* OpenCode/Claude Code/Codex/a
+3. **Never replace the user's harness.** Dear Agent *wraps* OpenCode/Claude Code/Codex/a
    custom runner through a runner adapter. Do not fork or vend a harness into this repo.
 4. **Enqueue is idempotent.** The same inbound message must never create two tasks.
    Deduplicate on the transport message id (`Message-ID`, JMAP `emailId`, webhook event
@@ -60,7 +60,7 @@ state, approvals and the decision log live in PostgreSQL — see
 [ADR 0002](docs/decisions/0002-deployment-topology.md) in part. The local MVP path is in
 [`docs/getting-started.md`](docs/getting-started.md). The decision layer uses System One models
 (Jev first) for routing/gates — see
-[`docs/decisions/0004-decision-model.md`](docs/decisions/0004-decision-model.md). Herald has
+[`docs/decisions/0004-decision-model.md`](docs/decisions/0004-decision-model.md). Dear Agent has
 **no direct-LLM path**: a harness codes, a decider decides.
 
 Start here:
@@ -92,8 +92,8 @@ The recommended next slice is the first unchecked one in
 - **Deployment** is Kubernetes/OpenShift by design (ADR 0002, ADR 0005): one Job per task, a
   `CronJob` sweep, no always-on daemon, and a PostgreSQL `StatefulSet` (or a local podman
   container) for durable state.
-- The **`herald` CLI** is the operator entry point: `herald task ls|show|claim|complete|fail`
-  (queue backend from `HERALD_QUEUE=memory|postgres`; `--backend` selects the transport).
+- The **`dear-agent` CLI** is the operator entry point: `dear-agent task ls|show|claim|complete|fail`
+  (queue backend from `DEAR_AGENT_QUEUE=memory|postgres`; `--backend` selects the transport).
 - Formatting/linting/tests (add these as they come into existence):
   - `ruff format && ruff check`
   - `pytest`
@@ -102,7 +102,7 @@ The recommended next slice is the first unchecked one in
 ## 5. Repository layout (target)
 
 ```
-herald/
+dear-agent/
 ├── AGENTS.md                 # this contract
 ├── README.md
 ├── docs/
@@ -114,7 +114,7 @@ herald/
 │   ├── security.md
 │   ├── roadmap.md
 │   └── decisions/            # ADRs, one file per decision
-├── src/herald/               # Python package
+├── src/dear_agent/               # Python package
 │   ├── db.py                 # Postgres connect + schema composition
 │   ├── events.py             # append-only task event log + error budget
 │   ├── deps.py               # task dependency graph (depends-on) resolution
@@ -138,8 +138,8 @@ herald/
 
 ## 6. How to work in this repo
 
-- **One slice per branch.** Branch name `herald-<milestone>-<slug>` (e.g.
-  `herald-m1-task-model`).
+- **One slice per branch.** Branch name `dear-agent-<milestone>-<slug>` (e.g.
+  `dear-agent-m1-task-model`).
 - **TDD.** Failing test first, minimal implementation, then refactor. Commit per
   meaningful step.
 - **PR per slice.** Open a PR against `main`. A human reviews and explicitly approves;
@@ -167,7 +167,7 @@ See [`docs/security.md`](docs/security.md) for the prompt-injection threat model
 - Sweep cadence: latency vs cluster churn for the `CronJob`.
 - Concurrency: one task at a time vs N Jobs.
 - Idle loop scope: propose-only vs auto-enqueue drafts for approval.
-- Runner contract: exact CLI/stdio protocol between Herald and a harness (see
+- Runner contract: exact CLI/stdio protocol between Dear Agent and a harness (see
   `docs/architecture.md` → Runner).
 
 ## 9. Prior art to reuse, not reinvent

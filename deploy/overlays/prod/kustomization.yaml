@@ -1,17 +1,17 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-namespace: herald
+namespace: dear-agent
 resources:
   - ../../base
 components:
   - ../../components/postgresql
 images:
-  - name: quay.io/rarguello/herald
+  - name: quay.io/rarguello/dear-agent
     newTag: stable
 patches:
   - target:
       kind: Deployment
-      name: herald-control-plane
+      name: dear-agent-control-plane
     patch: |-
       - op: replace
         path: /spec/replicas
@@ -19,7 +19,7 @@ patches:
   # Pin a storage class for the database if the cluster default is not what you want:
   # - target:
   #     kind: StatefulSet
-  #     name: herald-postgres
+  #     name: dear-agent-postgres
   #   patch: |-
   #     - op: add
   #       path: /spec/volumeClaimTemplates/0/spec/storageClassName

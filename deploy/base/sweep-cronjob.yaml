@@ -3,9 +3,9 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: herald-sweep
+  name: dear-agent-sweep
   labels:
-    app.kubernetes.io/name: herald
+    app.kubernetes.io/name: dear-agent
     app.kubernetes.io/component: scheduler
 spec:
   schedule: "*/2 * * * *"
@@ -17,7 +17,7 @@ spec:
       template:
         spec:
           restartPolicy: Never
-          serviceAccountName: herald-control-plane
+          serviceAccountName: dear-agent-control-plane
           # The dispatcher creates runner Jobs through the API, so this pod alone needs a
           # token. Its Role can only read the runner template and create Jobs (rbac.yaml).
           automountServiceAccountToken: true
@@ -27,23 +27,23 @@ spec:
               type: RuntimeDefault
           containers:
             - name: sweep
-              image: quay.io/rarguello/herald:latest
-              command: ["herald"]
+              image: quay.io/rarguello/dear-agent:latest
+              command: ["dear-agent"]
               args: ["sweep"]
               envFrom:
                 - configMapRef:
-                    name: herald-config
+                    name: dear-agent-config
               env:
                 - name: FASTMAIL_API_TOKEN
                   valueFrom:
                     secretKeyRef:
-                      name: herald-jmap
+                      name: dear-agent-jmap
                       key: FASTMAIL_API_TOKEN
                       optional: true
-                - name: HERALD_DATABASE_URL
+                - name: DEAR_AGENT_DATABASE_URL
                   valueFrom:
                     secretKeyRef:
-                      name: herald-postgres
+                      name: dear-agent-postgres
                       key: DATABASE_URL
                       optional: true
               resources:
