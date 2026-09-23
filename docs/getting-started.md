@@ -84,8 +84,10 @@ Herald is email-first. With Fastmail JMAP configured:
 
 ```sh
 export HERALD_BACKEND=jmap               # the transport; the queue is still Postgres
-export FASTMAIL_API_TOKEN=... FASTMAIL_ACCOUNT_ID=...
-herald-http                              # POST /inbound (HMAC), or:
+export FASTMAIL_API_TOKEN='<your Fastmail API token>'
+export FASTMAIL_ACCOUNT_ID='<your account id>'   # optional; discovered from the session
+export HERALD_RECIPIENT='you@example.com'        # where status/approvals are threaded back
+herald-http                              # webhook at POST /inbound (HMAC), or:
 herald listen                            # ingest on JMAP push events
 ```
 
@@ -107,7 +109,8 @@ retrying forever; put it back with `herald task requeue <id>`.
 Routing/gates can use a decider (Jev, or any OpenAI-compatible endpoint):
 
 ```sh
-export HERALD_DECIDER=jev TYPESAFE_API_KEY=...      # or openai-compat, or rules (default)
+export HERALD_DECIDER=jev                 # or openai-compat, or rules (default)
+export TYPESAFE_API_KEY='<your TypeSafe key>'
 herald decide "audit the auth module for timing side-channels"
 ```
 
