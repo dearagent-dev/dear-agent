@@ -706,6 +706,11 @@ def _handle_redeem(args: argparse.Namespace, context: CliContext) -> int:
 
 def _add_pending_approvals(subparsers: argparse._SubParsersAction) -> None:
     parser = subparsers.add_parser("pending", help="list pending approval requests")
+    parser.add_argument(
+        "--show-tokens",
+        action="store_true",
+        help="print the raw single-use tokens (they can leak through logs/CI)",
+    )
     parser.set_defaults(handler=_handle_pending_approvals, needs_queue=False)
 
 
@@ -713,13 +718,18 @@ def _handle_pending_approvals(args: argparse.Namespace, context: CliContext) -> 
     from dear_agent.approvals import build_approval_store
 
     pending = build_approval_store().pending()
+    show = bool(getattr(args, "show_tokens", False))
+
+    def token_of(approval: object) -> str:
+        return approval.token if show else "<redacted>"  # type: ignore[attr-defined]
+
     if context.as_json:
         context.emit_json(
             [
                 {
                     "task_id": approval.task_id,
                     "action": approval.action,
-                    "token": approval.token,
+                    "token": token_of(approval),
                     "created_at": approval.created_at,
                     "expires_at": approval.expires_at,
                 }
@@ -730,10 +740,10 @@ def _handle_pending_approvals(args: argparse.Namespace, context: CliContext) -> 
         context.emit("no pending approvals")
     else:
         for approval in pending:
-            # The token is shown so an operator can approve locally; it is single-use and
-            # short-lived, and is the same secret the email request carries.
+            # Tokens are redacted by default: they are single-use secrets and the same value
+            # the email request carries, so printing them can leak through logs or CI.
             context.emit(
-                f"{approval.task_id} {approval.action} {approval.token} "
+                f"{approval.task_id} {approval.action} {token_of(approval)} "
                 f"expires {approval.expires_at.isoformat()}"
             )
     return 0
