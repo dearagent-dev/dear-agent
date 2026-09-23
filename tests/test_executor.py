@@ -158,6 +158,22 @@ def test_execute_rejects_a_task_that_is_not_queued(repo: Path) -> None:
         executor.execute(task, make_spec())
 
 
+def test_a_runner_that_raises_fails_the_task(repo: Path) -> None:
+    class RaisingRunner:
+        def run(self, task: Task, spec: TaskSpec, worktree: Worktree) -> RunResult:
+            raise RuntimeError("boom")
+
+    queue = MemoryQueue()
+    task = make_task(queue)
+    transport = MemoryTransport()
+    executor = make_executor(queue, repo, RecordingForge(), RaisingRunner(), transport)
+
+    evidence = executor.execute(task, make_spec(), recipient="dev@example.com")
+
+    assert evidence.failure is FailureKind.HARNESS_FAILED
+    assert queue.get("e1").state is TaskState.FAILED
+
+
 def test_worktree_creation_failure_fails_the_task(repo: Path, monkeypatch) -> None:
     from unittest import mock
 

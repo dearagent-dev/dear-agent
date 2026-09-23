@@ -91,7 +91,14 @@ class TaskExecutor:
             self._queue.transition(running, TaskState.FAILED)
             raise
         try:
-            run = self._runner.run(task, spec, worktree)
+            try:
+                run = self._runner.run(task, spec, worktree)
+            except Exception as exc:  # noqa: BLE001 - a broken runner must not wedge the task
+                run = RunResult(
+                    exit_code=1,
+                    stderr=f"runner raised {type(exc).__name__}",
+                    branch=worktree.branch,
+                )
             failure: FailureKind | None = None
             commit: str | None = None
             pr_url: str | None = None
