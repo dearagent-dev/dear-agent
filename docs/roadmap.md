@@ -124,6 +124,14 @@ See [ADR 0005](decisions/0005-state-store.md).
 
 ## Later / ideas
 
+- **Gate high-risk inbound runs behind approval.** The mechanism exists (idle proposals are
+  parked in `action` and released by a `run` approval); extend it to inbound tasks whose
+  decider verdict says a human should look.
+- **Connection resilience**: pool Postgres connections and reconnect on failure for the
+  long-lived control plane; back the store with PITR.
+- Idle: persist the budget/metrics and dedupe proposals on the database.
+- Live OpenShift verification of the Postgres component (as M6 was verified).
+
 - [x] HTTP entrypoint hardening: inbound webhook endpoint (`POST /inbound`, HMAC auth,
   fail-closed without a secret), request-body cap and timeouts.
 

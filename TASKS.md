@@ -36,13 +36,11 @@ log). See [ADR 0005](docs/decisions/0005-state-store.md).
 
 ## Next
 
-- **M8.5 — wire the `action` gate for real.** `TaskExecutor` goes `running -> done/failed`
-  and never parks a task in `action`; approvals are issued/redeemed but nothing triggers a
-  request. Decide where the human gate runs (before push? before a high-risk change?) and use
-  `Notifier.request_approval`.
-- **M9 — idle loop on the database**: proposals should enqueue through the same path and be
-  visible in `herald task ls` (they already are), with budget/metrics persisted.
-- Deployment: verify the Postgres component on a live OpenShift cluster (as M6 was verified).
+- **Gate high-risk inbound runs behind approval.** Idle proposals are already parked in
+  `action` and released by a `run` approval; extend the same gate to inbound tasks whose
+  decider verdict says a human should look (the draft PR remains the landing gate).
+- **Connection resilience / PITR** for the long-lived control plane.
+- Verify the Postgres component on a live OpenShift cluster (as M6 was verified).
 
 ## Configuration (see .env, never committed)
 
