@@ -1,0 +1,105 @@
+# PostgreSQL 18 (UBI 9) — the durable queue (ADR 0005). The mailbox is ingress only.
+#
+# Credentials come from the `herald-postgres` Secret, provisioned out of band (ADR 0003):
+#   POSTGRESQL_USER, POSTGRESQL_PASSWORD, POSTGRESQL_DATABASE, POSTGRESQL_ADMIN_PASSWORD
+#
+# The image is Red Hat's PostgreSQL container (sclorg), which runs on OpenShift with an
+# arbitrary UID and keeps its data in /var/lib/pgsql/data.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: herald-postgres
+  labels:
+    app.kubernetes.io/name: herald-postgres
+    app.kubernetes.io/component: database
+    app.kubernetes.io/part-of: herald
+spec:
+  replicas: 1
+  serviceName: herald-postgres
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: herald-postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: herald-postgres
+        app.kubernetes.io/component: database
+        app.kubernetes.io/part-of: herald
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: postgresql
+          image: registry.redhat.io/rhel9/postgresql-18:latest
+          ports:
+            - name: postgresql
+              containerPort: 5432
+              protocol: TCP
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: POSTGRESQL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: herald-postgres
+                  key: POSTGRESQL_USER
+            - name: POSTGRESQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: herald-postgres
+                  key: POSTGRESQL_PASSWORD
+            - name: POSTGRESQL_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: herald-postgres
+                  key: POSTGRESQL_DATABASE
+            - name: POSTGRESQL_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: herald-postgres
+                  key: POSTGRESQL_ADMIN_PASSWORD
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "2Gi"
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/pgsql/data
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - pg_isready -h 127.0.0.1 -U "$POSTGRESQL_USER" -d "$POSTGRESQL_DATABASE"
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+            successThreshold: 1
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket:
+              port: 5432
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 1
+            successThreshold: 1
+            failureThreshold: 3
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        # No storageClassName: use the cluster default. Override per environment with a
+        # patch (see deploy/README.md) when a specific class is required.
+        resources:
+          requests:
+            storage: 10Gi

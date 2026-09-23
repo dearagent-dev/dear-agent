@@ -101,8 +101,23 @@ deterministic fallback. Advisory only — never a security boundary.
 - [x] **M7.3** Advisory injection + "no source over transport": a `noul` pair feeding the
   `suspicious` report next to `InjectionScanner` and the attachment check, so inline
   diffs/encoded blobs get caught too.
-- [x] **M7.4** Earned thresholds: `DecisionLog` (JSONL, no DB) records every decision for
-  tuning; `herald decide` lets an operator test the routing, with rules or the live model.
+- [x] **M7.4** Earned thresholds: `DecisionLog` (JSONL for now; moves to Postgres in M8)
+  records every decision for tuning; `herald decide` lets an operator test the routing, with
+  rules or the live model.
+
+## M8 — Durable state in PostgreSQL (ADR 0005)
+
+The mailbox becomes ingress; PostgreSQL holds tasks, state, approvals and the decision log.
+See [ADR 0005](decisions/0005-state-store.md).
+
+- [ ] **M8.1** Postgres deployment: a kustomize component (`StatefulSet` + `Service` + `PVC`,
+  `registry.redhat.io/rhel9/postgresql-18`) and a local podman equivalent
+  (`scripts/dev-postgres.sh`), sharing one `HERALD_DATABASE_URL`.
+- [ ] **M8.2** Schema + migrations and a `PostgresQueue` implementing the `Queue` port
+  (unique `transport_id`, `FOR UPDATE SKIP LOCKED` claim, lease sweep); `JmapQueue` retired.
+- [ ] **M8.3** Move approvals and the decision log/labels into Postgres; drop the file stores.
+- [ ] **M8.4** One-time backfill of in-flight tasks from the mailbox; cut the sweep and runner
+  over to the database.
 
 ## Later / ideas
 

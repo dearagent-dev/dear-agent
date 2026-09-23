@@ -58,7 +58,7 @@ See [`docs/architecture.md`](docs/architecture.md).
 |---|---|
 | **Transport** | inbound: receive a message → webhook/IMAP/JMAP; outbound: send status and approval mail. See [`docs/transports.md`](docs/transports.md). |
 | **Normalizer** | message → `Task` (repo, instructions, constraints, reply token). |
-| **Queue** | the mailbox itself: task records, states, dedupe, approvals. See [`docs/queue.md`](docs/queue.md). |
+| **Queue** | PostgreSQL: task records, states, dedupe, approvals. The mailbox is ingress. See [`docs/queue.md`](docs/queue.md). |
 | **Runner** | executes a harness in an isolated worktree; drives provider selection. |
 | **Provider** | model backend (hosted or local OpenAI-compatible). See [`docs/providers.md`](docs/providers.md). |
 | **Git plane** | worktree, branch, commit, push, draft PR. Nothing reaches `main`. |
@@ -71,7 +71,7 @@ See [`docs/architecture.md`](docs/architecture.md).
 |---|---|---|---|
 | **Cloudflare Email Service** | REST/SMTP/Worker binding | Email Routing → Worker `email()` | Optional forwarder; contains no business logic. |
 | **AgentMail.to** | API | webhooks/WebSockets/IMAP | Drop-in "inbox API for agents". |
-| **Fastmail (JMAP)** | JMAP | JMAP Push | **Recommended primary: the mailbox is the queue.** |
+| **Fastmail (JMAP)** | JMAP | JMAP Push | **Recommended primary ingress.** Durable state is PostgreSQL. |
 | **forwardemail.net** | API/SMTP/IMAP | webhook/forward | Usable fallback. |
 | **Postmark / Resend / SES** | API | inbound webhooks (some) | Good for outbound notifications. |
 | **IRC** | — | bouncer history | Fun, but not store-and-forward; secondary. |
@@ -84,8 +84,8 @@ target: Herald's queue tolerates hours-long tasks.
 
 ## Status
 
-**M1 (queue).** The design (M0) is complete. The durable queue is the transport mailbox
-(Fastmail JMAP first); there is no database. Start with [`AGENTS.md`](AGENTS.md) and
+**M8 (durable state in PostgreSQL).** M0–M7 are done. The durable queue is PostgreSQL; the
+transport mailbox (Fastmail JMAP first) is ingress. Start with [`AGENTS.md`](AGENTS.md) and
 [`docs/roadmap.md`](docs/roadmap.md).
 
 ## Non-goals

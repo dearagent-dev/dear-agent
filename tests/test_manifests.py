@@ -116,3 +116,46 @@ def test_sweep_invokes_the_dispatcher() -> None:
         container = cron["spec"]["jobTemplate"]["spec"]["template"]["spec"]["containers"][0]
         assert container["command"] == ["herald"]
         assert container["args"][:1] == ["sweep"]
+
+
+def postgres_statefulset(docs: list[dict]) -> dict:
+    return next(
+        doc
+        for doc in docs
+        if doc.get("kind") == "StatefulSet" and doc["metadata"]["name"] == "herald-postgres"
+    )
+
+
+@pytest.mark.parametrize("overlay", ["dev", "prod"])
+def test_postgres_runs_postgresql_18_on_ubi(overlay: str) -> None:
+    container = postgres_statefulset(build(overlay))["spec"]["template"]["spec"]["containers"][0]
+
+    assert container["image"].startswith("registry.redhat.io/rhel")
+    assert "postgresql-18" in container["image"]
+
+
+@pytest.mark.parametrize("overlay", ["dev", "prod"])
+def test_postgres_is_never_exposed_outside_the_cluster(overlay: str) -> None:
+    docs = build(overlay)
+    service = next(
+        doc
+        for doc in docs
+        if doc.get("kind") == "Service" and doc["metadata"]["name"] == "herald-postgres"
+    )
+
+    assert service["spec"]["clusterIP"] == "None"  # headless: no ClusterIP
+    assert service["spec"].get("type", "ClusterIP") == "ClusterIP"
+    assert not any(
+        doc.get("kind") in {"Route", "Ingress"} and "postgres" in doc["metadata"]["name"]
+        for doc in docs
+    )
+
+
+@pytest.mark.parametrize("overlay", ["dev", "prod"])
+def test_postgres_persists_its_data(overlay: str) -> None:
+    spec = postgres_statefulset(build(overlay))["spec"]
+    container = spec["template"]["spec"]["containers"][0]
+
+    assert spec["volumeClaimTemplates"]
+    assert any(mount["mountPath"] == "/var/lib/pgsql/data" for mount in container["volumeMounts"])
+    assert spec["template"]["spec"]["automountServiceAccountToken"] is False

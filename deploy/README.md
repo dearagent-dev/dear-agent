@@ -1,11 +1,14 @@
 # Deploying Herald on Kubernetes / OpenShift
 
-Herald is Kubernetes/OpenShift by design (ADR 0002): one `Job` per task, a `CronJob`
-sweep, and no database. The durable queue is the Fastmail JMAP mailbox.
+Herald is Kubernetes/OpenShift by design (ADR 0002, ADR 0005): one `Job` per task, a `CronJob`
+sweep, no always-on daemon, and a PostgreSQL `StatefulSet` for durable state. The transport
+mailbox is ingress only.
 
 ```
 deploy/
 ├── base/                 # control plane, runner Job, sweep CronJob, secrets refs
+├── components/
+│   └── postgresql/       # durable queue: PostgreSQL 18 StatefulSet + Service (ADR 0005)
 └── overlays/
     ├── dev/
     └── prod/
@@ -24,9 +27,33 @@ oc apply -k deploy/overlays/dev
 1. Set the image in the overlay (`ghcr.io/OWNER/herald`). The image is built from
    `registry.access.redhat.com/ubi9/python-312`, so it matches the OpenShift platform; it
    runs as an arbitrary UID with group 0 for OpenShift's SCC.
-2. Create the four Secrets out of band (never commit values). They are **not** part of the
+2. Create the Secrets out of band (never commit values). They are **not** part of the
    kustomize build, so `oc apply -k` can never reset a live credential. See
    [`../docs/decisions/0003-credentials.md`](../docs/decisions/0003-credentials.md).
+
+## Database (ADR 0005)
+
+PostgreSQL is the durable queue; the mailbox is ingress. The `postgresql` component is
+opt-in and already included by the `dev`/`prod` overlays:
+
+- `deploy/components/postgresql/` — a `StatefulSet` (`registry.redhat.io/rhel9/postgresql-18`)
+  plus a headless `Service` and a `PVC`. The name is `herald-postgres`, reachable at
+  `herald-postgres:5432` inside the namespace and **never** exposed with a Route/NodePort.
+- The PVC uses the cluster default storage class. Pin one per environment with the patch
+  commented in `overlays/prod/kustomization.yaml`.
+- Credentials come from the `herald-postgres` Secret (keys `POSTGRESQL_USER`,
+  `POSTGRESQL_PASSWORD`, `POSTGRESQL_DATABASE`, `POSTGRESQL_ADMIN_PASSWORD`); the application
+  uses `HERALD_DATABASE_URL`.
+
+For local development without a cluster, run the same image with podman:
+
+```sh
+scripts/dev-postgres.sh up     # prints the connection URL
+scripts/dev-postgres.sh psql
+scripts/dev-postgres.sh down   # keeps the named volume
+```
+
+The image is Red Hat's, so log in first (`podman login registry.redhat.io`) if needed.
 
 ## Credentials (ADR 0003)
 
@@ -38,6 +65,7 @@ One credential per purpose, least privilege, referenced by `secretKeyRef`:
 | `herald-git-push` | `ssh-privatekey` | push `herald/<slug>`, open draft PR | write deploy key, `herald/*` only |
 | `herald-jmap` | `FASTMAIL_API_TOKEN` | read/send mail | `Email` (+ `Email submission`) |
 | `herald-model` | provider-specific | model calls | scoped provider key |
+| `herald-postgres` | `POSTGRESQL_*` | database credentials | one database, least privilege |
 
 Create them without putting values in git, for example:
 
@@ -50,6 +78,11 @@ oc create secret generic herald-git-push \
   --from-file=ssh-privatekey="$HOME/.ssh/herald_push"
 oc create secret generic herald-model \
   --from-literal=API_KEY="$MODEL_API_KEY"
+oc create secret generic herald-postgres \
+  --from-literal=POSTGRESQL_USER=herald \
+  --from-literal=POSTGRESQL_PASSWORD="$HERALD_POSTGRES_PASSWORD" \
+  --from-literal=POSTGRESQL_DATABASE=herald \
+  --from-literal=POSTGRESQL_ADMIN_PASSWORD="$HERALD_POSTGRES_ADMIN_PASSWORD"
 ```
 
 For production, project these from an external store (External Secrets Operator, Secrets
@@ -82,7 +115,8 @@ selected repositories.
   Job per queued task with the task id injected.
 - The runner's `--repo /work/source` is cloned read-only on first use from the task's
   `repo:` URL, using the mounted `herald-git-read` key (`GIT_SSH_COMMAND`).
-- No Postgres: by design, the mailbox is the queue.
+- The database is deployed but not yet used by the application: the `PostgresQueue` adapter,
+  schema and migrations are M8.2 (ADR 0005). `herald` still runs on `JmapQueue` until then.
 
 ## Verified on a live OpenShift cluster
 

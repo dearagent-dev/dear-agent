@@ -1,7 +1,10 @@
 # ADR 0002 — The mailbox is the queue: Fastmail JMAP as source of truth, Kubernetes for execution
 
-- **Status:** accepted
+- **Status:** superseded in part by [0005](0005-state-store.md). The mailbox is now **ingress**,
+  not the source of truth: PostgreSQL holds tasks and state. Kubernetes execution (one Job per
+  task), the sweep, the Git artifact plane and the credentials model still stand.
 - **Date:** 2026-09-17
+- **Superseded by:** [0005](0005-state-store.md) (durable state moves to PostgreSQL)
 
 ## Context
 
@@ -17,8 +20,9 @@ the queue is built on top of it.
 
 ## Decision
 
-1. **The Fastmail JMAP mailbox is the source of truth for tasks and state. There is no
-   database.** No Postgres, no SQLite, no workflow engine.
+1. ~~**The Fastmail JMAP mailbox is the source of truth for tasks and state. There is no
+   database.** No Postgres, no SQLite, no workflow engine.~~ **Superseded by
+   [0005](0005-state-store.md):** the mailbox is ingress, PostgreSQL is the durable queue.
 
 2. **State is modelled as mailboxes + keywords.** Mailboxes (or equivalent filters)
    `Queued`, `Running`, `Action`, `Done`, `Failed`, `Rejected`, plus companion keywords

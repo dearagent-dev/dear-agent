@@ -5,53 +5,37 @@ current state. Keep it short and delete finished items.
 
 ## In progress
 
-### M7 — Decider abstraction refactor
+### M8 — Durable state in PostgreSQL (ADR 0005)
 
-Branch: `herald-m7-decider-refactor` (WIP committed at `97c8d90`, pushed).
-Goal: remove the "Model / ModelCatalog / SelectionPolicy / OpenRouter-models" plane and
-replace it with a decider abstraction. Decision: **"with System One we have enough"** —
-Herald has no direct-LLM path; the harness codes, the decider only decides.
+Branch: `herald-m8-postgres-deploy`.
+Goal: the mailbox becomes **ingress**; PostgreSQL is the durable queue for tasks, state,
+approvals and the decision log. Decision:
+[ADR 0005](docs/decisions/0005-state-store.md) supersedes ADR 0002 in part.
 
-Contract (already decided):
-- Port stays named **`Decider`**; `protocol` metadata is `"system-one"` (native) vs
-  `"openai-compat"` (emulated, `native_types=False`).
-- **`DeciderInfo`** `{id, protocol, endpoint, model, native_types, local, free, api_key_env}`.
-- **`DeciderCatalog`** (`list_deciders()`) + **`DeciderProvider`** (`decider_for(info)`).
-- **`DeciderPolicy`**: native > emulated, local > hosted, free > paid; `preferred` id wins;
-  `require_native` forbids emulation; fallback is `RuleDecider`.
-- `OpenAICompatibleDecider` is kept as the *emulated* adapter (honestly labelled).
+This slice (M8.1) is **infrastructure + decision only**:
 
-Done in the WIP:
-- `src/herald/decision/port.py`: `ModelInfo/ModelCatalog/ModelProvider` →
-  `DeciderInfo/DeciderCatalog/DeciderProvider`.
-- `src/herald/decision/policy.py`: new `DeciderPolicy`.
-- Deleted: `selection.py`, `openrouter.py`.
+- [x] ADR 0005 accepted; ADR 0002 marked superseded in part; docs aligned (AGENTS, README,
+      architecture, queue, roadmap).
+- [x] `deploy/components/postgresql/` — PostgreSQL 18 on UBI 9
+      (`registry.redhat.io/rhel9/postgresql-18`) `StatefulSet` + headless `Service` + `PVC`,
+      included by the dev/prod overlays; `herald-postgres` secret reference added.
+- [x] `scripts/dev-postgres.sh` — the same image under podman for local development.
+- [x] Manifest tests for the Postgres invariants (UBI/PG18, never exposed, persists data).
 
-Remaining:
-1. Move `ROUTE_QUESTION` / `HUMAN_QUESTION` / `QUESTION_MODEL` / `QUESTION_NEEDS_HUMAN`
-   (were in `selection.py`) into `router.py`.
-2. Fix imports in `factory.py`, `router.py`, `cli/commands.py`.
-3. Add `EnvDeciderCatalog` (reads `HERALD_DECIDER_*`) and a `DeciderProvider` that builds
-   `JevDecider` / `OpenAICompatibleDecider` / `RuleDecider`.
-4. Rewrite `build_decider()` without `if primary ==`: catalog + policy + provider, falling
-   back to rules.
-5. Delete `tests/test_model_catalog.py`; fix `tests/test_decision.py` (uses
-   `OpenRouterProvider.catalog`), `tests/test_openai_decider.py`, `tests/test_decision_calibration.py`.
-6. `ruff check` + `pytest` green; verify live with Jev (key in `.env`, gitignored).
-7. PR, CI, squash-merge.
+Next (M8.2+):
 
-## Next (after the refactor)
+1. Schema + migrations and a `PostgresQueue` implementing the `Queue` port (unique
+   `transport_id`, `FOR UPDATE SKIP LOCKED` claim, lease sweep); retire `JmapQueue`.
+2. Move approvals and the decision log/labels into Postgres; drop the file stores.
+3. One-time backfill of in-flight tasks from the mailbox; cut the sweep and runner over.
 
-- **`HarnessCatalog` + `HarnessInfo` + `local-agent`**: choose the local binary
-  (`opencode`/`claude`/`codex`) with metadata (`accepts_model`: flag vs subscription), clone
-  the repo to `/tmp/herald-<taskid>`, run the harness, push `herald/<slug>` + draft PR, clean
-  up. This is what unblocks real work on Ricardo's laptop (`opencode` + DeepSeek V4.1 Flash).
-  Note: harness adds a model only when it accepts one (OpenCode does via `--model`; Claude
-  Code / Codex use their subscription).
+Note: the M7 decider refactor is a separate branch (`herald-m7-decider-refactor`, PR #54).
 
 ## Configuration (see .env, never committed)
 
-- Decision: `HERALD_DECIDER=jev|openai-compat|rules|none`, `HERALD_DECIDER_THRESHOLD`,
-  `HERALD_DECIDER_LOG`, `TYPESAFE_API_KEY`, `OPENROUTER_API_KEY`.
+- State: `HERALD_DATABASE_URL` (PostgreSQL 18 on UBI 9; local podman or in-cluster).
+- Decision: `HERALD_DECIDER=rules|jev|openai-compat|none` (alias `openrouter`),
+  `HERALD_DECIDER_MODEL`, `HERALD_DECIDER_ENDPOINT`, `HERALD_DECIDER_BASE_URL`,
+  `HERALD_DECIDER_THRESHOLD`, `HERALD_DECIDER_LOG`, `TYPESAFE_API_KEY`, `OPENROUTER_API_KEY`.
 - Harness: `HERALD_HARNESS=opencode|claude|codex|command`, `HERALD_HARNESS_BINARY`,
   `HERALD_HARNESS_COMMAND`, `HERALD_HARNESSES`, `HERALD_HARNESS_DEFAULT`.
