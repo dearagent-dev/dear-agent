@@ -4,6 +4,7 @@ import subprocess
 from dataclasses import dataclass
 
 from herald.queue.models import Task, TaskSpec
+from herald.runners.harness import harness_env
 from herald.runners.worktree import RunResult, Worktree
 
 DEFAULT_TIMEOUT_SECONDS = 3600
@@ -26,6 +27,7 @@ class CommandRunner:
             completed = subprocess.run(
                 self.command,
                 cwd=worktree.path,
+                env=harness_env(str(worktree.path)),
                 capture_output=True,
                 text=True,
                 timeout=self.timeout_seconds,
