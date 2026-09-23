@@ -109,6 +109,10 @@ Owner: gitplane + repository settings.
 - A message flagged **suspicious** (by `InjectionScanner` or the `SecurityDecider`, which
   uses Jev when configured) is parked in `action` and **does not run** until a human
   approves it with a single-use token — the injection never reaches the harness.
+- A task the decider reads as **needs a human** (`HumanGate`, the same question
+  `ModelRouter` uses: production, deployment, data, high-stakes) is parked in `action` too.
+  It is advisory and fail-open — no decider, or a decider error, means no gate — and the
+  draft PR remains the landing gate regardless.
 - A repository that no *enabled* project policy matches is **refused**: once policies are
   configured, one cannot ask Herald to work on a repo the operator did not allow. Scope the
   push credential to the allowed repos and keep branch protection as the last line.

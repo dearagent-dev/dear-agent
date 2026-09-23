@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from herald.decision.port import Decider, DecisionKind, Question
+from herald.decision.port import Decider, Decision, DecisionKind, Question
 from herald.providers.registry import Provider, ProviderRegistry
 
 # The questions the router asks; kept here so the rule fallback and model deciders agree.
@@ -25,6 +25,38 @@ HUMAN_QUESTION = Question(
         "production, deployment, data, or is otherwise high-stakes?"
     ),
 )
+
+# At or above this the advisory read is "a human should look". Shared by the router and the
+# control-plane gate so both branch on the same earned threshold (ADR 0004).
+HUMAN_THRESHOLD = 0.5
+
+
+def decision_needs_human(decision: Decision, *, threshold: float = HUMAN_THRESHOLD) -> bool:
+    """Read the ``needs_human`` answer out of a decision (advisory, fail-open)."""
+    return (decision.noul(QUESTION_NEEDS_HUMAN) or 0.0) >= threshold
+
+
+@dataclass(slots=True)
+class HumanGate:
+    """Asks the decider whether a human must approve a task before it runs (M7.2).
+
+    Advisory only: it never blocks on its own, it returns a boolean the control plane uses to
+    park a task in ``action`` for a human to release with a ``run`` approval. No decider (or an
+    error) means no gate — fail-open, as ADR 0004 requires. This is the same question
+    :class:`ModelRouter` uses to pick a provider, so the two agree.
+    """
+
+    decider: Decider | None = None
+    threshold: float = HUMAN_THRESHOLD
+
+    def needs_human(self, state: str) -> bool:
+        if self.decider is None:
+            return False
+        try:
+            decision = self.decider.decide(state, {QUESTION_NEEDS_HUMAN: HUMAN_QUESTION})
+        except Exception:  # noqa: BLE001 - the advisory path must never propagate
+            return False
+        return decision_needs_human(decision, threshold=self.threshold)
 
 
 @dataclass(slots=True, frozen=True)
@@ -76,7 +108,7 @@ class ModelRouter:
             state, {QUESTION_MODEL: ROUTE_QUESTION, QUESTION_NEEDS_HUMAN: HUMAN_QUESTION}
         )
         chosen = decision.choice(QUESTION_MODEL)
-        needs_human = (decision.noul(QUESTION_NEEDS_HUMAN) or 0.0) >= 0.5
+        needs_human = decision_needs_human(decision)
         provider_id = self._provider_for(chosen)
         if provider_id is None:
             return Routing(
@@ -100,9 +132,12 @@ class ModelRouter:
 
 __all__ = [
     "HUMAN_QUESTION",
+    "HUMAN_THRESHOLD",
     "QUESTION_MODEL",
     "QUESTION_NEEDS_HUMAN",
     "ROUTE_QUESTION",
+    "HumanGate",
     "ModelRouter",
     "Routing",
+    "decision_needs_human",
 ]

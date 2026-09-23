@@ -34,11 +34,15 @@ log). See [ADR 0005](docs/decisions/0005-state-store.md).
 - [x] Idle proposals are idempotent across ticks (deterministic transport id).
 - [x] Database `NetworkPolicy`; CI builds the UBI 9 image and smoke-checks the CLI.
 
+### Inbound approval gate (branch `herald-inbound-human-gate`) — done
+
+- [x] Inbound tasks whose decider verdict says a human should look are parked in `action`
+  and released by a `run` approval, exactly like suspicious messages
+  (`HumanGate`/`decision_needs_human`, `HERALD_DECIDER`, default `rules`). Fail-open: no
+  decider means no gate. The draft PR remains the landing gate.
+
 ## Next
 
-- **Gate high-risk inbound runs behind approval.** Idle proposals are already parked in
-  `action` and released by a `run` approval; extend the same gate to inbound tasks whose
-  decider verdict says a human should look (the draft PR remains the landing gate).
 - **Connection resilience / PITR** for the long-lived control plane.
 - Verify the Postgres component on a live OpenShift cluster (as M6 was verified).
 

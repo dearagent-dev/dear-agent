@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from herald.approvals import ApprovalError
 from herald.approvals_service import ApprovalReply, ApprovalService, parse_reply
 from herald.auth import AuthError, Gate
+from herald.decision.router import HumanGate
 from herald.decision.security import SecurityDecider
 from herald.events import EventLog
 from herald.normalizer import NormalizedTask, Rejected, RejectReason, normalize
@@ -46,6 +47,13 @@ class IngestReport:
     decided: list[str] = field(default_factory=list)
     suspicious: list[str] = field(default_factory=list)
     gated: list[str] = field(default_factory=list)
+    needs_human: list[str] = field(default_factory=list)
+
+
+_GATE_SUMMARIES: dict[str, str] = {
+    "suspicious": "message flagged as suspicious; approve to run it",
+    "needs-human": "the decider says a human should approve this; approve to run it",
+}
 
 
 class ControlPlane:
@@ -71,6 +79,7 @@ class ControlPlane:
         approvals: ApprovalService | None = None,
         scanner: InjectionScanner | None = None,
         security: SecurityDecider | None = None,
+        human_gate: HumanGate | None = None,
         events: EventLog | None = None,
         policies: PolicyStore | None = None,
     ) -> None:
@@ -81,6 +90,7 @@ class ControlPlane:
         self._approvals = approvals
         self._scanner = scanner
         self._security = security
+        self._human_gate = human_gate
         self._events = events
         self._policies = policies
 
@@ -139,11 +149,23 @@ class ControlPlane:
                 continue
             report.accepted.append(result.task.id)
             self._emit(result.task.id, "task.accepted", repo=result.spec.repo_url)
-            if suspicious and self._approvals is not None:
-                self._gate_for_approval(stored, recipient)
-                report.gated.append(result.task.id)
+            if self._approvals is not None:
+                reason = self._gate_reason(suspicious, result)
+                if reason is not None:
+                    self._gate_for_approval(stored, recipient, reason=reason)
+                    report.gated.append(result.task.id)
+                    if reason == "needs-human":
+                        report.needs_human.append(result.task.id)
         self._ack(messages)
         return report
+
+    def _gate_reason(self, suspicious: bool, result: NormalizedTask) -> str | None:
+        """Why a task must be parked for a human, or ``None`` to run it (advisory)."""
+        if suspicious:
+            return "suspicious"
+        if self._human_gate is not None and self._human_gate.needs_human(_human_state(result)):
+            return "needs-human"
+        return None
 
     def _repo_allowed(self, repo: str) -> bool:
         """A repo is allowed when an enabled project policy matches it.
@@ -172,16 +194,16 @@ class ControlPlane:
                 suspicious = True
         return suspicious
 
-    def _gate_for_approval(self, task: Task, recipient: str | None) -> None:
-        """Park a suspicious task in ``action`` until a human approves it."""
+    def _gate_for_approval(
+        self, task: Task, recipient: str | None, *, reason: str = "suspicious"
+    ) -> None:
+        """Park a task in ``action`` until a human releases it with a ``run`` approval."""
         self._queue.transition(task, TaskState.ACTION)
-        self._emit(task.id, "approval.requested", reason="suspicious")
+        self._emit(task.id, "approval.requested", reason=reason)
+        summary = _GATE_SUMMARIES.get(reason, "approval requested; approve to run it")
         if self._notifier is not None and recipient:
             self._notifier.request_approval(
-                task,
-                recipient=recipient,
-                action="run",
-                summary="message flagged as suspicious; approve to run it",
+                task, recipient=recipient, action="run", summary=summary
             )
         else:
             assert self._approvals is not None
@@ -238,6 +260,12 @@ class ControlPlane:
                 headers={"to": recipient, "in-reply-to": message.transport_id},
             )
         )
+
+
+def _human_state(result: NormalizedTask) -> str:
+    """The text the human-gate decider reads: the subject plus the normalized instructions."""
+    subject = result.task.subject or ""
+    return "\n".join(part for part in (subject, result.spec.instructions or "") if part)
 
 
 __all__ = ["ControlPlane", "IngestReport", "REJECT_BODIES"]
