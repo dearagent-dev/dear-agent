@@ -65,9 +65,10 @@ def select_harness(
     catalog: HarnessCatalog,
     preferred: str | None = None,
     *,
-    which: Callable[[str], str | None] = shutil.which,
+    which: Callable[[str], str | None] | None = None,
 ) -> HarnessInfo:
     """Pick a harness by id; ``auto``/``local-agent`` picks the first one on ``PATH``."""
+    which = which or shutil.which  # resolved per call, so a test can patch shutil.which
     infos = {info.id: info for info in catalog.list_harnesses()}
     name = (preferred or DEFAULT_HARNESS).strip().lower()
 
