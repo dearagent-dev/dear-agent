@@ -147,6 +147,41 @@ def test_build_routing_runner_maps_classes(monkeypatch) -> None:
     assert runner.default == "hosted"
 
 
+def test_worker_fails_a_task_after_too_many_attempts() -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from herald.queue.models import TaskState
+
+    class Clock:
+        def __init__(self) -> None:
+            self.now = datetime(2026, 1, 1, tzinfo=UTC)
+
+        def __call__(self):
+            return self.now
+
+    clock = Clock()
+    queue = MemoryQueue(clock=clock)
+    task = queue.enqueue(Task(id="e1", transport_id="<m1@x>"))
+    assert task is not None
+    for _ in range(2):
+        queue.claim(task, lease=timedelta(seconds=1))
+        clock.now += timedelta(seconds=2)
+        queue.release_stale(now=clock.now)
+
+    worker = TaskWorker(
+        queue=queue,
+        executor=object(),  # type: ignore[arg-type]
+        resolve_spec=lambda task, path: TaskSpec(repo_url="x"),  # type: ignore[arg-type]
+        repo_path=".",
+        max_attempts=2,
+    )
+
+    with pytest.raises(TaskWorkerError):
+        worker.run("e1")
+
+    assert queue.get("e1").state is TaskState.FAILED
+
+
 def test_spec_resolver_prefers_the_persisted_spec() -> None:
     from herald.worker_factory import WorktreeSpecResolver
 

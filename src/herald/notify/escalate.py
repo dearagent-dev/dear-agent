@@ -10,12 +10,13 @@ from herald.transports.port import Transport
 
 
 class FailureKind(StrEnum):
-    """Why a run needs a human, mapped from the harness exit code."""
+    """Why a run needs a human, mapped from the harness exit code or the publish step."""
 
     HARNESS_MISSING = "harness_missing"
     TIMEOUT = "timeout"
     HARNESS_FAILED = "harness_failed"
     NO_CHANGES = "no_changes"
+    PUBLISH_FAILED = "publish_failed"
 
 
 FAILURE_SUMMARIES: dict[FailureKind, str] = {
@@ -23,6 +24,7 @@ FAILURE_SUMMARIES: dict[FailureKind, str] = {
     FailureKind.TIMEOUT: "the run exceeded its time budget",
     FailureKind.HARNESS_FAILED: "the harness exited with an error",
     FailureKind.NO_CHANGES: "the harness finished but produced no changes",
+    FailureKind.PUBLISH_FAILED: "the change could not be pushed or the draft PR opened",
 }
 
 
@@ -60,18 +62,21 @@ class Escalator:
         *,
         recipient: str,
         branch: str | None = None,
+        kind: FailureKind | None = None,
     ) -> Escalation:
-        kind = classify_failure(run)
+        # The caller may already know the kind (e.g. NO_CHANGES or PUBLISH_FAILED, which the
+        # exit code cannot express); otherwise classify from the exit code.
+        kind = kind or classify_failure(run)
         escalation = Escalation(
             task_id=task.id,
             kind=kind,
             message=FAILURE_SUMMARIES[kind],
         )
-        lines = [
-            f"task: {task.id}",
-            "state: needs attention",
-            f"reason: {FAILURE_SUMMARIES[kind]} (exit {run.exit_code})",
-        ]
+        lines = [f"task: {task.id}", "state: needs attention"]
+        if kind in {FailureKind.HARNESS_MISSING, FailureKind.TIMEOUT, FailureKind.HARNESS_FAILED}:
+            lines.append(f"reason: {FAILURE_SUMMARIES[kind]} (exit {run.exit_code})")
+        else:
+            lines.append(f"reason: {FAILURE_SUMMARIES[kind]}")
         if branch:
             lines.append(f"branch: {branch}")
         lines.append("A human should review this run before it is retried or closed.")

@@ -13,7 +13,7 @@ from herald.repo import RepoPreparer
 from herald.runners.port import Runner
 from herald.sandbox import BubblewrapSandbox, NoSandbox, Sandbox, SandboxPolicy
 from herald.transports.port import Transport
-from herald.worker import TaskWorker
+from herald.worker import DEFAULT_MAX_ATTEMPTS, TaskWorker
 
 
 class WorktreeSpecResolver:
@@ -183,6 +183,7 @@ def build_worker(
         resolve_spec=WorktreeSpecResolver(transport),
         repo_path=repo_path,
         recipient=recipient,
+        max_attempts=int(os.environ.get("HERALD_MAX_ATTEMPTS", DEFAULT_MAX_ATTEMPTS)),
     )
 
 

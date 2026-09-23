@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from herald.executor import TaskExecutor, _slug
-from herald.gitplane.plane import GitPlane, PullRequest
+from herald.gitplane.plane import GitError, GitPlane, PullRequest
 from herald.notify.escalate import Escalator, FailureKind
 from herald.notify.notifier import Notifier
 from herald.queue.memory import MemoryQueue
@@ -205,6 +205,44 @@ def test_missing_harness_is_escalated_as_such(repo: Path) -> None:
 class MissingRunner:
     def run(self, task: Task, spec: TaskSpec, worktree: Worktree) -> RunResult:
         return RunResult(exit_code=127, stderr="opencode: not found", branch=worktree.branch)
+
+
+class ExplodingGit:
+    """A GitPlane whose push fails (e.g. no remote / auth), after the harness succeeds."""
+
+    def commit_all(self, worktree: Worktree, *, message: str) -> str:
+        return "deadbeef"
+
+    def has_changes_since(self, worktree: Worktree, base_branch: str) -> bool:
+        return True
+
+    def push(self, worktree: Worktree, *, remote: str = "origin") -> None:
+        raise GitError("no remote configured")
+
+    def open_draft_pr(self, *args: object, **kwargs: object) -> PullRequest:
+        raise AssertionError("must not open a PR after a failed push")
+
+
+def test_publish_failure_fails_the_task_and_escalates(repo: Path) -> None:
+    queue = MemoryQueue()
+    task = make_task(queue)
+    transport = MemoryTransport()
+    executor = TaskExecutor(
+        queue=queue,
+        runner=FakeRunner(ok=True),
+        git=ExplodingGit(),  # type: ignore[arg-type]
+        repo_path=str(repo),
+        worktrees_root=str(repo.parent / "wt"),
+        notifier=Notifier(transport),
+        escalator=Escalator(transport),
+    )
+
+    evidence = executor.execute(task, make_spec(), recipient="dev@example.com")
+
+    assert evidence.failure is FailureKind.PUBLISH_FAILED
+    assert evidence.pr_url is None
+    assert queue.get("e1").state is TaskState.FAILED
+    assert "could not be pushed" in transport.outbox[0].body
 
 
 def test_report_skips_an_empty_recipient(tmp_path) -> None:

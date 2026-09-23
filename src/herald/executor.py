@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import timedelta
 
-from herald.gitplane.plane import GitPlane
+from herald.gitplane.plane import GitError, GitPlane
 from herald.notify.escalate import Escalator, FailureKind
 from herald.notify.notifier import Notifier, TaskLinks
 from herald.queue.models import Task, TaskSpec, TaskState
@@ -79,18 +79,24 @@ class TaskExecutor:
             pr_url: str | None = None
 
             if run.ok:
-                commit = self._git.commit_all(worktree, message=_commit_message(task, spec))
-                if not self._git.has_changes_since(worktree, spec.base_branch):
-                    failure = FailureKind.NO_CHANGES
-                else:
-                    self._git.push(worktree)
-                    pr = self._git.open_draft_pr(
-                        worktree,
-                        base_branch=spec.base_branch,
-                        title=_pr_title(task),
-                        body=_pr_body(task),
-                    )
-                    pr_url = pr.url
+                # The harness succeeded; a git/forge error here must fail the task cleanly,
+                # never leave it `running` until the lease expires.
+                try:
+                    commit = self._git.commit_all(worktree, message=_commit_message(task, spec))
+                    if not self._git.has_changes_since(worktree, spec.base_branch):
+                        failure = FailureKind.NO_CHANGES
+                    else:
+                        self._git.push(worktree)
+                        pr = self._git.open_draft_pr(
+                            worktree,
+                            base_branch=spec.base_branch,
+                            title=_pr_title(task),
+                            body=_pr_body(task),
+                        )
+                        pr_url = pr.url
+                except GitError:
+                    failure = FailureKind.PUBLISH_FAILED
+                    pr_url = None
             else:
                 failure = (
                     FailureKind.HARNESS_MISSING
@@ -125,7 +131,11 @@ class TaskExecutor:
             return
         if evidence.failure is not None and self._escalator is not None:
             self._escalator.escalate(
-                task, evidence.run, recipient=recipient, branch=evidence.branch
+                task,
+                evidence.run,
+                recipient=recipient,
+                branch=evidence.branch,
+                kind=evidence.failure,
             )
             return
         if self._notifier is None:

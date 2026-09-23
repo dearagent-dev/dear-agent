@@ -4,10 +4,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from herald.executor import ExecutedTask, TaskExecutor
-from herald.queue.models import Task, TaskSpec
+from herald.queue.models import Task, TaskSpec, TaskState
 from herald.queue.port import Queue
 
 SpecResolver = Callable[[Task, str], TaskSpec]
+
+DEFAULT_MAX_ATTEMPTS = 3
 
 
 class TaskWorkerError(RuntimeError):
@@ -29,11 +31,19 @@ class TaskWorker:
     resolve_spec: SpecResolver
     repo_path: str
     recipient: str | None = None
+    max_attempts: int = DEFAULT_MAX_ATTEMPTS
 
     def run(self, task_id: str) -> ExecutedTask:
         task = self.queue.get(task_id)
         if task is None:
             raise TaskWorkerError(f"no task {task_id!r} in the queue")
+        # A task that keeps being released by the lease sweep (crash loop) must stop and ask
+        # a human rather than retry forever.
+        if task.attempts >= self.max_attempts:
+            self.queue.transition(task, TaskState.FAILED)
+            raise TaskWorkerError(
+                f"task {task_id!r} exceeded {self.max_attempts} attempts; left failed"
+            )
         spec = self.resolve_spec(task, self.repo_path)
         return self.executor.execute(task, spec, recipient=self.recipient)
 
