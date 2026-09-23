@@ -267,6 +267,22 @@ def test_enqueue_creates_a_queued_task_with_a_spec() -> None:
     assert tasks[0].spec.instructions == "fix the typo in the CLI help"
 
 
+def test_approval_pending_lists_issued_tokens(tmp_path, monkeypatch) -> None:
+    from herald.approvals import FileApprovalStore
+
+    path = tmp_path / "approvals.json"
+    FileApprovalStore(path).issue("e1", "land")
+    monkeypatch.setenv("HERALD_APPROVALS_FILE", str(path))
+    monkeypatch.delenv("HERALD_QUEUE", raising=False)
+
+    code, output = run(["--json", "approval", "pending"], MemoryQueue())
+
+    assert code == 0
+    payload = json.loads(output)
+    assert payload[0]["task_id"] == "e1"
+    assert payload[0]["action"] == "land"
+
+
 def test_health_reports_queue_counts() -> None:
     queue = MemoryQueue()
     seed(queue, "e1")

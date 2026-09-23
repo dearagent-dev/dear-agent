@@ -419,6 +419,38 @@ def add_approval_commands(
     approval.set_defaults(handler=None)
     approval_sub = approval.add_subparsers(dest="approval_command", required=True)
     _add_parse_reply(approval_sub)
+    _add_pending_approvals(approval_sub)
+
+
+def _add_pending_approvals(subparsers: argparse._SubParsersAction) -> None:
+    parser = subparsers.add_parser("pending", help="list pending approval requests")
+    parser.set_defaults(handler=_handle_pending_approvals, needs_queue=False)
+
+
+def _handle_pending_approvals(args: argparse.Namespace, context: CliContext) -> int:
+    from herald.approvals import build_approval_store
+
+    pending = build_approval_store().pending()
+    if context.as_json:
+        context.emit_json(
+            [
+                {
+                    "task_id": approval.task_id,
+                    "action": approval.action,
+                    "created_at": approval.created_at,
+                    "expires_at": approval.expires_at,
+                }
+                for approval in pending
+            ]
+        )
+    elif not pending:
+        context.emit("no pending approvals")
+    else:
+        for approval in pending:
+            context.emit(
+                f"{approval.task_id} {approval.action} expires {approval.expires_at.isoformat()}"
+            )
+    return 0
 
 
 def add_decide_commands(
