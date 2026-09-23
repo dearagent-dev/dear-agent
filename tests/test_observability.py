@@ -70,6 +70,24 @@ def test_too_many_running_is_unhealthy() -> None:
     assert status.running == 2
 
 
+def test_health_reports_a_stalled_running_task() -> None:
+    queue = MemoryQueue()
+    task = enqueue(queue, "e1")
+    queue.claim(task, lease=timedelta(seconds=60))
+
+    status = Health(stall_margin_seconds=120).check(queue)
+
+    assert status.details["stalled"] == 1
+
+
+def test_health_gives_a_fresh_run_time_before_calling_it_stalled() -> None:
+    queue = MemoryQueue()
+    task = enqueue(queue, "e1")
+    queue.claim(task, lease=timedelta(hours=1))
+
+    assert Health(stall_margin_seconds=60).check(queue).details["stalled"] == 0
+
+
 def test_health_status_serializes() -> None:
     status = Health().check(MemoryQueue(), now=datetime(2026, 1, 1, tzinfo=UTC))
 

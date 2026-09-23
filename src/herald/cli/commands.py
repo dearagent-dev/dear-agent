@@ -79,6 +79,29 @@ def _handle_show(args: argparse.Namespace, context: CliContext) -> int:
     return 0
 
 
+def _add_events(subparsers: argparse._SubParsersAction) -> None:
+    parser = subparsers.add_parser("events", help="show a task's append-only event history")
+    parser.add_argument("task_id")
+    parser.set_defaults(handler=_handle_events, needs_queue=False)
+
+
+def _handle_events(args: argparse.Namespace, context: CliContext) -> int:
+    from herald.events import build_event_log
+
+    events = build_event_log().read(args.task_id)
+    if context.as_json:
+        context.emit_json(
+            [{"at": event.at, "kind": event.kind, "data": event.data} for event in events]
+        )
+    elif not events:
+        context.emit("no events")
+    else:
+        for event in events:
+            detail = " ".join(f"{key}={value}" for key, value in event.data.items())
+            context.emit(f"{event.at.isoformat()} {event.kind} {detail}".rstrip())
+    return 0
+
+
 def _add_enqueue(subparsers: argparse._SubParsersAction) -> None:
     parser = subparsers.add_parser(
         "enqueue", help="enqueue a task directly (local/testing; the email path is separate)"
@@ -170,6 +193,7 @@ def add_task_commands(
 
     _add_list(task_sub, task)
     _add_show(task_sub)
+    _add_events(task_sub)
     _add_enqueue(task_sub)
     _add_claim(task_sub)
     _add_terminal(task_sub, "complete", TaskState.DONE, "mark a running task done")
@@ -284,6 +308,7 @@ def _inbound_plane(queue, transport):
     from herald.approvals_service import ApprovalService
     from herald.auth import EmailAuthGate, SenderAllowlist
     from herald.control_plane import ControlPlane
+    from herald.events import build_event_log
     from herald.notify.notifier import Notifier
 
     gate = EmailAuthGate.from_env(os.environ)
@@ -295,6 +320,7 @@ def _inbound_plane(queue, transport):
         notifier=Notifier(transport),
         gate=gate,
         approvals=ApprovalService(build_approval_store(), queue),
+        events=build_event_log(),
     )
 
 

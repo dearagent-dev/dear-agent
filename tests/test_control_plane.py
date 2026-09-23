@@ -163,6 +163,29 @@ def test_ingest_acknowledges_the_messages_it_handled() -> None:
     assert [message.transport_id for message in transport.acked] == ["<m1@x>"]
 
 
+def test_ingest_records_typed_events() -> None:
+    from herald.events import MemoryEventLog
+
+    log = MemoryEventLog()
+    plane = ControlPlane(transport=MemoryTransport(), queue=MemoryQueue(), events=log)
+
+    plane.ingest([make_message(headers={})])
+
+    assert [event.kind for event in log.read("<m1@x>")] == ["task.accepted"]
+
+
+def test_rejection_is_recorded_as_an_event() -> None:
+    from herald.events import MemoryEventLog
+
+    log = MemoryEventLog()
+    plane = ControlPlane(transport=MemoryTransport(), queue=MemoryQueue(), events=log)
+
+    plane.ingest([make_message(body="just do something", headers={})])
+
+    events = log.read("<m1@x>")
+    assert events and events[0].kind == "task.rejected"
+
+
 def test_no_gate_means_no_auth() -> None:
     queue = MemoryQueue()
     plane = ControlPlane(transport=MemoryTransport(), queue=queue)

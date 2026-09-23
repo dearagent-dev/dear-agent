@@ -6,6 +6,7 @@ from herald.approvals import ApprovalError
 from herald.approvals_service import ApprovalReply, ApprovalService, parse_reply
 from herald.auth import AuthError, Gate
 from herald.decision.security import SecurityDecider
+from herald.events import EventLog
 from herald.normalizer import NormalizedTask, Rejected, RejectReason, normalize
 from herald.notify.notifier import Notifier
 from herald.queue.port import Queue, QueueError
@@ -63,6 +64,7 @@ class ControlPlane:
         approvals: ApprovalService | None = None,
         scanner: InjectionScanner | None = None,
         security: SecurityDecider | None = None,
+        events: EventLog | None = None,
     ) -> None:
         self._transport = transport
         self._queue = queue
@@ -71,6 +73,15 @@ class ControlPlane:
         self._approvals = approvals
         self._scanner = scanner
         self._security = security
+        self._events = events
+
+    def _emit(self, task_id: str, kind: str, **data: object) -> None:
+        if self._events is None:
+            return
+        try:
+            self._events.record(task_id, kind, **data)
+        except Exception:  # noqa: BLE001 - events are best effort
+            return
 
     def ingest(self, messages: list[RawMessage], *, recipient: str | None = None) -> IngestReport:
         report = IngestReport()
@@ -79,6 +90,7 @@ class ControlPlane:
                 self._authorize(message)
             except AuthError:
                 report.denied.append(message.transport_id)
+                self._emit(message.transport_id, "task.denied")
                 continue
 
             decision = parse_reply(message.body)
@@ -90,6 +102,7 @@ class ControlPlane:
             result = normalize(message, recipient=recipient)
             if isinstance(result, Rejected):
                 report.rejected.append(message.transport_id)
+                self._emit(message.transport_id, "task.rejected", reason=result.reason.value)
                 self._reply_rejection(message, result, recipient)
                 continue
 
@@ -104,6 +117,7 @@ class ControlPlane:
                 # Idempotent: a redelivery is a no-op, not an error.
                 continue
             report.accepted.append(result.task.id)
+            self._emit(result.task.id, "task.accepted", repo=result.spec.repo_url)
         self._ack(messages)
         return report
 

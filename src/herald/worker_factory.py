@@ -208,6 +208,7 @@ def build_worker(
     """Wire a TaskWorker from its collaborators."""
     from herald.approvals import build_approval_store
     from herald.approvals_service import ApprovalService
+    from herald.events import ErrorBudget, build_event_log
     from herald.verify import CommandVerifier
 
     sandbox = sandbox or default_sandbox()
@@ -215,6 +216,7 @@ def build_worker(
     if runner is None:
         runner = build_runner(provider_model, sandbox)
     approvals = ApprovalService(build_approval_store(), queue)
+    events = build_event_log()
     executor = TaskExecutor(
         queue=queue,
         runner=runner,
@@ -224,6 +226,7 @@ def build_worker(
         notifier=Notifier(transport, approvals=approvals),
         escalator=Escalator(transport),
         verifier=CommandVerifier.from_env(os.environ),
+        events=events,
     )
     return TaskWorker(
         queue=queue,
@@ -232,6 +235,8 @@ def build_worker(
         repo_path=repo_path,
         recipient=recipient,
         max_attempts=int(os.environ.get("HERALD_MAX_ATTEMPTS", DEFAULT_MAX_ATTEMPTS)),
+        events=events,
+        budget=ErrorBudget.from_env(os.environ),
     )
 
 
