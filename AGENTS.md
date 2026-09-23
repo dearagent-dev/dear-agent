@@ -115,6 +115,7 @@ herald/
 ├── src/herald/               # Python package
 │   ├── db.py                 # Postgres connect + schema composition
 │   ├── events.py             # append-only task event log + error budget
+│   ├── deps.py               # task dependency graph (depends-on) resolution
 │   ├── queue/                # Task model + Queue port (Postgres; mailbox is ingress)
 │   ├── transports/           # inbound/outbound adapters (jmap, imap/smtp, webhook, memory)
 │   ├── imap/                 # IMAP client (receive) for the IMAP/SMTP transport

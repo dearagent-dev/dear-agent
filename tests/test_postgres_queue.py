@@ -107,6 +107,7 @@ def test_enqueue_persists_the_parsed_spec(queue) -> None:
         instructions="do it",
         model_request="x/y",
         verify="pytest -q",
+        depends_on=("t1",),
     )
     stored = queue.enqueue(make_task(spec=spec))
 

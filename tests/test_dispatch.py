@@ -94,3 +94,39 @@ def test_render_job_is_valid_yaml() -> None:
     job = render_job(TEMPLATE, Task(id="e1", transport_id="<m1@x>"))
 
     assert yaml.safe_load(yaml.safe_dump(job)) == job
+
+
+def test_dispatch_skips_a_blocked_task() -> None:
+    from herald.queue.models import TaskSpec, TaskState
+
+    queue = MemoryQueue()
+    dependency = queue.enqueue(Task(id="d1", transport_id="<d1@x>"))
+    queue.claim(dependency, lease=timedelta(hours=1))  # running, blocks e1
+    queue.enqueue(
+        Task(id="e1", transport_id="<e1@x>", spec=TaskSpec(repo_url="r", depends_on=("d1",)))
+    )
+    queue.enqueue(Task(id="e2", transport_id="<e2@x>"))
+    dispatcher = TaskDispatcher(queue=queue, launcher=lambda job: None, template=TEMPLATE)
+
+    created = dispatcher.dispatch_once()
+
+    assert created == ["e2"]
+    assert queue.get("e1").state is TaskState.QUEUED
+
+
+def test_dispatch_fails_a_task_whose_dependency_failed() -> None:
+    from herald.queue.models import TaskSpec, TaskState
+
+    queue = MemoryQueue()
+    dependency = queue.enqueue(Task(id="d1", transport_id="<d1@x>"))
+    queue.claim(dependency, lease=timedelta(hours=1))
+    queue.transition(queue.get("d1"), TaskState.FAILED)
+    queue.enqueue(
+        Task(id="e1", transport_id="<e1@x>", spec=TaskSpec(repo_url="r", depends_on=("d1",)))
+    )
+    dispatcher = TaskDispatcher(queue=queue, launcher=lambda job: None, template=TEMPLATE)
+
+    created = dispatcher.dispatch_once()
+
+    assert created == []
+    assert queue.get("e1").state is TaskState.FAILED

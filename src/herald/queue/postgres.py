@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Sequence
 from datetime import datetime, timedelta
 from typing import Any
@@ -27,6 +28,7 @@ SCHEMA_STATEMENTS: tuple[str, ...] = (
         spec_instructions  text,
         spec_model_request text,
         spec_verify        text,
+        spec_depends_on    text,
         branch             text,
         commit             text,
         pr_url             text,
@@ -41,6 +43,7 @@ SCHEMA_STATEMENTS: tuple[str, ...] = (
     "ALTER TABLE herald_task ADD COLUMN IF NOT EXISTS spec_instructions text",
     "ALTER TABLE herald_task ADD COLUMN IF NOT EXISTS spec_model_request text",
     "ALTER TABLE herald_task ADD COLUMN IF NOT EXISTS spec_verify text",
+    "ALTER TABLE herald_task ADD COLUMN IF NOT EXISTS spec_depends_on text",
     "ALTER TABLE herald_task ADD COLUMN IF NOT EXISTS branch text",
     "ALTER TABLE herald_task ADD COLUMN IF NOT EXISTS commit text",
     "ALTER TABLE herald_task ADD COLUMN IF NOT EXISTS pr_url text",
@@ -53,7 +56,7 @@ SCHEMA_STATEMENTS: tuple[str, ...] = (
 _COLUMNS = (
     "id, transport_id, thread_id, sender, subject, state, attempts, lease_until, created_at, "
     "spec_repo_url, spec_base_branch, spec_instructions, spec_model_request, spec_verify, "
-    "branch, commit, pr_url"
+    "spec_depends_on, branch, commit, pr_url"
 )
 
 
@@ -101,7 +104,8 @@ class PostgresQueue:
             cur.execute(
                 f"""
                 INSERT INTO herald_task ({_COLUMNS})
-                VALUES (%s, %s, %s, %s, %s, %s, 0, NULL, %s, %s, %s, %s, %s, %s, NULL, NULL, NULL)
+                VALUES (%s, %s, %s, %s, %s, %s, 0, NULL, %s, %s, %s, %s, %s, %s, %s,
+                        NULL, NULL, NULL)
                 ON CONFLICT DO NOTHING
                 RETURNING {_COLUMNS}
                 """,
@@ -118,6 +122,7 @@ class PostgresQueue:
                     spec.instructions if spec else None,
                     spec.model_request if spec else None,
                     spec.verify if spec else None,
+                    json.dumps(list(spec.depends_on)) if spec else None,
                 ),
             )
             row = cur.fetchone()
@@ -262,6 +267,7 @@ def _task_from_row(row: Sequence[Any]) -> Task:
         spec_instructions,
         spec_model_request,
         spec_verify,
+        spec_depends_on,
         branch,
         commit,
         pr_url,
@@ -274,6 +280,7 @@ def _task_from_row(row: Sequence[Any]) -> Task:
             instructions=spec_instructions or "",
             model_request=spec_model_request,
             verify=spec_verify,
+            depends_on=tuple(json.loads(spec_depends_on)) if spec_depends_on else (),
         )
     evidence = None
     if branch is not None or commit is not None or pr_url is not None:

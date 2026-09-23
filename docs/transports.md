@@ -96,6 +96,7 @@ Allowed metadata (optional, one per line):
   model:     local:qwen3.6 | anthropic:claude | openai:gpt   (optional)
   branch:    herald/<slug>                                   (optional)
   verify:    pytest -q                                       (optional; allowlisted)
+  depends-on: <task-id>,<task-id>                            (optional)
 ```
 
 Rules:
@@ -110,6 +111,9 @@ Rules:
 - `verify:` runs in the worktree after the harness and before the PR; if it fails, the task
   fails and escalates. It executes only when its argv is on the operator's allowlist
   (`HERALD_VERIFY_ALLOW`), never through a shell (golden rule 7).
+- `depends-on:` lists task ids that must be `done` before this task runs. Until then it stays
+  `queued` and is skipped by the sweep and `herald run`; if a dependency fails, the task is
+  failed too. This is a small typed dependency graph (e.g. plan → implement → test).
 
 The Normalizer returns either a `NormalizedTask` (`Task` + `TaskSpec`) or a `Rejected`
 with a `RejectReason` (`attachments`, `no_repo`, `empty`). It never executes message text.

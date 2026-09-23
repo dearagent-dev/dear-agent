@@ -25,6 +25,7 @@ def _task_payload(task: Task) -> dict[str, Any]:
         "repo": task.spec.repo_url if task.spec else None,
         "base": task.spec.base_branch if task.spec else None,
         "model": task.spec.model_request if task.spec else None,
+        "depends_on": list(task.spec.depends_on) if task.spec else [],
         "branch": task.evidence.branch if task.evidence else None,
         "commit": task.evidence.commit if task.evidence else None,
         "pr_url": task.evidence.pr_url if task.evidence else None,
@@ -116,6 +117,11 @@ def _add_enqueue(subparsers: argparse._SubParsersAction) -> None:
         default=None,
         help="command that must pass before the PR (must be on HERALD_VERIFY_ALLOW)",
     )
+    parser.add_argument(
+        "--depends-on",
+        default=None,
+        help="comma-separated task ids that must be done before this one runs",
+    )
     parser.add_argument("--transport-id", default=None, help="dedupe key (default: generated)")
     parser.set_defaults(handler=_handle_enqueue)
 
@@ -134,6 +140,9 @@ def _handle_enqueue(args: argparse.Namespace, context: CliContext) -> int:
             instructions=args.instructions,
             model_request=args.model,
             verify=args.verify,
+            depends_on=tuple(
+                part.strip() for part in (args.depends_on or "").split(",") if part.strip()
+            ),
         ),
     )
     stored = context.require_queue().enqueue(task)
