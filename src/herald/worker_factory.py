@@ -165,17 +165,21 @@ def build_worker(
     sandbox: Sandbox | None = None,
 ) -> TaskWorker:
     """Wire a TaskWorker from its collaborators."""
+    from herald.approvals import build_approval_store
+    from herald.approvals_service import ApprovalService
+
     sandbox = sandbox or default_sandbox()
     runner = build_routing_runner(sandbox)
     if runner is None:
         runner = build_runner(provider_model, sandbox)
+    approvals = ApprovalService(build_approval_store(), queue)
     executor = TaskExecutor(
         queue=queue,
         runner=runner,
         git=GitPlane(forge=GhForge()),
         repo_path=repo_path,
         worktrees_root=os.environ.get("HERALD_WORKTREES_ROOT", "/work"),
-        notifier=Notifier(transport),
+        notifier=Notifier(transport, approvals=approvals),
         escalator=Escalator(transport),
     )
     return TaskWorker(

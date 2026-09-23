@@ -129,3 +129,31 @@ def test_service_moves_task_to_rejected(clock) -> None:
     service.apply(parse_reply(f"reject {token}"))
 
     assert queue.get("e1").state is TaskState.REJECTED
+
+
+def test_build_approval_store_defaults_to_memory(monkeypatch) -> None:
+    from herald.approvals import build_approval_store
+
+    monkeypatch.delenv("HERALD_QUEUE", raising=False)
+    monkeypatch.delenv("HERALD_APPROVALS_FILE", raising=False)
+
+    assert isinstance(build_approval_store(), MemoryApprovalStore)
+
+
+def test_build_approval_store_uses_a_file_when_configured(monkeypatch, tmp_path) -> None:
+    from herald.approvals import build_approval_store
+
+    monkeypatch.delenv("HERALD_QUEUE", raising=False)
+    monkeypatch.setenv("HERALD_APPROVALS_FILE", str(tmp_path / "approvals.json"))
+
+    assert isinstance(build_approval_store(), FileApprovalStore)
+
+
+def test_build_approval_store_postgres_requires_a_dsn(monkeypatch) -> None:
+    from herald.approvals import build_approval_store
+
+    monkeypatch.setenv("HERALD_QUEUE", "postgres")
+    monkeypatch.delenv("HERALD_DATABASE_URL", raising=False)
+
+    with pytest.raises(RuntimeError):
+        build_approval_store()

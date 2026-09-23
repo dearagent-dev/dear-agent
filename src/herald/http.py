@@ -24,6 +24,8 @@ def build_inbound(queue: Queue):
 
     from datetime import timedelta
 
+    from herald.approvals import build_approval_store
+    from herald.approvals_service import ApprovalService
     from herald.auth import InboundAuthorizer, InboundGate, RateLimiter
     from herald.control_plane import ControlPlane
     from herald.inbound import InboundWebhook
@@ -37,9 +39,10 @@ def build_inbound(queue: Queue):
             window=timedelta(minutes=1),
         ),
     )
+    approvals = ApprovalService(build_approval_store(), queue)
     # Auth lives on the webhook (it maps failures to 401/403); the plane must not gate
     # again, or a rejected request would be silently swallowed as "denied".
-    plane = ControlPlane(transport=transport, queue=queue)
+    plane = ControlPlane(transport=transport, queue=queue, approvals=approvals)
     recipient = os.environ.get("HERALD_RECIPIENT")
     return InboundWebhook(control_plane=plane, gate=gate, recipient=recipient)
 

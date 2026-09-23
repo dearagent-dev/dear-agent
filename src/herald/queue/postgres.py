@@ -53,9 +53,11 @@ def apply_schema(conn: Any) -> None:
 
 
 def open_queue(dsn: str, *, clock: Callable[[], datetime] = utcnow) -> PostgresQueue:
-    """Connect, apply the schema and return a ready :class:`PostgresQueue`."""
+    """Connect, apply the full schema and return a ready :class:`PostgresQueue`."""
+    from herald.db import init_schema
+
     conn = connect(dsn)
-    apply_schema(conn)
+    init_schema(conn)
     return PostgresQueue(conn, clock=clock)
 
 
