@@ -12,6 +12,7 @@ from herald.sandbox import (
     Sandbox,
     SandboxError,
     SandboxPolicy,
+    sandbox_policy_from_env,
 )
 
 HAS_BWRAP = shutil.which("bwrap") is not None
@@ -57,6 +58,37 @@ def test_bubblewrap_binds_the_worktree_and_chdirs_into_it() -> None:
 
 def test_bubblewrap_clears_the_environment() -> None:
     assert "--clearenv" in bwrap_argv(["true"])
+
+
+def test_policy_from_env_defaults_to_no_network_and_no_home() -> None:
+    policy = sandbox_policy_from_env({})
+
+    assert policy.allow_network is False
+    assert "/home" not in policy.readable_paths
+    assert "PATH" in policy.env_allowlist
+
+
+def test_policy_from_env_can_allow_network_and_extend_paths_and_env() -> None:
+    policy = sandbox_policy_from_env(
+        {
+            "HERALD_SANDBOX_NETWORK": "true",
+            "HERALD_SANDBOX_READABLE": "/opt/agent, /srv/tools",
+            "HERALD_SANDBOX_ENV": "OPENAI_API_KEY",
+        }
+    )
+
+    assert policy.allow_network is True
+    assert "/opt/agent" in policy.readable_paths
+    assert "/srv/tools" in policy.readable_paths
+    assert "OPENAI_API_KEY" in policy.env_allowlist
+
+
+def test_policy_from_env_adds_the_harness_binary_directory() -> None:
+    import sys
+
+    policy = sandbox_policy_from_env({"HERALD_HARNESS_BINARY": sys.executable})
+
+    assert str(Path(sys.executable).resolve().parent) in policy.readable_paths
 
 
 def test_an_unavailable_binary_raises() -> None:

@@ -15,6 +15,16 @@ separate instructions from data. The design principle is therefore: **assume the
 compromised and make obedience harmless.** Trust is enforced by the surrounding system, not
 by the prompt.
 
+## Authentication is not trust in content
+
+DMARC/SPF/DKIM plus the sender allowlist prove **who** sent a message; they say nothing
+about whether its *content* is safe to act on. A trusted sender can be phished, relay a
+third party's text, or paste attacker-controlled material — and the agent also reads
+untrusted repo files, commits and issues (indirect injection). So authenticating the sender
+bounds *who may enqueue*; it must never relax the containment (isolated worktree, no `main`,
+draft PR, sandbox, egress allowlist). The model is not a security boundary either; the
+`Decider`/`SecurityDecider` is advisory, and a "trusted" sender's task is still just a task.
+
 ## Layers
 
 Defense in depth, ordered from highest leverage. Each layer maps to a component.

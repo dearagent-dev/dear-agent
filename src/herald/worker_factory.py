@@ -11,7 +11,12 @@ from herald.queue.models import Task, TaskSpec
 from herald.queue.port import Queue
 from herald.repo import RepoPreparer
 from herald.runners.port import Runner
-from herald.sandbox import BubblewrapSandbox, NoSandbox, Sandbox, SandboxPolicy
+from herald.sandbox import (
+    BubblewrapSandbox,
+    NoSandbox,
+    Sandbox,
+    sandbox_policy_from_env,
+)
 from herald.transports.port import Transport
 from herald.worker import DEFAULT_MAX_ATTEMPTS, TaskWorker
 
@@ -87,9 +92,15 @@ def default_worktrees_root() -> str:
 
 
 def default_sandbox() -> Sandbox:
-    """Use bubblewrap when available, otherwise run unsandboxed (explicitly)."""
+    """Use bubblewrap when available, otherwise run unsandboxed (explicitly).
+
+    The policy comes from ``HERALD_SANDBOX_*`` (``sandbox_policy_from_env``); by default the
+    network is denied and only the worktree is writable. Set ``HERALD_SANDBOX=none`` to skip
+    the sandbox — unsafe for untrusted input (a harness with network and usable credentials
+    can exfiltrate).
+    """
     if os.environ.get("HERALD_SANDBOX", "bwrap") == "bwrap":
-        candidate = BubblewrapSandbox(policy=SandboxPolicy())
+        candidate = BubblewrapSandbox(policy=sandbox_policy_from_env())
         if candidate.available:
             return candidate
     return NoSandbox()

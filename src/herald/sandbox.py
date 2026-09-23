@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import shutil
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol, runtime_checkable
@@ -95,10 +97,54 @@ class BubblewrapSandbox:
         return command
 
 
+def sandbox_policy_from_env(env: Mapping[str, str] | None = None) -> SandboxPolicy:
+    """Build the sandbox policy from ``HERALD_SANDBOX_*``.
+
+    - ``HERALD_SANDBOX_NETWORK=true`` lets a run reach the model; otherwise egress is denied
+      (safest, but a hosted model will not answer).
+    - ``HERALD_SANDBOX_READABLE`` adds read-only paths (e.g. a harness installed outside
+      ``/usr``); the resolved harness binary's directory is added automatically.
+    - ``HERALD_SANDBOX_WRITABLE`` adds writable paths beyond the worktree (avoid).
+    - ``HERALD_SANDBOX_ENV`` adds environment variables to pass through — a secret listed
+      here becomes visible to the run, so keep it to non-secrets.
+
+    ``$HOME`` is never mounted; credentials in ``~/.ssh`` or ``~/.config`` stay invisible.
+    """
+    source = env if env is not None else os.environ
+    defaults = SandboxPolicy()
+    readable = list(defaults.readable_paths) + _split_paths(source.get("HERALD_SANDBOX_READABLE"))
+    binary_dir = _harness_dir(source)
+    if binary_dir:
+        readable.append(binary_dir)
+    env_names = list(defaults.env_allowlist) + _split_paths(source.get("HERALD_SANDBOX_ENV"))
+    return SandboxPolicy(
+        allow_network=source.get("HERALD_SANDBOX_NETWORK", "false").lower() == "true",
+        readable_paths=tuple(dict.fromkeys(readable)),
+        writable_paths=tuple(_split_paths(source.get("HERALD_SANDBOX_WRITABLE"))),
+        env_allowlist=tuple(dict.fromkeys(env_names)),
+    )
+
+
+def _split_paths(value: str | None) -> list[str]:
+    return [part.strip() for part in (value or "").replace(";", ",").split(",") if part.strip()]
+
+
+def _harness_dir(env: Mapping[str, str]) -> str | None:
+    binary = env.get("HERALD_HARNESS_BINARY")
+    if not binary:
+        harness = env.get("HERALD_HARNESS", "opencode").strip().lower()
+        binary = {"opencode": "opencode", "claude": "claude", "codex": "codex"}.get(harness)
+    if not binary:
+        return None
+    resolved = shutil.which(binary)
+    return str(Path(resolved).resolve().parent) if resolved else None
+
+
 __all__ = [
     "BubblewrapSandbox",
     "NoSandbox",
     "Sandbox",
     "SandboxError",
     "SandboxPolicy",
+    "sandbox_policy_from_env",
 ]

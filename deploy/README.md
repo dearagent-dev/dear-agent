@@ -108,6 +108,9 @@ selected repositories.
 - `GIT_SSH_COMMAND` pins the mounted key and `StrictHostKeyChecking=yes`, so a run cannot
   be redirected to another host.
 - A dedicated read-only secret is mounted into the runner; the write key stays out of it.
+- An **opt-in egress allowlist** for runner Jobs (`deploy/components/egress/`): DNS and
+  same-namespace only until you add the model/Git CIDRs or an egress proxy. It is the
+  deploy-side half of "authenticating the sender is not trusting the content".
 
 ## Not yet wired
 
