@@ -45,7 +45,9 @@ reply, so a forged sender cannot use Herald as a backscatter amplifier.
 ### Queue
 The durable source of truth is **PostgreSQL**; the transport mailbox is **ingress** only.
 Dedupe is a unique index on the transport message id, and claiming is a conditional
-`UPDATE ... FOR UPDATE SKIP LOCKED`. See [queue.md](queue.md) and
+`UPDATE ... FOR UPDATE SKIP LOCKED`. The parsed `TaskSpec` is persisted with the task, so a
+runner never reads the mailbox; approvals (single-use tokens) and the decision log live in the
+same database. See [queue.md](queue.md) and
 [ADR 0005](decisions/0005-state-store.md) (which supersedes
 [ADR 0002](decisions/0002-deployment-topology.md) in part).
 
@@ -62,7 +64,9 @@ is idempotent per task id, so a re-run after a restart is safe.
 ### Runner
 Executes a harness for a claimed task inside an isolated Git worktree and returns
 evidence (branch, commit, logs, PR). The runner is a thin adapter over a harness CLI.
-Herald must not embed a harness.
+Herald must not embed a harness. A `HarnessCatalog` describes the available harnesses
+(OpenCode, Claude Code, Codex, or a custom `command`) with their metadata; the model is
+passed only to a harness that accepts one (OpenCode), never to a subscription harness.
 
 **Interface (to implement):**
 ```

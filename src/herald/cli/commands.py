@@ -22,6 +22,9 @@ def _task_payload(task: Task) -> dict[str, Any]:
         "attempts": task.attempts,
         "lease_until": task.lease_until,
         "created_at": task.created_at,
+        "repo": task.spec.repo_url if task.spec else None,
+        "base": task.spec.base_branch if task.spec else None,
+        "model": task.spec.model_request if task.spec else None,
     }
 
 
