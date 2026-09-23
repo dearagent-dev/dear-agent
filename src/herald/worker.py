@@ -5,6 +5,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import timedelta
 
+from herald.deps import dependency_status
 from herald.events import ErrorBudget, EventLog
 from herald.executor import DEFAULT_LEASE, ExecutedTask, TaskExecutor
 from herald.queue.models import Task, TaskSpec, TaskState
@@ -45,18 +46,47 @@ class TaskWorker:
             raise TaskWorkerError(f"no task {task_id!r} in the queue")
         self._guard_budget(task.id)
         self._guard_attempts(task)
+        self._guard_dependencies(task)
         spec = self.resolve_spec(task, self.repo_path)
         return self.executor.execute(task, spec, recipient=self.recipient)
 
     def run_next(self) -> ExecutedTask:
-        """Atomically claim the oldest queued task and run it (a local sweep tick)."""
+        """Claim and run the oldest queued task whose dependencies are satisfied."""
         self._guard_budget("<dispatch>")
-        task = self.queue.claim_next(lease=self.lease)
-        if task is None:
-            raise TaskWorkerError("no queued task to run")
-        self._guard_attempts(task)
-        spec = self.resolve_spec(task, self.repo_path)
-        return self.executor.execute(task, spec, recipient=self.recipient, claimed=True)
+        for task in self.queue.list(TaskState.QUEUED, limit=100):
+            status = dependency_status(self.queue, task)
+            if status.state == "failed":
+                self.queue.transition(task, TaskState.FAILED)
+                self._emit(task.id, "task.dependency_failed", failed_on=list(status.failed_on))
+                continue
+            if status.state == "blocked":
+                self._emit(task.id, "task.blocked", blocked_on=list(status.blocked_on))
+                continue
+            try:
+                self._guard_attempts(task)
+            except TaskWorkerError:
+                continue
+            if not self.queue.claim(task, lease=self.lease):
+                continue
+            spec = self.resolve_spec(task, self.repo_path)
+            return self.executor.execute(task, spec, recipient=self.recipient, claimed=True)
+        raise TaskWorkerError("no runnable task")
+
+    def _guard_dependencies(self, task: Task) -> None:
+        status = dependency_status(self.queue, task)
+        if status.state == "failed":
+            self.queue.transition(task, TaskState.FAILED)
+            self._emit(task.id, "task.dependency_failed", failed_on=list(status.failed_on))
+            raise TaskWorkerError(f"task {task.id!r} depends on failed {status.failed_on}")
+        if status.state == "blocked":
+            self._emit(task.id, "task.blocked", blocked_on=list(status.blocked_on))
+            raise TaskWorkerError(f"task {task.id!r} is blocked on {status.blocked_on}")
+
+    def _emit(self, task_id: str, kind: str, **data: object) -> None:
+        if self.events is None:
+            return
+        with contextlib.suppress(Exception):
+            self.events.record(task_id, kind, **data)
 
     def _guard_budget(self, task_id: str) -> None:
         # A durable circuit breaker: if too many tasks failed recently, stop starting new

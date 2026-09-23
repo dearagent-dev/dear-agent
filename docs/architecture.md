@@ -132,6 +132,9 @@ travels over the transport.
   recently (`HERALD_ERROR_BUDGET_*`), so a systemic failure does not grind on.
 - `herald health` reports a `stalled` count (running tasks whose lease is about to expire)
   as a soft watchdog; the sweep is the hard one.
+- A task may declare `depends-on:` task ids; it stays `queued` (skipped by the sweep and
+  `herald run`) until they are `done`, and is failed if a dependency fails. A small typed
+  dependency graph, not a workflow engine.
 
 ## Deployment
 

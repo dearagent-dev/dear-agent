@@ -260,6 +260,83 @@ def test_worker_fails_a_task_after_too_many_attempts() -> None:
     assert queue.get("e1").state is TaskState.FAILED
 
 
+def test_worker_refuses_a_blocked_task() -> None:
+    from herald.queue.models import TaskState
+
+    queue = MemoryQueue()
+    queue.enqueue(Task(id="d1", transport_id="<d1@x>"))
+    queue.enqueue(
+        Task(
+            id="e1",
+            transport_id="<e1@x>",
+            spec=TaskSpec(repo_url="r", depends_on=("d1",)),
+        )
+    )
+    worker = TaskWorker(
+        queue=queue,
+        executor=CapturingExecutor(),  # type: ignore[arg-type]
+        resolve_spec=lambda task, repo: TaskSpec(repo_url="x"),
+        repo_path=".",
+    )
+
+    with pytest.raises(TaskWorkerError):
+        worker.run("e1")
+
+    assert queue.get("e1").state is TaskState.QUEUED
+
+
+def test_run_next_skips_a_blocked_task_and_runs_the_ready_one() -> None:
+    from datetime import timedelta
+
+    from herald.queue.models import TaskState
+
+    queue = MemoryQueue()
+    dependency = queue.enqueue(Task(id="d1", transport_id="<d1@x>"))
+    assert dependency is not None
+    queue.claim(dependency, lease=timedelta(hours=1))  # running, so not in the queued list
+    queue.enqueue(
+        Task(id="e1", transport_id="<e1@x>", spec=TaskSpec(repo_url="r", depends_on=("d1",)))
+    )
+    queue.enqueue(Task(id="e2", transport_id="<e2@x>"))
+    worker = TaskWorker(
+        queue=queue,
+        executor=CapturingExecutor(),  # type: ignore[arg-type]
+        resolve_spec=lambda task, repo: TaskSpec(repo_url="x"),
+        repo_path=".",
+    )
+
+    evidence = worker.run_next()
+
+    assert evidence.task_id == "e2"
+    assert queue.get("e1").state is TaskState.QUEUED
+
+
+def test_run_next_fails_a_task_whose_dependency_failed() -> None:
+    from datetime import timedelta
+
+    from herald.queue.models import TaskState
+
+    queue = MemoryQueue()
+    dependency = queue.enqueue(Task(id="d1", transport_id="<d1@x>"))
+    assert dependency is not None
+    queue.claim(dependency, lease=timedelta(hours=1))
+    queue.transition(queue.get("d1"), TaskState.FAILED)
+    queue.enqueue(
+        Task(id="e1", transport_id="<e1@x>", spec=TaskSpec(repo_url="r", depends_on=("d1",)))
+    )
+    worker = TaskWorker(
+        queue=queue,
+        executor=CapturingExecutor(),  # type: ignore[arg-type]
+        resolve_spec=lambda task, repo: TaskSpec(repo_url="x"),
+        repo_path=".",
+    )
+
+    with pytest.raises(TaskWorkerError):
+        worker.run_next()
+
+    assert queue.get("e1").state is TaskState.FAILED
+
+
 def test_spec_resolver_prefers_the_persisted_spec() -> None:
     from herald.worker_factory import WorktreeSpecResolver
 

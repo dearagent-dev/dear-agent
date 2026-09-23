@@ -80,3 +80,5 @@ class TaskSpec:
     # A command the change must pass before a PR is opened. It runs only if it is on the
     # operator's allowlist (golden rule 7: never execute a message-derived command blindly).
     verify: str | None = None
+    # Task ids that must be `done` before this one runs (a typed dependency graph).
+    depends_on: tuple[str, ...] = ()

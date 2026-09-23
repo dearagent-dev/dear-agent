@@ -53,7 +53,8 @@ def test_parses_metadata_and_strips_it_from_instructions() -> None:
         "repo: https://github.com/owner/repo\n"
         "base: develop\n"
         "model: local:qwen\n"
-        "verify: pytest -q\n\n"
+        "verify: pytest -q\n"
+        "depends-on: t1, t2\n\n"
         "add a health endpoint\nwith tests"
     )
 
@@ -64,6 +65,7 @@ def test_parses_metadata_and_strips_it_from_instructions() -> None:
     assert result.spec.base_branch == "develop"
     assert result.spec.model_request == "local:qwen"
     assert result.spec.verify == "pytest -q"
+    assert result.spec.depends_on == ("t1", "t2")
     assert result.spec.instructions == "add a health endpoint\nwith tests"
 
 

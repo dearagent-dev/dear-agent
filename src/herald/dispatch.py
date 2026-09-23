@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 import yaml
 
+from herald.deps import dependency_status
 from herald.queue.models import Task, TaskState
 from herald.queue.port import Queue
 
@@ -78,6 +79,14 @@ class TaskDispatcher:
         created: list[str] = []
         for task in self.queue.list(TaskState.QUEUED, limit=self.limit):
             if self._already_running(task):
+                continue
+            # Do not start a task whose dependencies are not met; fail the ones that can
+            # never run because a dependency failed.
+            status = dependency_status(self.queue, task)
+            if status.state == "failed":
+                self.queue.transition(task, TaskState.FAILED)
+                continue
+            if status.state == "blocked":
                 continue
             job = render_job(self.template, task)
             self.launcher(job)
