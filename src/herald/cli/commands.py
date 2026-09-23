@@ -508,6 +508,7 @@ def _handle_pending_approvals(args: argparse.Namespace, context: CliContext) -> 
                 {
                     "task_id": approval.task_id,
                     "action": approval.action,
+                    "token": approval.token,
                     "created_at": approval.created_at,
                     "expires_at": approval.expires_at,
                 }
@@ -518,8 +519,11 @@ def _handle_pending_approvals(args: argparse.Namespace, context: CliContext) -> 
         context.emit("no pending approvals")
     else:
         for approval in pending:
+            # The token is shown so an operator can approve locally; it is single-use and
+            # short-lived, and is the same secret the email request carries.
             context.emit(
-                f"{approval.task_id} {approval.action} expires {approval.expires_at.isoformat()}"
+                f"{approval.task_id} {approval.action} {approval.token} "
+                f"expires {approval.expires_at.isoformat()}"
             )
     return 0
 
