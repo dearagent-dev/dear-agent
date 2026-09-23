@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import contextlib
+import shlex
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import timedelta
 
 from herald.deps import dependency_status
 from herald.events import ErrorBudget, EventLog
 from herald.executor import DEFAULT_LEASE, ExecutedTask, TaskExecutor
+from herald.policy import PolicyStore, ProjectPolicy
 from herald.queue.models import Task, TaskSpec, TaskState
 from herald.queue.port import Queue
+from herald.verify import CommandVerifier
 
 SpecResolver = Callable[[Task, str], TaskSpec]
 
@@ -39,6 +42,8 @@ class TaskWorker:
     lease: timedelta = DEFAULT_LEASE
     events: EventLog | None = None
     budget: ErrorBudget = field(default_factory=ErrorBudget)
+    policies: PolicyStore | None = None
+    verifier: CommandVerifier | None = None
 
     def run(self, task_id: str) -> ExecutedTask:
         task = self.queue.get(task_id)
@@ -47,8 +52,9 @@ class TaskWorker:
         self._guard_budget(task.id)
         self._guard_attempts(task)
         self._guard_dependencies(task)
-        spec = self.resolve_spec(task, self.repo_path)
-        return self.executor.execute(task, spec, recipient=self.recipient)
+        self._guard_policy(task)
+        spec, verifier = self._effective(task, self.resolve_spec(task, self.repo_path))
+        return self.executor.execute(task, spec, recipient=self.recipient, verifier=verifier)
 
     def run_next(self) -> ExecutedTask:
         """Claim and run the oldest queued task whose dependencies are satisfied."""
@@ -64,13 +70,47 @@ class TaskWorker:
                 continue
             try:
                 self._guard_attempts(task)
+                self._guard_policy(task)
             except TaskWorkerError:
                 continue
             if not self.queue.claim(task, lease=self.lease):
                 continue
-            spec = self.resolve_spec(task, self.repo_path)
-            return self.executor.execute(task, spec, recipient=self.recipient, claimed=True)
+            spec, verifier = self._effective(task, self.resolve_spec(task, self.repo_path))
+            return self.executor.execute(
+                task, spec, recipient=self.recipient, claimed=True, verifier=verifier
+            )
         raise TaskWorkerError("no runnable task")
+
+    def _policy_for(self, task: Task) -> ProjectPolicy | None:
+        if self.policies is None or task.spec is None:
+            return None
+        return self.policies.for_repo(task.spec.repo_url)
+
+    def _guard_policy(self, task: Task) -> None:
+        policy = self._policy_for(task)
+        if policy is not None and not policy.enabled:
+            self.queue.transition(task, TaskState.FAILED)
+            self._emit(task.id, "policy.denied", project=policy.project)
+            raise TaskWorkerError(f"project {policy.project!r} is disabled")
+
+    def _effective(self, task: Task, spec: TaskSpec) -> tuple[TaskSpec, CommandVerifier | None]:
+        """Apply the project policy's defaults and extra verify allowlist for this task."""
+        policy = self._policy_for(task)
+        if policy is None:
+            return spec, self.verifier
+        if policy.base_branch and spec.base_branch in ("", "main"):
+            spec = replace(spec, base_branch=policy.base_branch)
+        verifier = self.verifier
+        if policy.verify_allow:
+            extra = tuple(
+                tuple(shlex.split(entry)) for entry in policy.verify_allow if entry.strip()
+            )
+            verifier = (
+                replace(verifier, allowed=verifier.allowed + extra)
+                if verifier is not None
+                else CommandVerifier(allowed=extra)
+            )
+        return spec, verifier
 
     def _guard_dependencies(self, task: Task) -> None:
         status = dependency_status(self.queue, task)

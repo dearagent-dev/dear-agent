@@ -449,6 +449,24 @@ def test_task_events_prints_the_history(monkeypatch) -> None:
     assert [event["kind"] for event in payload] == ["task.claimed", "task.done"]
 
 
+def test_policy_sync_and_match(tmp_path, monkeypatch) -> None:
+    from herald.policy import MemoryPolicyStore
+
+    (tmp_path / "lab.md").write_text("---\nproject: lab\nrepos: ['acme/*']\n---\n")
+    store = MemoryPolicyStore()
+    monkeypatch.setattr("herald.policy.build_policy_store", lambda: store)
+
+    code, output = run(["policy", "sync", "--dir", str(tmp_path)], MemoryQueue())
+
+    assert code == 0
+    assert "synced 1" in output
+
+    code, output = run(["policy", "match", "https://github.com/acme/widget"], MemoryQueue())
+
+    assert code == 0
+    assert "lab" in output
+
+
 def test_cancel_rejects_a_queued_task() -> None:
     queue = MemoryQueue()
     seed(queue, "e1")

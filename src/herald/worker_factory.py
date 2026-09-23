@@ -209,6 +209,7 @@ def build_worker(
     from herald.approvals import build_approval_store
     from herald.approvals_service import ApprovalService
     from herald.events import ErrorBudget, build_event_log
+    from herald.policy import build_policy_store
     from herald.verify import CommandVerifier
 
     sandbox = sandbox or default_sandbox()
@@ -217,6 +218,7 @@ def build_worker(
         runner = build_runner(provider_model, sandbox)
     approvals = ApprovalService(build_approval_store(), queue)
     events = build_event_log()
+    verifier = CommandVerifier.from_env(os.environ)
     executor = TaskExecutor(
         queue=queue,
         runner=runner,
@@ -225,7 +227,7 @@ def build_worker(
         worktrees_root=default_worktrees_root(),
         notifier=Notifier(transport, approvals=approvals),
         escalator=Escalator(transport),
-        verifier=CommandVerifier.from_env(os.environ),
+        verifier=verifier,
         events=events,
     )
     return TaskWorker(
@@ -237,6 +239,8 @@ def build_worker(
         max_attempts=int(os.environ.get("HERALD_MAX_ATTEMPTS", DEFAULT_MAX_ATTEMPTS)),
         events=events,
         budget=ErrorBudget.from_env(os.environ),
+        policies=build_policy_store(),
+        verifier=verifier,
     )
 
 
