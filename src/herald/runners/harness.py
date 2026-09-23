@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -13,10 +14,22 @@ DEFAULT_TIMEOUT_SECONDS = 3600
 SubprocessRunner = Callable[[list[str], str, int], subprocess.CompletedProcess[str]]
 
 
+def harness_env(cwd: str) -> dict[str, str]:
+    """The environment for a harness run.
+
+    ``subprocess.run(cwd=...)`` changes the child's real working directory but leaves the
+    ``PWD`` environment variable pointing at Herald's own process directory. Tools such as
+    OpenCode resolve the project from ``PWD``, so without this override a run would edit
+    Herald's checkout instead of the isolated worktree.
+    """
+    return {**os.environ, "PWD": cwd}
+
+
 def default_execute(argv: list[str], cwd: str, timeout: int) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         argv,
         cwd=cwd,
+        env=harness_env(cwd),
         capture_output=True,
         text=True,
         timeout=timeout,

@@ -132,3 +132,43 @@ def test_command_runner_times_out(repo: Path, tmp_path: Path) -> None:
 
 def test_command_runner_satisfies_the_port() -> None:
     assert isinstance(CommandRunner(command=["true"]), Runner)
+
+
+def test_worktree_can_be_recreated_for_the_same_slug(repo: Path, tmp_path: Path) -> None:
+    # A failed attempt leaves the branch behind; a retry must start from a clean tree.
+    first = Worktree.create(repo, tmp_path / "wt", slug="s", base_branch="main")
+    first.remove()
+
+    second = Worktree.create(repo, tmp_path / "wt", slug="s", base_branch="main")
+    try:
+        assert second.branch == "herald/s"
+    finally:
+        second.remove()
+
+
+def test_harness_env_points_pwd_at_the_worktree(tmp_path: Path) -> None:
+    # OpenCode (and shell-based tools) resolve the project from $PWD, so it must be the
+    # worktree, never Herald's own working directory.
+    from herald.runners.harness import harness_env
+
+    assert harness_env(str(tmp_path))["PWD"] == str(tmp_path)
+
+
+def test_default_execute_passes_pwd_to_the_child(tmp_path: Path) -> None:
+    from herald.runners.harness import default_execute
+
+    result = default_execute(["sh", "-c", 'printf %s "$PWD"'], str(tmp_path), 10)
+
+    assert result.stdout == str(tmp_path)
+
+
+def test_command_runner_runs_with_the_worktree_as_pwd(repo: Path, tmp_path: Path) -> None:
+    worktree = Worktree.create(repo, tmp_path / "wt", slug="s", base_branch="main")
+    runner = CommandRunner(command=["sh", "-c", 'printf %s "$PWD" > where.txt'])
+    try:
+        runner.run(make_task(), make_spec(), worktree)
+        seen = (worktree.path / "where.txt").read_text()
+    finally:
+        worktree.remove()
+
+    assert seen == str(worktree.path)

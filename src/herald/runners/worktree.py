@@ -45,7 +45,9 @@ class Worktree:
         root.mkdir(parents=True, exist_ok=True)
         path = root / slug
 
-        _git(repo, "worktree", "add", "-b", branch, str(path), base_branch)
+        # ``-B`` (not ``-b``) resets the branch to the base if a previous attempt left it
+        # behind, so a requeued/retried task starts from a clean tree instead of failing.
+        _git(repo, "worktree", "add", "-B", branch, str(path), base_branch)
         return cls(repo_path=repo, path=path, branch=branch)
 
     def remove(self) -> None:
