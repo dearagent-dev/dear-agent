@@ -264,35 +264,55 @@ def test_build_decider_wraps_with_logging_when_configured(monkeypatch, tmp_path)
     assert isinstance(build_decider(), LoggingDecider)
 
 
-def test_build_decider_openrouter_requires_a_key(monkeypatch) -> None:
-    from herald.decision.factory import build_decider
+def test_build_decider_jev_uses_the_configured_key(monkeypatch) -> None:
+    from herald.decision.jev import JevDecider
 
-    monkeypatch.setenv("HERALD_DECIDER", "openrouter")
-    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-    with pytest.raises(DecisionError):
-        build_decider()
-
-
-def test_build_decider_openrouter_uses_the_selection_policy(monkeypatch) -> None:
-    from herald.decision.factory import FallbackDecider, build_decider
-    from herald.decision.port import ModelInfo
-
-    monkeypatch.setenv("HERALD_DECIDER", "openrouter")
-    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test")
-    monkeypatch.setenv("HERALD_DECIDER_ALLOW_PAID", "false")
-
-    class _Catalog:
-        def list_models(self):
-            return [ModelInfo(id="free/x:free", context_length=100000, supports_json=True)]
-
-    monkeypatch.setattr(
-        "herald.decision.openrouter.OpenRouterProvider.catalog", lambda self: _Catalog()
-    )
+    monkeypatch.setenv("HERALD_DECIDER", "jev")
+    monkeypatch.setenv("TYPESAFE_API_KEY", "ts-test")
+    monkeypatch.delenv("HERALD_DECIDER_LOG", raising=False)
 
     decider = build_decider()
 
     assert isinstance(decider, FallbackDecider)
-    assert decider.primary.model == "free/x:free"
+    assert isinstance(decider.primary, JevDecider)
+
+
+def test_build_decider_openai_compat_builds_an_emulated_decider(monkeypatch) -> None:
+    from herald.decision.openai import OpenAICompatibleDecider
+
+    monkeypatch.setenv("HERALD_DECIDER", "openai-compat")
+    monkeypatch.setenv("HERALD_DECIDER_BASE_URL", "http://127.0.0.1:8080/v1")
+    monkeypatch.setenv("HERALD_DECIDER_MODEL", "qwen")
+    monkeypatch.delenv("HERALD_DECIDER_LOG", raising=False)
+
+    decider = build_decider()
+
+    assert isinstance(decider, FallbackDecider)
+    assert isinstance(decider.primary, OpenAICompatibleDecider)
+    assert decider.primary.model == "qwen"
+
+
+def test_build_decider_openrouter_is_an_alias_for_openai_compat(monkeypatch) -> None:
+    from herald.decision.openai import OpenAICompatibleDecider
+
+    monkeypatch.setenv("HERALD_DECIDER", "openrouter")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test")
+    monkeypatch.setenv("HERALD_DECIDER_MODEL", "qwen/qwen3:free")
+    monkeypatch.delenv("HERALD_DECIDER_LOG", raising=False)
+
+    decider = build_decider()
+
+    assert isinstance(decider, FallbackDecider)
+    assert isinstance(decider.primary, OpenAICompatibleDecider)
+
+
+def test_build_decider_rejects_an_unconfigured_choice(monkeypatch) -> None:
+    monkeypatch.setenv("HERALD_DECIDER", "openai-compat")
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("HERALD_DECIDER_BASE_URL", raising=False)
+
+    with pytest.raises(DecisionError):
+        build_decider()
 
 
 def test_rule_decider_answers_the_harness_question_like_model() -> None:

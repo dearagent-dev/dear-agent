@@ -7,11 +7,9 @@ from dataclasses import dataclass, field
 
 from herald.decision.port import (
     Answer,
-    Decider,
     Decision,
     DecisionError,
     DecisionKind,
-    ModelInfo,
     Question,
 )
 
@@ -125,30 +123,6 @@ class OpenAICompatibleDecider:
         return Decision(answers=answers)
 
 
-@dataclass(slots=True)
-class OpenAICompatibleProvider:
-    """A :class:`ModelProvider` that binds the generic decider to a chosen model.
-
-    It carries the connection facts (base URL, key, timeout, extra headers); a catalog is a
-    separate concern. This is the seam the core uses to turn a :class:`ModelInfo` into a
-    ready :class:`Decider` without knowing the vendor.
-    """
-
-    api_key: str
-    base_url: str
-    timeout: float = 60.0
-    extra_headers: dict[str, str] = field(default_factory=dict)
-
-    def decider_for(self, model: ModelInfo) -> Decider:
-        return OpenAICompatibleDecider(
-            api_key=self.api_key,
-            model=model.id,
-            base_url=self.base_url,
-            timeout=self.timeout,
-            extra_headers=dict(self.extra_headers),
-        )
-
-
 def _strip_fence(text: str) -> str:
     stripped = text.strip()
     if stripped.startswith("```"):
@@ -193,5 +167,4 @@ def _as_float(value: object) -> float | None:
 __all__ = [
     "SYSTEM_PROMPT",
     "OpenAICompatibleDecider",
-    "OpenAICompatibleProvider",
 ]
