@@ -30,6 +30,7 @@ Task  (row in the queue)
   created_at     # timestamptz
   updated_at     # timestamptz
   spec_*         # the parsed TaskSpec (see below)
+  branch/commit/pr_url  # delivery evidence, recorded when the run finishes
 
 TaskSpec  (content — parsed from the message body by the Normalizer)
   repo_url       # required to run
@@ -38,8 +39,9 @@ TaskSpec  (content — parsed from the message body by the Normalizer)
   model_request  # optional provider/model hint
 ```
 
-Branch, commit SHA and PR url are not stored on the task row either: they are delivered as
-threaded replies and, when useful, recorded as evidence links.
+The delivered branch, commit and PR url are stored as links on the task when the run
+finishes, so `herald task show` points at the artifact without reading the mailbox. They are
+links only — never source.
 
 ## States
 

@@ -100,7 +100,10 @@ def test_successful_run_marks_done_and_opens_a_draft_pr(repo: Path) -> None:
 
     evidence = executor.execute(task, make_spec(), recipient="dev@example.com")
 
-    assert queue.get("e1").state is TaskState.DONE
+    stored = queue.get("e1")
+    assert stored.state is TaskState.DONE
+    assert stored.evidence is not None
+    assert stored.evidence.pr_url == "https://example.com/pr/1"
     assert evidence.commit is not None
     assert evidence.pr_url == "https://example.com/pr/1"
     assert forge.calls[0]["branch"].startswith("herald/")

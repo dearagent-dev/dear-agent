@@ -4,7 +4,7 @@ import copy
 from collections.abc import Callable
 from datetime import datetime, timedelta
 
-from herald.queue.models import Task, TaskState, utcnow
+from herald.queue.models import Evidence, Task, TaskState, utcnow
 from herald.queue.port import StateConflictError, TaskNotFoundError
 
 
@@ -64,7 +64,13 @@ class MemoryQueue:
         stored.lease_until = self._clock() + lease
         return copy.deepcopy(stored)
 
-    def transition(self, task: Task, to_state: TaskState) -> Task:
+    def transition(
+        self,
+        task: Task,
+        to_state: TaskState,
+        *,
+        evidence: Evidence | None = None,
+    ) -> Task:
         stored = self._tasks.get(task.id)
         if stored is None:
             raise TaskNotFoundError(task.id)
@@ -74,6 +80,8 @@ class MemoryQueue:
         stored.state = to_state
         if to_state != TaskState.RUNNING:
             stored.lease_until = None
+        if evidence is not None:
+            stored.evidence = evidence
         return copy.deepcopy(stored)
 
     def release_stale(self, *, now: datetime) -> list[Task]:

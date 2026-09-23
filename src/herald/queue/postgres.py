@@ -4,7 +4,7 @@ from collections.abc import Callable, Sequence
 from datetime import datetime, timedelta
 from typing import Any
 
-from herald.queue.models import Task, TaskSpec, TaskState, utcnow
+from herald.queue.models import Evidence, Task, TaskSpec, TaskState, utcnow
 from herald.queue.port import StateConflictError, TaskNotFoundError
 
 # The durable queue (ADR 0005): one table, state as a column. Kept as a list of statements so
@@ -26,6 +26,9 @@ SCHEMA_STATEMENTS: tuple[str, ...] = (
         spec_base_branch   text,
         spec_instructions  text,
         spec_model_request text,
+        branch             text,
+        commit             text,
+        pr_url             text,
         CONSTRAINT herald_task_state_valid CHECK (
             state IN ('received', 'queued', 'running', 'action',
                       'done', 'failed', 'rejected', 'approved')
@@ -36,6 +39,9 @@ SCHEMA_STATEMENTS: tuple[str, ...] = (
     "ALTER TABLE herald_task ADD COLUMN IF NOT EXISTS spec_base_branch text",
     "ALTER TABLE herald_task ADD COLUMN IF NOT EXISTS spec_instructions text",
     "ALTER TABLE herald_task ADD COLUMN IF NOT EXISTS spec_model_request text",
+    "ALTER TABLE herald_task ADD COLUMN IF NOT EXISTS branch text",
+    "ALTER TABLE herald_task ADD COLUMN IF NOT EXISTS commit text",
+    "ALTER TABLE herald_task ADD COLUMN IF NOT EXISTS pr_url text",
     """
     CREATE INDEX IF NOT EXISTS herald_task_state_created_idx
         ON herald_task (state, created_at)
@@ -44,7 +50,7 @@ SCHEMA_STATEMENTS: tuple[str, ...] = (
 
 _COLUMNS = (
     "id, transport_id, thread_id, sender, subject, state, attempts, lease_until, created_at, "
-    "spec_repo_url, spec_base_branch, spec_instructions, spec_model_request"
+    "spec_repo_url, spec_base_branch, spec_instructions, spec_model_request, branch, commit, pr_url"
 )
 
 
@@ -92,7 +98,7 @@ class PostgresQueue:
             cur.execute(
                 f"""
                 INSERT INTO herald_task ({_COLUMNS})
-                VALUES (%s, %s, %s, %s, %s, %s, 0, NULL, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, 0, NULL, %s, %s, %s, %s, %s, NULL, NULL, NULL)
                 ON CONFLICT DO NOTHING
                 RETURNING {_COLUMNS}
                 """,
@@ -174,7 +180,13 @@ class PostgresQueue:
         self._conn.commit()
         return _task_from_row(row) if row else None
 
-    def transition(self, task: Task, to_state: TaskState) -> Task:
+    def transition(
+        self,
+        task: Task,
+        to_state: TaskState,
+        *,
+        evidence: Evidence | None = None,
+    ) -> Task:
         now = self._clock()
         with self._conn.cursor() as cur:
             cur.execute(
@@ -182,11 +194,23 @@ class PostgresQueue:
                 UPDATE herald_task
                    SET state = %s,
                        lease_until = CASE WHEN %s = 'running' THEN lease_until ELSE NULL END,
-                       updated_at = %s
+                       updated_at = %s,
+                       branch = COALESCE(%s, branch),
+                       commit = COALESCE(%s, commit),
+                       pr_url = COALESCE(%s, pr_url)
                  WHERE id = %s AND state = %s
                  RETURNING {_COLUMNS}
                 """,
-                (to_state.value, to_state.value, now, task.id, task.state.value),
+                (
+                    to_state.value,
+                    to_state.value,
+                    now,
+                    evidence.branch if evidence else None,
+                    evidence.commit if evidence else None,
+                    evidence.pr_url if evidence else None,
+                    task.id,
+                    task.state.value,
+                ),
             )
             row = cur.fetchone()
             current = None
@@ -233,6 +257,9 @@ def _task_from_row(row: Sequence[Any]) -> Task:
         spec_base_branch,
         spec_instructions,
         spec_model_request,
+        branch,
+        commit,
+        pr_url,
     ) = row
     spec = None
     if spec_repo_url is not None:
@@ -242,6 +269,9 @@ def _task_from_row(row: Sequence[Any]) -> Task:
             instructions=spec_instructions or "",
             model_request=spec_model_request,
         )
+    evidence = None
+    if branch is not None or commit is not None or pr_url is not None:
+        evidence = Evidence(branch=branch, commit=commit, pr_url=pr_url)
     return Task(
         id=id_,
         transport_id=transport_id,
@@ -253,6 +283,7 @@ def _task_from_row(row: Sequence[Any]) -> Task:
         lease_until=lease_until,
         created_at=created_at,
         spec=spec,
+        evidence=evidence,
     )
 
 

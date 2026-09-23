@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Protocol, runtime_checkable
 
-from herald.queue.models import Task, TaskState
+from herald.queue.models import Evidence, Task, TaskState
 
 
 class QueueError(Exception):
@@ -69,11 +69,18 @@ class Queue(Protocol):
         """
         ...
 
-    def transition(self, task: Task, to_state: TaskState) -> Task:
+    def transition(
+        self,
+        task: Task,
+        to_state: TaskState,
+        *,
+        evidence: Evidence | None = None,
+    ) -> Task:
         """Move ``task`` to ``to_state`` if the queue still holds ``task.state``.
 
-        Raise :class:`StateConflictError` on a concurrent change and
-        :class:`TaskNotFoundError` when the task no longer exists.
+        ``evidence`` records the delivered branch/commit/PR when a run finishes. Raise
+        :class:`StateConflictError` on a concurrent change and :class:`TaskNotFoundError`
+        when the task no longer exists.
         """
         ...
 

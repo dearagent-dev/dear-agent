@@ -28,6 +28,19 @@ def utcnow() -> datetime:
 
 
 @dataclass(slots=True)
+class Evidence:
+    """The delivered artifact for a task: its branch, commit and draft PR (ADR 0005).
+
+    Persisted with the task so ``herald task show`` can point at the PR without reading the
+    mailbox. Source never travels over the transport; this is a link, not content.
+    """
+
+    branch: str | None = None
+    commit: str | None = None
+    pr_url: str | None = None
+
+
+@dataclass(slots=True)
 class Task:
     """Queue record for an inbound message, persisted as a row (ADR 0005).
 
@@ -48,6 +61,8 @@ class Task:
     # Parsed content, persisted with the task so a runner never needs the mailbox to run
     # (ADR 0005). ``None`` for a task enqueued before the normalizer attached a spec.
     spec: TaskSpec | None = None
+    # Delivered artifact links, recorded when the run finishes.
+    evidence: Evidence | None = None
 
 
 @dataclass(slots=True)

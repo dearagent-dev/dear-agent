@@ -182,6 +182,26 @@ def test_transition_clears_the_lease_when_leaving_running(queue: MemoryQueue) ->
     assert done.lease_until is None
 
 
+def test_transition_records_delivery_evidence(queue: MemoryQueue) -> None:
+    from herald.queue.models import Evidence
+
+    task = queue.enqueue(make_task())
+    assert task is not None
+    queue.claim(task, lease=LEASE)
+    running = queue.get(task.id)
+    assert running is not None
+
+    done = queue.transition(
+        running,
+        TaskState.DONE,
+        evidence=Evidence(branch="herald/x", commit="abc", pr_url="https://example.com/pr/1"),
+    )
+
+    assert done.evidence is not None
+    assert done.evidence.pr_url == "https://example.com/pr/1"
+    assert queue.get(task.id).evidence.branch == "herald/x"
+
+
 def test_release_stale_requeues_expired_running_and_bumps_attempts(
     queue: MemoryQueue, clock: FakeClock
 ) -> None:

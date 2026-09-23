@@ -6,7 +6,7 @@ from datetime import timedelta
 from herald.gitplane.plane import GitError, GitPlane
 from herald.notify.escalate import Escalator, FailureKind
 from herald.notify.notifier import Notifier, TaskLinks
-from herald.queue.models import Task, TaskSpec, TaskState
+from herald.queue.models import Evidence, Task, TaskSpec, TaskState
 from herald.queue.port import Queue
 from herald.runners.port import Runner
 from herald.runners.worktree import RunResult, Worktree
@@ -127,7 +127,13 @@ class TaskExecutor:
                 failure=failure,
             )
             final = self._queue.transition(
-                running, TaskState.DONE if evidence.ok else TaskState.FAILED
+                running,
+                TaskState.DONE if evidence.ok else TaskState.FAILED,
+                evidence=Evidence(
+                    branch=evidence.branch,
+                    commit=evidence.commit,
+                    pr_url=evidence.pr_url,
+                ),
             )
             evidence.task_id = final.id
             self._report(evidence, recipient=recipient)

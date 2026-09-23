@@ -25,6 +25,9 @@ def _task_payload(task: Task) -> dict[str, Any]:
         "repo": task.spec.repo_url if task.spec else None,
         "base": task.spec.base_branch if task.spec else None,
         "model": task.spec.model_request if task.spec else None,
+        "branch": task.evidence.branch if task.evidence else None,
+        "commit": task.evidence.commit if task.evidence else None,
+        "pr_url": task.evidence.pr_url if task.evidence else None,
     }
 
 
