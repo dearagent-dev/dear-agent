@@ -27,7 +27,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: control-plane
-          image: ghcr.io/OWNER/herald:latest
+          image: quay.io/rarguello/herald:latest
           imagePullPolicy: IfNotPresent
           command: ["herald-http"]
           args: []

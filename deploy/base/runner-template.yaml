@@ -33,7 +33,7 @@ data:
               type: RuntimeDefault
           containers:
             - name: runner
-              image: ghcr.io/OWNER/herald:latest
+              image: quay.io/rarguello/herald:latest
               command: ["herald"]
               # The runner claims a persisted task and runs the harness; it needs no mailbox
               # (the spec lives on the task row) and sends no mail without --recipient, so it
