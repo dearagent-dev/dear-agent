@@ -29,8 +29,10 @@ If a change does not serve one of those goals (or a milestone in
 1. **No source code over the transport.** Never send patches, source files, diffs as
    files, or directory archives via email/JMAP/IRC. Only task metadata, status, and
    links (repo, branch, PR, commit SHA) travel. Code moves over Git only.
-2. **The deliverable is a PR.** Agents never commit or push to `main` (or any protected
-   base). Always an `herald/<slug>` branch + a **draft PR**. Human-gated landing.
+2. **The deliverable is a PR.** Agents never commit or push directly to `main` (or any
+   protected base). Always an `herald-<slug>` branch + a PR. Landing is human-gated: a human
+   reviews and explicitly approves, and only then does the agent merge (squash) — never
+   before checks are green and approval is given.
 3. **Never replace the user's harness.** Herald *wraps* OpenCode/Claude Code/Codex/a
    custom runner through a runner adapter. Do not fork or vend a harness into this repo.
 4. **Enqueue is idempotent.** The same inbound message must never create two tasks.
@@ -136,12 +138,13 @@ herald/
 
 ## 6. How to work in this repo
 
-- **One slice per branch.** Branch name `herald/<milestone>-<slug>` (e.g.
+- **One slice per branch.** Branch name `herald-<milestone>-<slug>` (e.g.
   `herald-m1-task-model`).
 - **TDD.** Failing test first, minimal implementation, then refactor. Commit per
   meaningful step.
-- **Draft PR always.** Open a draft PR against `main`; never merge it yourself. A human
-  lands it.
+- **PR per slice.** Open a PR against `main`. A human reviews and explicitly approves;
+  once checks are green and approval is given, the agent lands it (squash). Never merge
+  before that approval, and never push directly to `main`.
 - **Small, reviewable PRs.** If a slice grows past a day of work, split it and update the
   roadmap.
 - **Docs travel with code.** Any behavior change updates the relevant `docs/*.md` and, if
