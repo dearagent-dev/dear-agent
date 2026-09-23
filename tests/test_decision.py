@@ -264,6 +264,15 @@ def test_build_decider_wraps_with_logging_when_configured(monkeypatch, tmp_path)
     assert isinstance(build_decider(), LoggingDecider)
 
 
+def test_build_decider_postgres_log_requires_a_dsn(monkeypatch) -> None:
+    monkeypatch.setenv("HERALD_DECIDER", "rules")
+    monkeypatch.setenv("HERALD_DECIDER_LOG", "postgres")
+    monkeypatch.delenv("HERALD_DATABASE_URL", raising=False)
+
+    with pytest.raises(DecisionError):
+        build_decider()
+
+
 def test_build_decider_openrouter_requires_a_key(monkeypatch) -> None:
     from herald.decision.factory import build_decider
 

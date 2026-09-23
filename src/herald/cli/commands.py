@@ -370,14 +370,30 @@ def _log_path(args: argparse.Namespace) -> str:
     return args.log
 
 
-def _handle_calibrate(args: argparse.Namespace, context: CliContext) -> int:
+def _decision_store(args: argparse.Namespace):
+    """A file ``DecisionLog`` or, for ``--log postgres``, the database store (ADR 0005)."""
+    target = _log_path(args)
+    if target == "postgres":
+        import os
+
+        from herald.db import connect, init_schema
+        from herald.decision.log import PostgresDecisionLog
+
+        dsn = os.environ.get("HERALD_DATABASE_URL")
+        if not dsn:
+            raise RuntimeError("HERALD_DATABASE_URL is required for --log postgres")
+        conn = connect(dsn)
+        init_schema(conn)
+        return PostgresDecisionLog(conn)
     from pathlib import Path
 
     from herald.decision.log import DecisionLog
 
-    report = DecisionLog(path=Path(_log_path(args))).calibrate(
-        question_id=args.question, target=args.target
-    )
+    return DecisionLog(path=Path(target))
+
+
+def _handle_calibrate(args: argparse.Namespace, context: CliContext) -> int:
+    report = _decision_store(args).calibrate(question_id=args.question, target=args.target)
     payload = {
         "question": report.question_id,
         "total": report.total,
@@ -409,11 +425,7 @@ def _add_label(subparsers: argparse._SubParsersAction, parent: argparse.Argument
 
 
 def _handle_label(args: argparse.Namespace, context: CliContext) -> int:
-    from pathlib import Path
-
-    from herald.decision.log import DecisionLog
-
-    updated = DecisionLog(path=Path(_log_path(args))).label(args.index, args.label)
+    updated = _decision_store(args).label(args.index, args.label)
     if not updated:
         raise RuntimeError(f"no decision at index {args.index}")
     context.emit(f"labeled decision {args.index} as {args.label}")

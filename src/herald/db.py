@@ -17,10 +17,12 @@ def init_schema(conn: Any) -> None:
     ``init_schema`` call leaves the database ready for the queue and the approval store.
     """
     from herald.approvals import apply_schema as apply_approvals
+    from herald.decision.log import apply_schema as apply_decisions
     from herald.queue.postgres import apply_schema as apply_queue
 
     apply_queue(conn)
     apply_approvals(conn)
+    apply_decisions(conn)
 
 
 __all__ = ["connect", "init_schema"]
