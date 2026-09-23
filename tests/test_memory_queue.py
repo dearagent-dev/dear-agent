@@ -60,6 +60,15 @@ def test_enqueue_is_idempotent_on_transport_id(queue: MemoryQueue) -> None:
     assert queue.get("e2") is None
 
 
+def test_enqueue_dedupes_on_id_even_with_a_new_transport(queue: MemoryQueue) -> None:
+    queue.enqueue(make_task(id="e1", transport_id="<a@x>"))
+
+    duplicate = queue.enqueue(make_task(id="e1", transport_id="<b@x>"))
+
+    assert duplicate is None
+    assert len(queue.list(TaskState.QUEUED)) == 1
+
+
 def test_enqueue_returns_a_copy(queue: MemoryQueue) -> None:
     stored = queue.enqueue(make_task())
     assert stored is not None

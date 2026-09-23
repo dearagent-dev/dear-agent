@@ -93,7 +93,7 @@ class PostgresQueue:
                 f"""
                 INSERT INTO herald_task ({_COLUMNS})
                 VALUES (%s, %s, %s, %s, %s, %s, 0, NULL, %s, %s, %s, %s, %s)
-                ON CONFLICT (transport_id) DO NOTHING
+                ON CONFLICT DO NOTHING
                 RETURNING {_COLUMNS}
                 """,
                 (
