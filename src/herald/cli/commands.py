@@ -341,7 +341,7 @@ def add_run_commands(
     subparsers: argparse._SubParsersAction, parent: argparse.ArgumentParser
 ) -> None:
     parser = subparsers.add_parser("run", help="execute one claimed task end to end")
-    parser.add_argument("task_id")
+    parser.add_argument("task_id", nargs="?", default=None, help="task id (default: oldest queued)")
     parser.add_argument("--repo", required=True, help="path to the source repository")
     parser.add_argument("--recipient", default=None, help="email to notify on completion")
     parser.add_argument(
@@ -362,6 +362,12 @@ def _handle_run(args: argparse.Namespace, context: CliContext) -> int:
     from herald.worker_factory import build_transport, build_worker
 
     queue = context.require_queue()
+    task_id = args.task_id
+    if task_id is None:
+        queued = queue.list(TaskState.QUEUED, limit=1)
+        if not queued:
+            raise RuntimeError("no queued task to run")
+        task_id = queued[0].id
     transport = build_transport(args.backend)
     worker = build_worker(
         queue=queue,
@@ -370,7 +376,7 @@ def _handle_run(args: argparse.Namespace, context: CliContext) -> int:
         recipient=args.recipient or None,
         provider_model=args.model or None,
     )
-    evidence = worker.run(args.task_id)
+    evidence = worker.run(task_id)
     payload = {
         "task_id": evidence.task_id,
         "branch": evidence.branch,

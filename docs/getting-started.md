@@ -60,6 +60,12 @@ herald run --repo /tmp/herald-source \
   <task-id>
 ```
 
+Omit `<task-id>` to run the oldest queued task (a local stand-in for the Kubernetes sweep):
+
+```sh
+herald run --repo /tmp/herald-source
+```
+
 `--repo` is a local directory Herald clones/uses read-only; the harness runs in an isolated
 worktree. On success Herald commits, pushes an `herald/<slug>` branch and opens a **draft
 PR**, then marks the task `done`. Agents never write `main`; a human lands the PR.

@@ -180,6 +180,44 @@ def test_run_executes_a_task_via_the_worker(monkeypatch) -> None:
     assert payload["pr_url"] == "https://example.com/pr/1"
 
 
+def test_run_without_a_task_id_picks_the_oldest_queued() -> None:
+    import contextlib
+    import io
+    from unittest import mock
+
+    from herald.executor import ExecutedTask
+    from herald.runners.worktree import RunResult
+
+    queue = MemoryQueue()
+    seed(queue, "e1")
+    seed(queue, "e2")
+
+    captured: dict[str, object] = {}
+
+    class FakeWorker:
+        def run(self, task_id: str) -> ExecutedTask:
+            captured["task_id"] = task_id
+            return ExecutedTask(
+                task_id=task_id,
+                branch=f"herald/{task_id}",
+                commit="deadbeef",
+                pr_url=None,
+                run=RunResult(exit_code=0, branch=f"herald/{task_id}"),
+            )
+
+    buffer = io.StringIO()
+    with (
+        mock.patch("herald.cli.main.build_queue", return_value=queue),
+        mock.patch("herald.worker_factory.build_transport", return_value=object()),
+        mock.patch("herald.worker_factory.build_worker", return_value=FakeWorker()),
+        contextlib.redirect_stdout(buffer),
+    ):
+        code = main(["run", "--repo", "/repos/source"])
+
+    assert code == 0
+    assert captured["task_id"] == "e1"
+
+
 def test_decide_routes_with_the_rule_decider(monkeypatch) -> None:
     import contextlib
     import io
