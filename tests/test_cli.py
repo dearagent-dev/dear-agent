@@ -225,6 +225,31 @@ def test_enqueue_creates_a_queued_task_with_a_spec() -> None:
     assert tasks[0].spec.instructions == "fix the typo in the CLI help"
 
 
+def test_idle_proposes_a_task_from_a_todo(tmp_path) -> None:
+    import subprocess
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "app.py").write_text("# TODO: handle the empty case\n")
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "-c", "user.email=t@e", "-c", "user.name=t", "commit", "-q", "-m", "init"],
+        cwd=repo,
+        check=True,
+    )
+
+    queue = MemoryQueue()
+    code, output = run(["idle", "--repo", str(repo)], queue)
+
+    assert code == 0
+    assert "proposed 1" in output
+    tasks = queue.list(TaskState.QUEUED)
+    assert len(tasks) == 1
+    assert tasks[0].spec is not None
+    assert "app.py" in tasks[0].spec.instructions
+
+
 def test_enqueue_is_idempotent_on_transport_id() -> None:
     queue = MemoryQueue()
     argv = [

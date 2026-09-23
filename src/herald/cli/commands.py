@@ -257,6 +257,66 @@ def _handle_listen(args: argparse.Namespace, context: CliContext) -> int:
     return 0
 
 
+def add_idle_commands(
+    subparsers: argparse._SubParsersAction, parent: argparse.ArgumentParser
+) -> None:
+    parser = subparsers.add_parser(
+        "idle", help="propose work from recent repo activity when the queue is empty"
+    )
+    parser.add_argument("--repo", required=True, help="path to a local checkout to read")
+    parser.add_argument(
+        "--repo-url", default=None, help="repo URL for tasks (default: the --repo path)"
+    )
+    parser.add_argument("--max", type=int, default=1, help="max proposals per tick (default: 1)")
+    parser.add_argument(
+        "--min-queue-depth",
+        type=int,
+        default=1,
+        help="only propose when fewer than N tasks are queued (default: 1)",
+    )
+    parser.set_defaults(handler=_handle_idle)
+
+
+def _handle_idle(args: argparse.Namespace, context: CliContext) -> int:
+    import uuid
+    from pathlib import Path
+
+    from herald.idle.loop import IdleBudget, IdleLoop
+
+    queue = context.require_queue()
+    repo_path = Path(args.repo)
+
+    def submit(proposal) -> str | None:
+        transport_id = f"<idle-{uuid.uuid4().hex}@herald.local>"
+        task = Task(
+            id=transport_id,
+            transport_id=transport_id,
+            subject=proposal.title,
+            spec=TaskSpec(
+                repo_url=args.repo_url or str(proposal.repo_path),
+                instructions=proposal.instructions,
+            ),
+        )
+        stored = queue.enqueue(task)
+        return stored.id if stored else None
+
+    loop = IdleLoop(
+        queue=queue,
+        submit=submit,
+        budget=IdleBudget(max_per_run=args.max, min_queue_depth=args.min_queue_depth),
+        repo_name=repo_path.name,
+    )
+    report = loop.tick(str(repo_path))
+    payload = {"skipped": report.skipped, "reason": report.reason, "proposed": report.proposed}
+    if context.as_json:
+        context.emit_json(payload)
+    elif report.skipped:
+        context.emit(f"idle skipped: {report.reason}")
+    else:
+        context.emit(f"proposed {len(report.proposed)}: {', '.join(report.proposed)}")
+    return 0
+
+
 def _add_parse_reply(subparsers: argparse._SubParsersAction) -> None:
     parser = subparsers.add_parser("parse-reply", help="parse a reply body for a decision")
     parser.add_argument("text")

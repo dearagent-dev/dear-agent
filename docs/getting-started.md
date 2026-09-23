@@ -102,6 +102,17 @@ herald decide "audit the auth module for timing side-channels"
 With no decider configured, Herald uses the deterministic rules. See
 [providers.md](providers.md) and [ADR 0004](decisions/0004-decision-model.md).
 
+## When the queue is empty (idle)
+
+Herald can propose its own work from recent repository activity (recent commits, TODO/FIXME
+markers). Proposals enter the queue through the normal path and are run like any task; they
+are never executed directly:
+
+```sh
+herald idle --repo /path/to/checkout --max 1
+herald task ls          # the proposal is a normal task
+```
+
 ## Where to go next
 
 - [architecture.md](architecture.md) — data flow and components.
