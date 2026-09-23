@@ -169,6 +169,14 @@ def test_parse_authentication_results_extracts_verdicts_and_domains() -> None:
     assert verdicts["dmarc_from"] == "gmail.com"
 
 
+def test_parse_authentication_results_keeps_the_first_verdict() -> None:
+    raw = "mx; dmarc=fail header.from=example.com\nmx; dmarc=pass header.from=example.com"
+
+    verdicts = parse_authentication_results(raw)
+
+    assert verdicts["dmarc"] == "fail"
+
+
 def test_email_auth_gate_admits_authenticated_aligned_mail() -> None:
     gate = EmailAuthGate(allowed_domains=frozenset({"gmail.com"}))
 
@@ -231,6 +239,61 @@ def test_email_auth_gate_rejects_an_untrusted_auth_serv_id() -> None:
             headers={"Authentication-Results": raw},
             sender="ricardo.arguello@gmail.com",
         )
+
+
+def test_email_auth_gate_rejects_a_lookalike_auth_serv_id() -> None:
+    raw = "notmessagingengine.com; dmarc=pass header.from=gmail.com"
+    gate = EmailAuthGate(allowed_domains=frozenset({"gmail.com"}))
+
+    with pytest.raises(EmailAuthError):
+        gate.admit(
+            body=BODY,
+            headers={"Authentication-Results": raw},
+            sender="ricardo.arguello@gmail.com",
+        )
+
+
+def test_email_auth_gate_ignores_an_injected_pass_header() -> None:
+    trusted_fail = GMAIL_AUTH_RESULTS.replace("dmarc=pass", "dmarc=fail")
+    injected = "attacker.example.com; dmarc=pass header.from=gmail.com"
+    gate = EmailAuthGate(allowed_domains=frozenset({"gmail.com"}))
+
+    with pytest.raises(EmailAuthError):
+        gate.admit(
+            body=BODY,
+            headers={"Authentication-Results": f"{trusted_fail}\n{injected}"},
+            sender="ricardo.arguello@gmail.com",
+        )
+
+
+def test_email_auth_gate_first_trusted_verdict_wins() -> None:
+    # Even a field claiming the trusted authserv-id cannot upgrade an earlier fail.
+    raw = (
+        "phl-mx-07.messagingengine.com; dmarc=fail header.from=gmail.com\n"
+        "phl-mx-07.messagingengine.com; dmarc=pass header.from=gmail.com"
+    )
+    gate = EmailAuthGate(allowed_domains=frozenset({"gmail.com"}))
+
+    with pytest.raises(EmailAuthError):
+        gate.admit(
+            body=BODY,
+            headers={"Authentication-Results": raw},
+            sender="ricardo.arguello@gmail.com",
+        )
+
+
+def test_email_auth_gate_accepts_per_mechanism_trusted_headers() -> None:
+    raw = (
+        "phl-mx-07.messagingengine.com; dkim=pass header.d=gmail.com\n"
+        "phl-mx-07.messagingengine.com; dmarc=pass header.from=gmail.com"
+    )
+    gate = EmailAuthGate(allowed_domains=frozenset({"gmail.com"}))
+
+    gate.admit(
+        body=BODY,
+        headers={"Authentication-Results": raw},
+        sender="ricardo.arguello@gmail.com",
+    )
 
 
 def test_email_auth_gate_applies_the_sender_allowlist() -> None:
