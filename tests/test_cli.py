@@ -355,7 +355,7 @@ def test_enqueue_creates_a_queued_task_with_a_spec() -> None:
     assert tasks[0].spec.verify == "pytest -q"
 
 
-def test_approval_pending_lists_issued_tokens(tmp_path, monkeypatch) -> None:
+def test_approval_pending_redacts_tokens_by_default(tmp_path, monkeypatch) -> None:
     from dear_agent.approvals import FileApprovalStore
 
     path = tmp_path / "approvals.json"
@@ -369,7 +369,23 @@ def test_approval_pending_lists_issued_tokens(tmp_path, monkeypatch) -> None:
     payload = json.loads(output)
     assert payload[0]["task_id"] == "e1"
     assert payload[0]["action"] == "land"
-    assert payload[0]["token"]
+    assert payload[0]["token"] == "<redacted>"
+
+
+def test_approval_pending_can_show_tokens(tmp_path, monkeypatch) -> None:
+    from dear_agent.approvals import FileApprovalStore
+
+    path = tmp_path / "approvals.json"
+    store = FileApprovalStore(path)
+    store.issue("e1", "land")
+    expected = store.pending()[0].token
+    monkeypatch.setenv("DEAR_AGENT_APPROVALS_FILE", str(path))
+    monkeypatch.delenv("DEAR_AGENT_QUEUE", raising=False)
+
+    code, output = run(["--json", "approval", "pending", "--show-tokens"], MemoryQueue())
+
+    assert code == 0
+    assert json.loads(output)[0]["token"] == expected
 
 
 def test_approval_approve_redeems_the_token(tmp_path, monkeypatch) -> None:

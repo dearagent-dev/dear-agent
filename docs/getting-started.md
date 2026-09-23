@@ -140,7 +140,8 @@ run until a human releases them.
 
 ```sh
 dear-agent idle --repo /path/to/checkout --max 1
-dear-agent approval pending                 # the issued single-use token
+dear-agent approval pending                 # pending requests (tokens redacted)
+dear-agent approval pending --show-tokens   # reveal the single-use token
 dear-agent approval approve <token>         # releases the proposal to run (queued)
 ```
 
