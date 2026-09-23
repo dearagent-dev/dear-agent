@@ -116,9 +116,11 @@ See [ADR 0005](decisions/0005-state-store.md).
 - [x] **M8.2** Schema and a `PostgresQueue` implementing the `Queue` port (unique
   `transport_id`, guarded `UPDATE` claim, lease sweep); `JmapQueue` retired and the queue
   backend decoupled from the transport (`HERALD_QUEUE`). Verified against a live Postgres.
-- [ ] **M8.3** Move approvals and the decision log/labels into Postgres; drop the file stores.
-- [ ] **M8.4** One-time backfill of in-flight tasks from the mailbox; cut the sweep and runner
-  over to the database.
+- [x] **M8.3** Approvals and the decision log/labels in Postgres; the file stores remain only
+  as a single-process fallback (`HERALD_APPROVALS_FILE`, `HERALD_DECIDER_LOG=<path>`).
+- [x] **M8.4** The sweep and runner run on the database, and the parsed `TaskSpec` is
+  persisted with the task, so a runner no longer reads the mailbox. No backfill is needed at
+  the current scale (there is no production mailbox state to migrate).
 
 ## Later / ideas
 

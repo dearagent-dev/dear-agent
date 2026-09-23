@@ -13,12 +13,13 @@ the decision log — lives in the database. Git remains the only artifact plane.
 ## Task
 
 A task is a parsed inbound message, persisted as a row. Its authoritative copy is the row;
-the email is the immutable request that produced it. Message-body content is parsed into a
-`TaskSpec` by the Normalizer at ingest.
+the email is the request that produced it. Message-body content is parsed into a `TaskSpec` by
+the Normalizer at ingest and **persisted with the task**, so a runner never needs the mailbox
+to run.
 
 ```
 Task  (row in the queue)
-  id             # internal, stable id (UUID) — the task identity everywhere
+  id             # internal, stable id — the task identity everywhere
   transport_id   # Message-ID / JMAP emailId / webhook event id — UNIQUE (the dedupe key)
   thread_id      # conversation to reply into (transport-specific)
   sender         # from the message header; advisory (authorization is separate)
@@ -28,6 +29,7 @@ Task  (row in the queue)
   lease_until    # timestamptz, set on claim; NULL when not running
   created_at     # timestamptz
   updated_at     # timestamptz
+  spec_*         # the parsed TaskSpec (see below)
 
 TaskSpec  (content — parsed from the message body by the Normalizer)
   repo_url       # required to run

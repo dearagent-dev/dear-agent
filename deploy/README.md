@@ -119,8 +119,9 @@ selected repositories.
   the task id injected.
 - The runner's `--repo /work/source` is cloned read-only on first use from the task's
   `repo:` URL, using the mounted `herald-git-read` key (`GIT_SSH_COMMAND`).
-- Approvals and the decision log still use their file stores; moving them into Postgres is
-  M8.3 (ADR 0005).
+- Approvals and the decision log live in Postgres (`herald_approval`, `herald_decision`);
+  the file stores are a single-process fallback only. The parsed `TaskSpec` is persisted on
+  the task row, so a runner needs no mailbox access to run.
 
 ## Verified on a live OpenShift cluster
 

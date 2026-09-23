@@ -5,12 +5,15 @@
 Herald is the **control plane** for background coding work. You send an email (or any
 async message), an agent works in its own Git worktree, and the result comes back as a
 **pull request you review**. Code never travels over the transport — only task metadata,
-status, and links. **Git is the artifact plane; email is the queue.**
+status, and links. **Git is the artifact plane; the mailbox is ingress and PostgreSQL is the
+durable queue.**
+
+New here? See [docs/getting-started.md](docs/getting-started.md) for a local run.
 
 > Why: existing coding-agent harnesses (OpenCode, Claude Code, Codex) are excellent at
 > running a task, but the *enqueue* side is unsolved for unattended, offline-first work.
 > Chat transports (Telegram/OpenClaw/Hermes) are synchronous and carry code badly.
-> Herald makes the inbox the queue and the PR the deliverable.
+> Herald makes the inbox the entry point and the PR the deliverable.
 
 ## Why Herald
 
