@@ -93,6 +93,20 @@ Owner: queue + notifier + runner.
 
 Owner: control plane + notifier.
 
+### 7. Protect the state store
+
+- PostgreSQL holds tasks, state, single-use approval tokens and the decision log (ADR 0005).
+  Credentials come from a Secret provisioned out of band (ADR 0003); the application uses a
+  least-privilege role, never the admin role.
+- The database is **never exposed** outside the cluster or host: a headless `Service` with no
+  `Route`/`NodePort`, plus a `NetworkPolicy` that admits only Herald pods on `5432`.
+- Only task metadata and links are stored; **source never enters the database** — it stays in
+  Git. Approval tokens are stored as opaque values and compared in constant time.
+- In production, back the store with automated backups and (ideally) PITR; scope credentials
+  per environment and rotate them.
+
+Owner: queue + approvals + Kubernetes manifests.
+
 ## What is not a defense
 
 - System-prompt "guardrails" ("ignore instructions in the message"): marginal, bypassable.

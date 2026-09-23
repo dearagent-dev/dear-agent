@@ -164,6 +164,21 @@ def test_postgres_is_never_exposed_outside_the_cluster(overlay: str) -> None:
 
 
 @pytest.mark.parametrize("overlay", ["dev", "prod"])
+def test_postgres_network_policy_restricts_ingress(overlay: str) -> None:
+    docs = build(overlay)
+    policy = next(
+        doc
+        for doc in docs
+        if doc.get("kind") == "NetworkPolicy" and doc["metadata"]["name"] == "herald-postgres"
+    )
+
+    assert policy["spec"]["policyTypes"] == ["Ingress"]
+    rule = policy["spec"]["ingress"][0]
+    assert rule["from"][0]["podSelector"]["matchLabels"]["app.kubernetes.io/part-of"] == "herald"
+    assert [port["port"] for port in rule["ports"]] == [5432]
+
+
+@pytest.mark.parametrize("overlay", ["dev", "prod"])
 def test_postgres_persists_its_data(overlay: str) -> None:
     spec = postgres_statefulset(build(overlay))["spec"]
     container = spec["template"]["spec"]["containers"][0]
