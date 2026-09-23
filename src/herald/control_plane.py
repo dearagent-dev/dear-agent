@@ -9,6 +9,8 @@ from herald.decision.security import SecurityDecider
 from herald.events import EventLog
 from herald.normalizer import NormalizedTask, Rejected, RejectReason, normalize
 from herald.notify.notifier import Notifier
+from herald.policy import PolicyStore
+from herald.queue.models import Task, TaskState
 from herald.queue.port import Queue, QueueError
 from herald.security import InjectionScanner
 from herald.transports.base import OutboundMessage, RawMessage
@@ -27,6 +29,10 @@ REJECT_BODIES: dict[RejectReason, str] = {
     RejectReason.EMPTY: (
         "Herald could not find instructions. Describe the task in the message body."
     ),
+    RejectReason.NOT_ALLOWED: (
+        "Herald is not allowed to work on that repository. Ask an operator to add it to "
+        "the project policy."
+    ),
 }
 
 
@@ -39,6 +45,7 @@ class IngestReport:
     denied: list[str] = field(default_factory=list)
     decided: list[str] = field(default_factory=list)
     suspicious: list[str] = field(default_factory=list)
+    gated: list[str] = field(default_factory=list)
 
 
 class ControlPlane:
@@ -65,6 +72,7 @@ class ControlPlane:
         scanner: InjectionScanner | None = None,
         security: SecurityDecider | None = None,
         events: EventLog | None = None,
+        policies: PolicyStore | None = None,
     ) -> None:
         self._transport = transport
         self._queue = queue
@@ -74,6 +82,7 @@ class ControlPlane:
         self._scanner = scanner
         self._security = security
         self._events = events
+        self._policies = policies
 
     def _emit(self, task_id: str, kind: str, **data: object) -> None:
         if self._events is None:
@@ -107,19 +116,76 @@ class ControlPlane:
                 continue
 
             assert isinstance(result, NormalizedTask)
-            if self._scanner is not None and self._scanner.scan(message.body).suspicious:
-                report.suspicious.append(message.transport_id)
-            if self._security is not None:
-                verdict = self._security.assess(message.body)
-                if verdict.suspicious and message.transport_id not in report.suspicious:
-                    report.suspicious.append(message.transport_id)
-            if self._queue.enqueue(result.task) is None:
+            if not self._repo_allowed(result.spec.repo_url):
+                rejected = Rejected(
+                    transport_id=message.transport_id,
+                    reason=RejectReason.NOT_ALLOWED,
+                    detail=result.spec.repo_url,
+                )
+                report.rejected.append(message.transport_id)
+                self._emit(
+                    message.transport_id,
+                    "task.rejected",
+                    reason=RejectReason.NOT_ALLOWED.value,
+                    repo=result.spec.repo_url,
+                )
+                self._reply_rejection(message, rejected, recipient)
+                continue
+
+            suspicious = self._flag_suspicious(message, report)
+            stored = self._queue.enqueue(result.task)
+            if stored is None:
                 # Idempotent: a redelivery is a no-op, not an error.
                 continue
             report.accepted.append(result.task.id)
             self._emit(result.task.id, "task.accepted", repo=result.spec.repo_url)
+            if suspicious and self._approvals is not None:
+                self._gate_for_approval(stored, recipient)
+                report.gated.append(result.task.id)
         self._ack(messages)
         return report
+
+    def _repo_allowed(self, repo: str) -> bool:
+        """A repo is allowed when an enabled project policy matches it.
+
+        With no policies configured the deployment is open; once at least one policy exists
+        it is enforced, so an unknown or disabled repo is refused — one cannot ask Herald to
+        work on a repository the operator did not allow.
+        """
+        if self._policies is None:
+            return True
+        policies = self._policies.list()
+        if not policies:
+            return True
+        policy = self._policies.for_repo(repo)
+        return policy is not None and policy.enabled
+
+    def _flag_suspicious(self, message: RawMessage, report: IngestReport) -> bool:
+        suspicious = False
+        if self._scanner is not None and self._scanner.scan(message.body).suspicious:
+            report.suspicious.append(message.transport_id)
+            suspicious = True
+        if self._security is not None:
+            verdict = self._security.assess(message.body)
+            if verdict.suspicious and message.transport_id not in report.suspicious:
+                report.suspicious.append(message.transport_id)
+                suspicious = True
+        return suspicious
+
+    def _gate_for_approval(self, task: Task, recipient: str | None) -> None:
+        """Park a suspicious task in ``action`` until a human approves it."""
+        self._queue.transition(task, TaskState.ACTION)
+        self._emit(task.id, "approval.requested", reason="suspicious")
+        if self._notifier is not None and recipient:
+            self._notifier.request_approval(
+                task,
+                recipient=recipient,
+                action="run",
+                summary="message flagged as suspicious; approve to run it",
+            )
+        else:
+            assert self._approvals is not None
+            self._approvals.request(task.id, "run")
 
     def _ack(self, messages: list[RawMessage]) -> None:
         """Tell the transport these messages were handled, so they are not redelivered.

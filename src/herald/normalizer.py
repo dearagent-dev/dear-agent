@@ -21,6 +21,7 @@ class RejectReason(StrEnum):
     ATTACHMENTS = "attachments"
     NO_REPO = "no_repo"
     EMPTY = "empty"
+    NOT_ALLOWED = "not_allowed"
 
 
 @dataclass(slots=True)

@@ -317,8 +317,12 @@ def _inbound_plane(queue, transport):
     from herald.approvals_service import ApprovalService
     from herald.auth import EmailAuthGate, SenderAllowlist
     from herald.control_plane import ControlPlane
+    from herald.decision.factory import build_decider
+    from herald.decision.security import SecurityDecider
     from herald.events import build_event_log
     from herald.notify.notifier import Notifier
+    from herald.policy import build_policy_store
+    from herald.security import InjectionScanner
 
     gate = EmailAuthGate.from_env(os.environ)
     if gate is None:
@@ -329,7 +333,10 @@ def _inbound_plane(queue, transport):
         notifier=Notifier(transport),
         gate=gate,
         approvals=ApprovalService(build_approval_store(), queue),
+        scanner=InjectionScanner(),
+        security=SecurityDecider(decider=build_decider()),
         events=build_event_log(),
+        policies=build_policy_store(),
     )
 
 
