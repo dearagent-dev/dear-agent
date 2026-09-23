@@ -49,32 +49,21 @@ class WorktreeSpecResolver:
 def build_runner(provider_model: str | None, sandbox: Sandbox) -> Runner:
     """Build the harness runner selected by ``HERALD_HARNESS`` (default: opencode).
 
-    ``opencode`` (default), ``claude`` and ``codex`` are first-class adapters. ``command``
-    wraps an arbitrary harness via ``HERALD_HARNESS_COMMAND`` (a space-separated argv), which
-    is how an operator plugs in a custom runner without forking Herald.
+    ``opencode`` (default), ``claude`` and ``codex`` are first-class adapters; ``auto`` /
+    ``local-agent`` picks the first one available on ``PATH``. ``command`` wraps an arbitrary
+    harness via ``HERALD_HARNESS_COMMAND`` (a space-separated argv), which is how an operator
+    plugs in a custom runner without forking Herald. A model is passed only to harnesses that
+    accept one (OpenCode), never to a subscription harness (Claude Code, Codex).
     """
-    harness = os.environ.get("HERALD_HARNESS", "opencode").lower()
-    if harness == "command":
-        from herald.runners.command import CommandRunner
+    from dataclasses import replace
 
-        raw = os.environ.get("HERALD_HARNESS_COMMAND")
-        if not raw:
-            raise RuntimeError("HERALD_HARNESS_COMMAND is required for HERALD_HARNESS=command")
-        return CommandRunner(command=raw.split())
+    from herald.runners.catalog import EnvHarnessCatalog, build_runner_for, select_harness
 
-    binary = os.environ.get("HERALD_HARNESS_BINARY")
-    if harness == "claude":
-        from herald.runners.claude import ClaudeCodeRunner
-
-        return ClaudeCodeRunner(model=provider_model, **({"binary": binary} if binary else {}))
-    if harness == "codex":
-        from herald.runners.codex import CodexRunner
-
-        return CodexRunner(model=provider_model, **({"binary": binary} if binary else {}))
-
-    from herald.runners.opencode import OpenCodeRunner
-
-    return OpenCodeRunner(model=provider_model, binary=binary or "opencode", sandbox=sandbox)
+    info = select_harness(EnvHarnessCatalog(), os.environ.get("HERALD_HARNESS"))
+    override = os.environ.get("HERALD_HARNESS_BINARY")
+    if override and info.id != "command":
+        info = replace(info, binary=override)
+    return build_runner_for(info, provider_model, sandbox)
 
 
 def default_sandbox() -> Sandbox:
