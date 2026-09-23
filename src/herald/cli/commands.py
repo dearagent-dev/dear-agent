@@ -233,7 +233,7 @@ def _handle_listen(args: argparse.Namespace, context: CliContext) -> int:
 
     from herald.approvals import build_approval_store
     from herald.approvals_service import ApprovalService
-    from herald.auth import SenderAllowlist
+    from herald.auth import EmailAuthGate, SenderAllowlist
     from herald.control_plane import ControlPlane
     from herald.jmap.client import DEFAULT_SESSION_URL, JmapClient
     from herald.jmap.eventsource import EventSourceListener
@@ -256,9 +256,13 @@ def _handle_listen(args: argparse.Namespace, context: CliContext) -> int:
     # Wire the notifier and approvals here too, so rejections are explained and an approval
     # reply ingested on the push path decides the task.
     approvals = ApprovalService(build_approval_store(), queue)
-    # Email cannot carry Herald's HMAC header, so guard the push path with a sender
-    # allowlist (HERALD_ALLOWED_SENDERS). Without it, any sender is accepted.
-    gate = SenderAllowlist.from_env(os.environ.get("HERALD_ALLOWED_SENDERS"))
+    # Email cannot carry Herald's HMAC header. Prefer the MTA's SPF/DKIM/DMARC verdict
+    # (HERALD_AUTH_DOMAINS); a sender allowlist (HERALD_ALLOWED_SENDERS) restricts further,
+    # or is the weaker fallback when DMARC is not configured. Without either, any sender is
+    # accepted.
+    gate = EmailAuthGate.from_env(os.environ)
+    if gate is None:
+        gate = SenderAllowlist.from_env(os.environ.get("HERALD_ALLOWED_SENDERS"))
     callback = IngestOnChange(
         control_plane=ControlPlane(
             transport=transport,

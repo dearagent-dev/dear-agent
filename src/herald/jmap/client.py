@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import urllib.error
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
@@ -22,6 +22,7 @@ _EMAIL_PROPERTIES = [
     "mailboxIds",
     "bodyValues",
     "hasAttachment",
+    "headers",
 ]
 
 _INBOUND_PROPERTIES = _EMAIL_PROPERTIES
@@ -44,6 +45,26 @@ def _extract_text_body(item: dict[str, Any]) -> str:
     return "\n".join(chunks)
 
 
+def _to_headers(raw: list[dict[str, Any]] | None) -> dict[str, str]:
+    """Collect RFC 5322 headers, preserving order and joining duplicates with a newline.
+
+    Duplicates matter: Fastmail emits one ``Authentication-Results`` header per mechanism,
+    and the SPF/DKIM/DMARC gate needs all of them.
+    """
+    headers: dict[str, str] = {}
+    for header in raw or []:
+        name = header.get("name")
+        value = header.get("value")
+        if not name or value is None:
+            continue
+        existing = next((key for key in headers if key.lower() == name.lower()), None)
+        if existing is None:
+            headers[name] = value
+        else:
+            headers[existing] = f"{headers[existing]}\n{value}"
+    return headers
+
+
 class StateMismatchError(JmapError):
     """Raised when an ``ifInState``-guarded write loses the optimistic-concurrency race."""
 
@@ -62,6 +83,7 @@ class EmailRecord:
     mailbox_ids: set[str]
     body: str = ""
     has_attachment: bool = False
+    headers: dict[str, str] = field(default_factory=dict)
 
 
 class JmapClient:
@@ -358,4 +380,5 @@ class JmapClient:
             mailbox_ids={mbx for mbx, on in (item.get("mailboxIds") or {}).items() if on},
             body=_extract_text_body(item),
             has_attachment=bool(item.get("hasAttachment")),
+            headers=_to_headers(item.get("headers")),
         )

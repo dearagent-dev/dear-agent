@@ -140,6 +140,35 @@ def test_poll_reports_attachments_so_the_normalizer_can_reject() -> None:
     assert polled[0].has_attachments is True
 
 
+def test_to_headers_joins_duplicate_names() -> None:
+    from herald.jmap.client import _to_headers
+
+    headers = _to_headers(
+        [
+            {"name": "Authentication-Results", "value": "a"},
+            {"name": "Authentication-Results", "value": "b"},
+            {"name": "From", "value": "x@y"},
+        ]
+    )
+
+    assert headers["Authentication-Results"] == "a\nb"
+    assert headers["From"] == "x@y"
+
+
+def test_poll_passes_headers_through_for_the_auth_gate() -> None:
+    client = FakeMailClient()
+    client.add(
+        record(
+            "e1",
+            headers={"Authentication-Results": "mx; dmarc=pass header.from=example.com"},
+        )
+    )
+
+    polled = JmapTransport(client).poll()
+
+    assert "dmarc=pass" in polled[0].headers["Authentication-Results"]
+
+
 def test_ack_files_processed_messages_so_they_are_not_polled_again() -> None:
     client = FakeMailClient()
     client.add(record("e1"))

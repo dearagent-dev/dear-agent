@@ -7,6 +7,8 @@ import pytest
 from herald.auth import (
     SIGNATURE_HEADER,
     BadSignatureError,
+    EmailAuthError,
+    EmailAuthGate,
     InboundAuthorizer,
     InboundGate,
     MissingSignatureError,
@@ -14,12 +16,20 @@ from herald.auth import (
     RateLimiter,
     SenderAllowlist,
     UnauthorizedSenderError,
+    parse_authentication_results,
     sign,
 )
 
 BASE = datetime(2026, 1, 1, tzinfo=UTC)
 SENDER = "dev@example.com"
 BODY = "repo: https://github.com/owner/repo\n\nfix the build"
+
+# Trimmed-down shape of what Fastmail adds to a real Gmail message.
+GMAIL_AUTH_RESULTS = (
+    "phl-mx-07.messagingengine.com;\n"
+    "dkim=pass (2048-bit rsa key sha256) header.d=gmail.com header.i=@gmail.com;\n"
+    "dmarc=pass policy.published-domain-policy=none header.from=gmail.com"
+)
 
 
 class FakeClock:
@@ -148,6 +158,111 @@ def test_sender_allowlist_from_env_is_none_when_unset_or_empty() -> None:
 def test_empty_sender_allowlist_fails_closed() -> None:
     with pytest.raises(UnauthorizedSenderError):
         SenderAllowlist(frozenset()).admit(body=BODY, headers={}, sender=SENDER)
+
+
+def test_parse_authentication_results_extracts_verdicts_and_domains() -> None:
+    verdicts = parse_authentication_results(GMAIL_AUTH_RESULTS)
+
+    assert verdicts["dkim"] == "pass"
+    assert verdicts["dmarc"] == "pass"
+    assert verdicts["dkim_domain"] == "gmail.com"
+    assert verdicts["dmarc_from"] == "gmail.com"
+
+
+def test_email_auth_gate_admits_authenticated_aligned_mail() -> None:
+    gate = EmailAuthGate(allowed_domains=frozenset({"gmail.com"}))
+
+    gate.admit(
+        body=BODY,
+        headers={"Authentication-Results": GMAIL_AUTH_RESULTS},
+        sender="ricardo.arguello@gmail.com",
+    )
+
+
+def test_email_auth_gate_rejects_mail_without_authentication_results() -> None:
+    gate = EmailAuthGate(allowed_domains=frozenset({"gmail.com"}))
+
+    with pytest.raises(EmailAuthError):
+        gate.admit(body=BODY, headers={}, sender="ricardo.arguello@gmail.com")
+
+
+def test_email_auth_gate_rejects_a_failed_dmarc() -> None:
+    raw = GMAIL_AUTH_RESULTS.replace("dmarc=pass", "dmarc=fail")
+    gate = EmailAuthGate(allowed_domains=frozenset({"gmail.com"}))
+
+    with pytest.raises(EmailAuthError):
+        gate.admit(
+            body=BODY,
+            headers={"Authentication-Results": raw},
+            sender="ricardo.arguello@gmail.com",
+        )
+
+
+def test_email_auth_gate_rejects_a_domain_not_allowed() -> None:
+    gate = EmailAuthGate(allowed_domains=frozenset({"example.com"}))
+
+    with pytest.raises(UnauthorizedSenderError):
+        gate.admit(
+            body=BODY,
+            headers={"Authentication-Results": GMAIL_AUTH_RESULTS},
+            sender="ricardo.arguello@gmail.com",
+        )
+
+
+def test_email_auth_gate_rejects_a_spoofed_from() -> None:
+    # DMARC authenticated gmail.com, but From claims another domain: misaligned.
+    gate = EmailAuthGate(allowed_domains=frozenset({"gmail.com"}))
+
+    with pytest.raises(EmailAuthError):
+        gate.admit(
+            body=BODY,
+            headers={"Authentication-Results": GMAIL_AUTH_RESULTS},
+            sender="attacker@example.com",
+        )
+
+
+def test_email_auth_gate_rejects_an_untrusted_auth_serv_id() -> None:
+    raw = GMAIL_AUTH_RESULTS.replace("messagingengine.com", "evil.example.com")
+    gate = EmailAuthGate(allowed_domains=frozenset({"gmail.com"}))
+
+    with pytest.raises(EmailAuthError):
+        gate.admit(
+            body=BODY,
+            headers={"Authentication-Results": raw},
+            sender="ricardo.arguello@gmail.com",
+        )
+
+
+def test_email_auth_gate_applies_the_sender_allowlist() -> None:
+    gate = EmailAuthGate(
+        allowed_domains=frozenset({"gmail.com"}),
+        senders=SenderAllowlist(frozenset({"other@gmail.com"})),
+    )
+
+    with pytest.raises(UnauthorizedSenderError):
+        gate.admit(
+            body=BODY,
+            headers={"Authentication-Results": GMAIL_AUTH_RESULTS},
+            sender="ricardo.arguello@gmail.com",
+        )
+
+
+def test_email_auth_gate_from_env() -> None:
+    gate = EmailAuthGate.from_env(
+        {
+            "HERALD_AUTH_DOMAINS": "gmail.com",
+            "HERALD_ALLOWED_SENDERS": "ricardo.arguello@gmail.com",
+        }
+    )
+
+    assert gate is not None
+    assert gate.allowed_domains == frozenset({"gmail.com"})
+    assert gate.senders is not None
+
+
+def test_email_auth_gate_from_env_is_none_without_domains() -> None:
+    assert EmailAuthGate.from_env({}) is None
+    assert EmailAuthGate.from_env({"HERALD_ALLOWED_SENDERS": "x@y.com"}) is None
 
 
 def test_gate_runs_auth_before_rate_limit() -> None:
