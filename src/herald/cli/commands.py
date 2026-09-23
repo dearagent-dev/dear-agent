@@ -169,6 +169,7 @@ def add_task_commands(
     _add_terminal(task_sub, "complete", TaskState.DONE, "mark a running task done")
     _add_terminal(task_sub, "fail", TaskState.FAILED, "mark a running task failed")
     _add_terminal(task_sub, "requeue", TaskState.QUEUED, "return a failed/rejected task to queued")
+    _add_terminal(task_sub, "cancel", TaskState.REJECTED, "reject a task without running it")
 
 
 def add_sweep_commands(

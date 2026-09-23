@@ -391,6 +391,17 @@ def test_health_reports_queue_counts() -> None:
     assert payload["counts"]["running"] == 0
 
 
+def test_cancel_rejects_a_queued_task() -> None:
+    queue = MemoryQueue()
+    seed(queue, "e1")
+
+    code, output = run(["task", "cancel", "e1"], queue)
+
+    assert code == 0
+    assert "e1 -> rejected" in output
+    assert queue.get("e1").state is TaskState.REJECTED
+
+
 def test_requeue_returns_a_failed_task_to_queued() -> None:
     queue = MemoryQueue()
     seed(queue, "e1")
