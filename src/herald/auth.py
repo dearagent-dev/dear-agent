@@ -178,12 +178,66 @@ def _authentication_results(headers: Mapping[str, str] | None) -> str | None:
     return "\n".join(values) if values else None
 
 
+# A new ``Authentication-Results`` field starts with its authserv-id followed by ``;``; a
+# folded continuation line starts with a ``mechanism=result`` clause (an ``=`` before any
+# ``;``). That distinction lets us separate the MTA's field from one an attacker appended.
+_AUTHSERV_LINE_RE = re.compile(r"^\s*[A-Za-z0-9._-]+(?:\s+\([^)]*\))?\s*;")
+
+
+def _auth_results_blocks(raw: str) -> list[str]:
+    """Split concatenated ``Authentication-Results`` values into individual header fields."""
+    blocks: list[str] = []
+    current: list[str] = []
+    for line in raw.splitlines():
+        if _AUTHSERV_LINE_RE.match(line):
+            if current:
+                blocks.append("\n".join(current))
+            current = [line]
+        elif current:
+            current.append(line)
+        elif line.strip():
+            current = [line]
+    if current:
+        blocks.append("\n".join(current))
+    return blocks
+
+
+def _authserv_id(block: str) -> str:
+    head = block.split(";", 1)[0].strip()
+    return head.split()[0] if head else ""
+
+
+def _authserv_id_matches(serv_id: str, configured: str) -> bool:
+    """True when ``serv_id`` is ``configured`` or a subdomain of it (a domain boundary).
+
+    A substring check would accept ``notmessagingengine.com``; a suffix check does not.
+    """
+    serv_id = serv_id.strip().lower().rstrip(".")
+    configured = configured.strip().lower().rstrip(".")
+    return bool(configured) and (serv_id == configured or serv_id.endswith("." + configured))
+
+
+def _trusted_authentication_results(raw: str, auth_serv_id: str) -> str | None:
+    """Keep only the fields written by the configured receiving MTA.
+
+    An attacker can inject their own ``Authentication-Results`` header; it is not from the
+    trusted authserv-id, so it is discarded. Fields with no trusted authserv-id at all fail
+    closed (return ``None``).
+    """
+    blocks = _auth_results_blocks(raw)
+    if not auth_serv_id:
+        return "\n".join(blocks) if blocks else None
+    trusted = [block for block in blocks if _authserv_id_matches(_authserv_id(block), auth_serv_id)]
+    return "\n".join(trusted) if trusted else None
+
+
 def parse_authentication_results(raw: str) -> dict[str, str]:
     """Extract the verdicts and authenticated domains from ``Authentication-Results``.
 
-    RFC 8601 allows several headers and folded values, so we scan every clause for the
-    mechanisms and for the ``header.from``/``header.d``/``smtp.mailfrom`` properties. A
-    mechanism counts as ``pass`` if any of its clauses passed.
+    RFC 8601 allows several fields and folded values, so we scan every clause for the
+    mechanisms and for the ``header.from``/``header.d``/``smtp.mailfrom`` properties. The
+    **first** verdict for a mechanism (and the first authenticated domain) wins: the
+    outermost field is the MTA's, so a later clause can never upgrade a ``fail`` to a ``pass``.
     """
     verdicts: dict[str, str] = {}
     for clause in re.split(r"[;\n]", raw):
@@ -191,16 +245,16 @@ def parse_authentication_results(raw: str) -> dict[str, str]:
         match = re.match(r"([A-Za-z0-9-]+)\s*=\s*([A-Za-z0-9-]+)", clause)
         if match:
             mechanism, verdict = match.group(1).lower(), match.group(2).lower()
-            if mechanism in _AUTH_MECHANISMS and (verdict == "pass" or mechanism not in verdicts):
-                verdicts[mechanism] = verdict
+            if mechanism in _AUTH_MECHANISMS:
+                verdicts.setdefault(mechanism, verdict)
         for prop in re.finditer(
             r"(header\.from|header\.d|smtp\.mailfrom)\s*=\s*([^\s;)]+)", clause, re.IGNORECASE
         ):
             key, value = prop.group(1).lower(), prop.group(2).strip("<>").lower()
             if key == "header.from":
-                verdicts["dmarc_from"] = _domain(value)
+                verdicts.setdefault("dmarc_from", _domain(value))
             elif key == "header.d":
-                verdicts["dkim_domain"] = value.lstrip("@")
+                verdicts.setdefault("dkim_domain", value.lstrip("@"))
             else:
                 verdicts.setdefault("spf_domain", _domain(value))
     return verdicts
@@ -211,11 +265,12 @@ class EmailAuthGate:
     """Admits email only when the receiving MTA authenticated it (SPF/DKIM/DMARC).
 
     ``Authentication-Results`` is written by the receiving MTA (Fastmail's
-    ``*.messagingengine.com``). We trust the configured ``auth_serv_id`` and require the
-    configured mechanisms to pass; the DMARC-aligned domain must be in ``allowed_domains``
-    and must match the ``From`` domain, which defeats a spoofed ``From``. An optional
-    :class:`SenderAllowlist` narrows it to specific addresses. It fails closed: no trusted
-    verdict means no task.
+    ``*.messagingengine.com``). We trust only the fields whose authserv-id is the configured
+    ``auth_serv_id`` (a domain-boundary match), discarding anything an attacker injected;
+    the configured mechanisms must pass, and the DMARC-aligned domain must be in
+    ``allowed_domains`` and must match the ``From`` domain, which defeats a spoofed ``From``.
+    An optional :class:`SenderAllowlist` narrows it to specific addresses. It fails closed:
+    no trusted verdict means no task.
     """
 
     required: frozenset[str] = frozenset({"dmarc"})
@@ -243,10 +298,11 @@ class EmailAuthGate:
         raw = _authentication_results(headers)
         if raw is None:
             raise EmailAuthError("no Authentication-Results header")
-        if self.auth_serv_id and self.auth_serv_id.lower() not in raw.lower():
+        trusted = _trusted_authentication_results(raw, self.auth_serv_id)
+        if trusted is None:
             raise EmailAuthError(f"Authentication-Results is not from {self.auth_serv_id}")
 
-        verdicts = parse_authentication_results(raw)
+        verdicts = parse_authentication_results(trusted)
         for mechanism in self.required:
             if verdicts.get(mechanism) != "pass":
                 raise EmailAuthError(f"{mechanism} did not pass")
