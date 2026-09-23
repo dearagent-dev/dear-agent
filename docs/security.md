@@ -91,6 +91,12 @@ Owner: gitplane + repository settings.
   **single-use token**.
 - Commands derived from a message are never executed without an allowlist or human
   approval.
+- A message flagged **suspicious** (by `InjectionScanner` or the `SecurityDecider`, which
+  uses Jev when configured) is parked in `action` and **does not run** until a human
+  approves it with a single-use token — the injection never reaches the harness.
+- A repository that no *enabled* project policy matches is **refused**: once policies are
+  configured, one cannot ask Herald to work on a repo the operator did not allow. Scope the
+  push credential to the allowed repos and keep branch protection as the last line.
 
 Owner: queue + notifier + runner.
 

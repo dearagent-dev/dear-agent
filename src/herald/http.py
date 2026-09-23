@@ -28,7 +28,12 @@ def build_inbound(queue: Queue):
     from herald.approvals_service import ApprovalService
     from herald.auth import InboundAuthorizer, InboundGate, RateLimiter
     from herald.control_plane import ControlPlane
+    from herald.decision.factory import build_decider
+    from herald.decision.security import SecurityDecider
+    from herald.events import build_event_log
     from herald.inbound import InboundWebhook
+    from herald.policy import build_policy_store
+    from herald.security import InjectionScanner
     from herald.worker_factory import build_transport
 
     transport = build_transport()
@@ -49,6 +54,10 @@ def build_inbound(queue: Queue):
         queue=queue,
         notifier=Notifier(transport),
         approvals=approvals,
+        scanner=InjectionScanner(),
+        security=SecurityDecider(decider=build_decider()),
+        events=build_event_log(),
+        policies=build_policy_store(),
     )
     recipient = os.environ.get("HERALD_RECIPIENT")
     return InboundWebhook(control_plane=plane, gate=gate, recipient=recipient)
