@@ -48,23 +48,31 @@ New here? See [docs/getting-started.md](docs/getting-started.md) for a local run
 
 ## Architecture (conceptual)
 
-```
-        ┌──────────────┐   inbound    ┌───────────────┐   enqueue    ┌──────────────┐
-        │  Transport   │─────────────▶│  Normalizer   │─────────────▶│    Queue     │
-        │ email/JMAP/… │              │ → Task        │              │ (durable)    │
-        └──────▲───────┘              └───────────────┘              └──────┬───────┘
-               │ outbound (status/approval)                                │ claim
-               │                                                           ▼
-        ┌──────┴───────┐   notify     ┌───────────────┐   branch/PR   ┌──────────────┐
-        │  Notifier    │◀─────────────│   Runner      │──────────────▶│  Git plane   │
-        │ (reply ctx)  │              │ + Provider    │               │ branch + PR  │
-        └──────────────┘              └───────┬───────┘               └──────────────┘
-                                              │ no queued work
-                                              ▼
-                                       ┌──────────────┐
-                                       │ Idle/Creative│
-                                       │    loop      │
-                                       └──────────────┘
+```mermaid
+flowchart TD
+  T["Transport<br/>email · JMAP · IMAP · webhook"]
+  N["Normalizer<br/>→ Task + TaskSpec"]
+  Q[("Queue<br/>PostgreSQL · durable")]
+  R["Runner<br/>provider + harness"]
+  G["Git plane<br/>branch + draft PR"]
+  H(["Human review<br/>land the PR"])
+  No["Notifier<br/>threaded reply"]
+  I["Idle loop<br/>creative when empty"]
+
+  T -->|inbound| N
+  N -->|enqueue| Q
+  Q -->|claim| R
+  R -->|branch + PR| G
+  G -->|review| H
+  R -->|status / approval| No
+  No -->|outbound| T
+  Q -.->|empty| I
+  I -.->|proposals| Q
+
+  classDef store fill:#1F2A44,stroke:#1F2A44,color:#ffffff;
+  classDef human fill:#F2A93B,stroke:#F2A93B,color:#1F2A44;
+  class Q store;
+  class H human;
 ```
 
 See [`docs/architecture.md`](docs/architecture.md).
