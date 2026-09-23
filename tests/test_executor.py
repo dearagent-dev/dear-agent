@@ -79,6 +79,7 @@ def make_executor(
     forge: RecordingForge,
     runner: FakeRunner,
     transport: MemoryTransport,
+    verifier: object | None = None,
 ) -> TaskExecutor:
     return TaskExecutor(
         queue=queue,
@@ -88,6 +89,7 @@ def make_executor(
         worktrees_root=str(repo.parent / "wt"),
         notifier=Notifier(transport),
         escalator=Escalator(transport),
+        verifier=verifier,  # type: ignore[arg-type]
     )
 
 
@@ -187,6 +189,62 @@ def test_worktree_creation_failure_fails_the_task(repo: Path, monkeypatch) -> No
     ):
         executor.execute(task, make_spec())
 
+    assert queue.get("e1").state is TaskState.FAILED
+
+
+def test_verify_must_pass_before_the_pr(repo: Path) -> None:
+    from herald.verify import CommandVerifier
+
+    queue = MemoryQueue()
+    task = make_task(queue)
+    verifier = CommandVerifier.from_env({"HERALD_VERIFY_ALLOW": "python"})
+    executor = make_executor(
+        queue, repo, RecordingForge(), FakeRunner(ok=True), MemoryTransport(), verifier
+    )
+    spec = make_spec()
+    spec.verify = 'python -c "import sys; sys.exit(0)"'
+
+    evidence = executor.execute(task, spec, recipient="dev@example.com")
+
+    assert evidence.ok is True
+    assert queue.get("e1").state is TaskState.DONE
+
+
+def test_verify_failure_fails_the_task_and_opens_no_pr(repo: Path) -> None:
+    from herald.verify import CommandVerifier
+
+    queue = MemoryQueue()
+    task = make_task(queue)
+    transport = MemoryTransport()
+    forge = RecordingForge()
+    verifier = CommandVerifier.from_env({"HERALD_VERIFY_ALLOW": "python"})
+    executor = make_executor(queue, repo, forge, FakeRunner(ok=True), transport, verifier)
+    spec = make_spec()
+    spec.verify = 'python -c "import sys; sys.exit(1)"'
+
+    evidence = executor.execute(task, spec, recipient="dev@example.com")
+
+    assert evidence.failure is FailureKind.VERIFY_FAILED
+    assert forge.calls == []
+    assert queue.get("e1").state is TaskState.FAILED
+    assert "verify command" in transport.outbox[0].body
+
+
+def test_verify_command_not_allowlisted_is_blocked(repo: Path) -> None:
+    from herald.verify import CommandVerifier
+
+    queue = MemoryQueue()
+    task = make_task(queue)
+    forge = RecordingForge()
+    verifier = CommandVerifier.from_env({"HERALD_VERIFY_ALLOW": "pytest"})
+    executor = make_executor(queue, repo, forge, FakeRunner(ok=True), MemoryTransport(), verifier)
+    spec = make_spec()
+    spec.verify = "rm -rf /"
+
+    evidence = executor.execute(task, spec, recipient="dev@example.com")
+
+    assert evidence.failure is FailureKind.VERIFY_BLOCKED
+    assert forge.calls == []
     assert queue.get("e1").state is TaskState.FAILED
 
 

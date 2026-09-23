@@ -10,8 +10,10 @@ from herald.queue.models import Evidence, Task, TaskSpec, TaskState
 from herald.queue.port import Queue
 from herald.runners.port import Runner
 from herald.runners.worktree import RunResult, Worktree
+from herald.verify import CommandVerifier
 
 DEFAULT_LEASE = timedelta(hours=6)
+_VERIFY_FAILURES = frozenset({FailureKind.VERIFY_FAILED, FailureKind.VERIFY_BLOCKED})
 
 
 @dataclass(slots=True)
@@ -24,6 +26,7 @@ class ExecutedTask:
     pr_url: str | None
     run: RunResult
     failure: FailureKind | None = None
+    detail: str | None = None
 
     @property
     def ok(self) -> bool:
@@ -49,6 +52,7 @@ class TaskExecutor:
         worktrees_root: str,
         notifier: Notifier | None = None,
         escalator: Escalator | None = None,
+        verifier: CommandVerifier | None = None,
         lease: timedelta = DEFAULT_LEASE,
     ) -> None:
         self._queue = queue
@@ -58,6 +62,7 @@ class TaskExecutor:
         self._worktrees_root = worktrees_root
         self._notifier = notifier
         self._escalator = escalator
+        self._verifier = verifier
         self._lease = lease
 
     def execute(
@@ -104,24 +109,27 @@ class TaskExecutor:
             pr_url: str | None = None
 
             if run.ok:
-                # The harness succeeded; a git/forge error here must fail the task cleanly,
-                # never leave it `running` until the lease expires.
-                try:
-                    commit = self._git.commit_all(worktree, message=_commit_message(task, spec))
-                    if not self._git.has_changes_since(worktree, spec.base_branch):
-                        failure = FailureKind.NO_CHANGES
-                    else:
-                        self._git.push(worktree)
-                        pr = self._git.open_draft_pr(
-                            worktree,
-                            base_branch=spec.base_branch,
-                            title=_pr_title(task),
-                            body=_pr_body(task),
-                        )
-                        pr_url = pr.url
-                except GitError:
-                    failure = FailureKind.PUBLISH_FAILED
-                    pr_url = None
+                # The harness succeeded. Run the task's verify gate first (only if the
+                # command is allowlisted), then publish. A git/forge error must fail the task
+                # cleanly, never leave it `running` until the lease expires.
+                failure = self._verify(spec, worktree)
+                if failure is None:
+                    try:
+                        commit = self._git.commit_all(worktree, message=_commit_message(task, spec))
+                        if not self._git.has_changes_since(worktree, spec.base_branch):
+                            failure = FailureKind.NO_CHANGES
+                        else:
+                            self._git.push(worktree)
+                            pr = self._git.open_draft_pr(
+                                worktree,
+                                base_branch=spec.base_branch,
+                                title=_pr_title(task),
+                                body=_pr_body(task),
+                            )
+                            pr_url = pr.url
+                    except GitError:
+                        failure = FailureKind.PUBLISH_FAILED
+                        pr_url = None
             else:
                 failure = (
                     FailureKind.HARNESS_MISSING
@@ -138,6 +146,7 @@ class TaskExecutor:
                 pr_url=pr_url,
                 run=run,
                 failure=failure,
+                detail=spec.verify if failure in _VERIFY_FAILURES else None,
             )
             final = self._queue.transition(
                 running,
@@ -154,6 +163,19 @@ class TaskExecutor:
         finally:
             worktree.remove()
 
+    def _verify(self, spec: TaskSpec, worktree: Worktree) -> FailureKind | None:
+        """Run the task's verify gate, if any. Returns a failure kind, or ``None`` to pass."""
+        if not spec.verify:
+            return None
+        if self._verifier is None:
+            return FailureKind.VERIFY_BLOCKED
+        result = self._verifier.run(spec.verify, str(worktree.path))
+        if result.blocked:
+            return FailureKind.VERIFY_BLOCKED
+        if not result.ok:
+            return FailureKind.VERIFY_FAILED
+        return None
+
     def _report(self, evidence: ExecutedTask, *, recipient: str | None) -> None:
         if not recipient:
             return
@@ -167,6 +189,7 @@ class TaskExecutor:
                 recipient=recipient,
                 branch=evidence.branch,
                 kind=evidence.failure,
+                detail=evidence.detail,
             )
             return
         if self._notifier is None:

@@ -53,7 +53,7 @@ log). See [ADR 0005](docs/decisions/0005-state-store.md).
   `HERALD_ALLOWED_SENDERS` (addresses/`@domain`; unset = accept any sender).
 - Harness: `HERALD_HARNESS=opencode|claude|codex|auto|command`, `HERALD_HARNESS_BINARY`,
   `HERALD_HARNESS_COMMAND`, `HERALD_HARNESSES`, `HERALD_HARNESS_DEFAULT`, `HERALD_SANDBOX`,
-  `HERALD_MAX_ATTEMPTS` (default 3).
+  `HERALD_MAX_ATTEMPTS` (default 3), `HERALD_VERIFY_ALLOW` (allowlisted `verify:` commands).
 - Decision: `HERALD_DECIDER=rules|jev|openai-compat|none`, `HERALD_DECIDER_MODEL`,
   `HERALD_DECIDER_ENDPOINT`, `HERALD_DECIDER_BASE_URL`, `HERALD_DECIDER_THRESHOLD`,
   `HERALD_DECIDER_LOG` (`<path>` or `postgres`), `TYPESAFE_API_KEY`, `OPENROUTER_API_KEY`.

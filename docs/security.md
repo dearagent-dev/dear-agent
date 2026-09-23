@@ -67,6 +67,9 @@ Owner: normalizer + runner prompt construction.
 - Mount the repo read-only outside the disposable worktree.
 - Give the harness an **allowlist** of tools, not arbitrary shell.
 - Reject attachments and any message that carries source code or patches.
+- A message-supplied `verify` command runs only when its argv matches the operator's
+  allowlist (`HERALD_VERIFY_ALLOW`) and is executed as an argv, never through a shell — a
+  message-derived command is never run blindly (golden rule 7).
 
 Owner: runner + Kubernetes manifests.
 

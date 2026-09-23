@@ -52,7 +52,8 @@ def test_parses_metadata_and_strips_it_from_instructions() -> None:
     message = make_message(
         "repo: https://github.com/owner/repo\n"
         "base: develop\n"
-        "model: local:qwen\n\n"
+        "model: local:qwen\n"
+        "verify: pytest -q\n\n"
         "add a health endpoint\nwith tests"
     )
 
@@ -62,6 +63,7 @@ def test_parses_metadata_and_strips_it_from_instructions() -> None:
     assert result.spec.repo_url == "https://github.com/owner/repo"
     assert result.spec.base_branch == "develop"
     assert result.spec.model_request == "local:qwen"
+    assert result.spec.verify == "pytest -q"
     assert result.spec.instructions == "add a health endpoint\nwith tests"
 
 

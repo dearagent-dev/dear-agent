@@ -17,6 +17,8 @@ class FailureKind(StrEnum):
     HARNESS_FAILED = "harness_failed"
     NO_CHANGES = "no_changes"
     PUBLISH_FAILED = "publish_failed"
+    VERIFY_FAILED = "verify_failed"
+    VERIFY_BLOCKED = "verify_blocked"
 
 
 FAILURE_SUMMARIES: dict[FailureKind, str] = {
@@ -25,6 +27,8 @@ FAILURE_SUMMARIES: dict[FailureKind, str] = {
     FailureKind.HARNESS_FAILED: "the harness exited with an error",
     FailureKind.NO_CHANGES: "the harness finished but produced no changes",
     FailureKind.PUBLISH_FAILED: "the change could not be pushed or the draft PR opened",
+    FailureKind.VERIFY_FAILED: "the change did not pass the task's verify command",
+    FailureKind.VERIFY_BLOCKED: "the task's verify command is not on the allowlist",
 }
 
 
@@ -63,6 +67,7 @@ class Escalator:
         recipient: str,
         branch: str | None = None,
         kind: FailureKind | None = None,
+        detail: str | None = None,
     ) -> Escalation:
         # The caller may already know the kind (e.g. NO_CHANGES or PUBLISH_FAILED, which the
         # exit code cannot express); otherwise classify from the exit code.
@@ -77,6 +82,8 @@ class Escalator:
             lines.append(f"reason: {FAILURE_SUMMARIES[kind]} (exit {run.exit_code})")
         else:
             lines.append(f"reason: {FAILURE_SUMMARIES[kind]}")
+        if detail:
+            lines.append(f"detail: {detail}")
         if branch:
             lines.append(f"branch: {branch}")
         lines.append("A human should review this run before it is retried or closed.")
