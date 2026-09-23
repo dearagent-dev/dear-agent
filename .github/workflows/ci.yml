@@ -74,7 +74,7 @@ jobs:
       # (the deployable artifact must install psycopg[bin] and run the CLI). Buildah uses the
       # Containerfile natively; no docker.
       - name: Build the container image
-        uses: redhat-actions/buildah-build@v2
+        uses: redhat-actions/buildah-build@v3
         with:
           image: herald
           tags: ci
