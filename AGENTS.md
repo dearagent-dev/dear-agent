@@ -51,12 +51,13 @@ If a change does not serve one of those goals (or a milestone in
 
 ## 3. Status and where to start
 
-**Current status: M8 (durable state in PostgreSQL) starting.** M0–M7 are done; M0–M6 were
-verified live on OpenShift + Fastmail, and M7 (the decider abstraction) is implemented. The
-mailbox is now **ingress**: durable tasks and state move to PostgreSQL — see
+**Current status: M8 (durable state in PostgreSQL) implemented** (PR #55). M0–M7 are done;
+M0–M6 were verified live on OpenShift + Fastmail. The mailbox is **ingress**: durable tasks,
+state, approvals and the decision log live in PostgreSQL — see
 [`docs/decisions/0005-state-store.md`](docs/decisions/0005-state-store.md), which supersedes
-[ADR 0002](docs/decisions/0002-deployment-topology.md) in part. The decision layer uses System
-One models (Jev first) for routing/gates — see
+[ADR 0002](docs/decisions/0002-deployment-topology.md) in part. The local MVP path is in
+[`docs/getting-started.md`](docs/getting-started.md). The decision layer uses System One models
+(Jev first) for routing/gates — see
 [`docs/decisions/0004-decision-model.md`](docs/decisions/0004-decision-model.md). Herald has
 **no direct-LLM path**: a harness codes, a decider decides.
 
@@ -72,8 +73,8 @@ Start here:
    [security](docs/security.md)).
 4. Open an issue (or add a task to `TASKS.md`) describing the slice before coding.
 
-The recommended first slice is **M1.1 — verify Fastmail JMAP and model `Task` + the `Queue`
-port**, because everything else depends on a correct, idempotent queue.
+The recommended next slice is the first unchecked one in
+[`TASKS.md`](TASKS.md) / [`docs/roadmap.md`](docs/roadmap.md).
 
 ## 4. Language and tooling
 
