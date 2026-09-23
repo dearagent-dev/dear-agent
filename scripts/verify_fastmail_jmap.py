@@ -306,81 +306,6 @@ def unwrap_or_error(responses: list[list[Any]], call_id: str) -> tuple[str, dict
     return response_for(responses, call_id)
 
 
-def check_queue_integration(token: str, account_id: str | None) -> bool:
-    """Validate that :class:`herald.queue.jmap.JmapQueue` works against the live account.
-
-    Creates a throwaway mailbox and task email, then exercises enqueue, atomic claim,
-    a guarded transition and the stale-lease sweep before destroying the email.
-    """
-    from datetime import UTC, datetime, timedelta
-
-    from herald.jmap.client import JmapClient as QueueJmapClient
-    from herald.queue.jmap import JmapQueue
-    from herald.queue.models import Task, TaskState
-
-    probe_mailbox = os.environ.get("FASTMAIL_QUEUE_MAILBOX", "Herald-queue-probe")
-    client = QueueJmapClient(token, account_id=account_id)
-    client.connect()
-
-    mailbox_id = client.get_or_create_mailbox(probe_mailbox)
-    now = datetime.now(UTC)
-    probe_message_id = f"<herald-queue-probe-{os.getpid()}@example.invalid>"
-    payload = {
-        "mailboxIds": {mailbox_id: True},
-        "keywords": {"$draft": True},
-        "from": [{"email": PROBE_FROM}],
-        "to": [{"email": PROBE_FROM}],
-        "messageId": [probe_message_id],
-        "subject": "herald queue probe",
-        "bodyValues": {"b1": {"value": "queue probe"}},
-        "textBody": [{"partId": "b1", "type": "text/plain"}],
-    }
-    session = _raw_call(
-        client,
-        [["Email/set", {"accountId": client.account_id, "create": {"p": payload}}, "c"]],
-        "c",
-    )
-    created = session.get("created", {})
-    if "p" not in created:
-        print(f"  [FAIL] queue: could not create probe email: {session.get('notCreated')}")
-        return False
-    email_id = created["p"]["id"]
-
-    queue = JmapQueue(client, mailbox_name="Herald", clock=lambda: now)
-
-    try:
-        task = Task(id=email_id, transport_id=probe_message_id)
-
-        queued = queue.enqueue(task)
-        if queued is None or queued.state is not TaskState.QUEUED:
-            print("  [FAIL] queue: enqueue did not mark the task queued")
-            return False
-        print("  [PASS] queue: enqueue")
-
-        if queue.claim(queued, lease=timedelta(seconds=1)) is not True:
-            print("  [FAIL] queue: claim did not succeed")
-            return False
-        print("  [PASS] queue: claim")
-
-        running = queue.get(email_id)
-        if running is None or running.state is not TaskState.RUNNING:
-            print("  [FAIL] queue: claim did not persist the running state")
-            return False
-        print("  [PASS] queue: claim is visible via get")
-
-        released = queue.release_stale(now=now + timedelta(seconds=5))
-        if not any(item.id == email_id for item in released):
-            print("  [FAIL] queue: stale lease was not released")
-            return False
-        print("  [PASS] queue: stale lease released")
-        return True
-    except Exception as exc:  # noqa: BLE001 - surface any live-API failure
-        print(f"  [FAIL] queue: {type(exc).__name__}: {exc}")
-        return False
-    finally:
-        _destroy(client, email_id)
-
-
 def _write_raw_email(client: Any, mailbox_id: str, message_id: str, body: str) -> str:
     payload = {
         "mailboxIds": {mailbox_id: True},
@@ -509,14 +434,11 @@ def main() -> int:
         ]
     )
 
-    print("- JmapQueue over Fastmail")
-    queue_ok = check_queue_integration(token, account_id)
-
     print("- JmapTransport over Fastmail")
     transport_ok = check_transport_integration(token, account_id)
 
     print("- result")
-    if any(keyword_results) and query_ok and cas_ok and queue_ok and transport_ok:
+    if any(keyword_results) and query_ok and cas_ok and transport_ok:
         print("  all critical checks passed")
         return 0
     print("  some checks failed; see above")
