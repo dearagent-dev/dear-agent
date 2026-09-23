@@ -70,18 +70,19 @@ def normalize(message: RawMessage, *, recipient: str | None = None) -> Normaliza
             detail="no instructions found; describe the task in the message body",
         )
 
+    spec = TaskSpec(
+        repo_url=repo_url,
+        base_branch=fields.get("base", DEFAULT_BASE_BRANCH),
+        instructions=instructions.strip(),
+        model_request=fields.get("model"),
+    )
     task = Task(
         id=message.transport_id,
         transport_id=message.transport_id,
         thread_id=message.thread_id,
         sender=message.sender,
         subject=message.subject,
-    )
-    spec = TaskSpec(
-        repo_url=repo_url,
-        base_branch=fields.get("base", DEFAULT_BASE_BRANCH),
-        instructions=instructions.strip(),
-        model_request=fields.get("model"),
+        spec=spec,
     )
     return NormalizedTask(task=task, spec=spec)
 

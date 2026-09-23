@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
-from herald.decision.log import DecisionLog, DecisionRecord
+from herald.decision.log import DecisionLog, DecisionRecord, DecisionStore
 from herald.decision.policy import DeciderPolicy
 from herald.decision.port import (
     Answer,
@@ -87,7 +87,7 @@ class LoggingDecider:
     """
 
     decider: Decider
-    log: DecisionLog
+    log: DecisionStore
 
     def decide(self, state: str, questions: dict[str, Question]) -> Decision:
         decision = self.decider.decide(state, questions)
@@ -245,12 +245,22 @@ def _is_local(endpoint: str) -> bool:
 
 
 def _maybe_log(decider: Decider) -> Decider:
-    path = os.environ.get("HERALD_DECIDER_LOG")
-    if not path:
+    target = os.environ.get("HERALD_DECIDER_LOG")
+    if not target:
         return decider
+    if target == "postgres":
+        from herald.db import connect, init_schema
+        from herald.decision.log import PostgresDecisionLog
+
+        dsn = os.environ.get("HERALD_DATABASE_URL")
+        if not dsn:
+            raise DecisionError("HERALD_DATABASE_URL is required for HERALD_DECIDER_LOG=postgres")
+        conn = connect(dsn)
+        init_schema(conn)
+        return LoggingDecider(decider=decider, log=PostgresDecisionLog(conn))
     from pathlib import Path
 
-    return LoggingDecider(decider=decider, log=DecisionLog(path=Path(path)))
+    return LoggingDecider(decider=decider, log=DecisionLog(path=Path(target)))
 
 
 __all__ = [

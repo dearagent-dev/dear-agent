@@ -5,12 +5,15 @@
 Herald is the **control plane** for background coding work. You send an email (or any
 async message), an agent works in its own Git worktree, and the result comes back as a
 **pull request you review**. Code never travels over the transport — only task metadata,
-status, and links. **Git is the artifact plane; email is the queue.**
+status, and links. **Git is the artifact plane; the mailbox is ingress and PostgreSQL is the
+durable queue.**
+
+New here? See [docs/getting-started.md](docs/getting-started.md) for a local run.
 
 > Why: existing coding-agent harnesses (OpenCode, Claude Code, Codex) are excellent at
 > running a task, but the *enqueue* side is unsolved for unattended, offline-first work.
 > Chat transports (Telegram/OpenClaw/Hermes) are synchronous and carry code badly.
-> Herald makes the inbox the queue and the PR the deliverable.
+> Herald makes the inbox the entry point and the PR the deliverable.
 
 ## Why Herald
 
@@ -58,12 +61,30 @@ See [`docs/architecture.md`](docs/architecture.md).
 |---|---|
 | **Transport** | inbound: receive a message → webhook/IMAP/JMAP; outbound: send status and approval mail. See [`docs/transports.md`](docs/transports.md). |
 | **Normalizer** | message → `Task` (repo, instructions, constraints, reply token). |
-| **Queue** | the mailbox itself: task records, states, dedupe, approvals. See [`docs/queue.md`](docs/queue.md). |
+| **Queue** | PostgreSQL: task records, states, dedupe, approvals. The mailbox is ingress. See [`docs/queue.md`](docs/queue.md). |
 | **Runner** | executes a harness in an isolated worktree; drives provider selection. |
 | **Provider** | model backend (hosted or local OpenAI-compatible). See [`docs/providers.md`](docs/providers.md). |
 | **Git plane** | worktree, branch, commit, push, draft PR. Nothing reaches `main`. |
 | **Notifier** | sends results/approvals back over the transport, threading replies. |
 | **Idle loop** | proposes new work when the queue is empty. |
+
+## CLI
+
+The `herald` CLI is the operator entry point. Queue backend from
+`HERALD_QUEUE=memory|postgres`; transport from `HERALD_BACKEND=memory|jmap`.
+
+| Command | Purpose |
+|---|---|
+| `herald task ls\|show\|enqueue\|claim\|complete\|fail\|requeue` | inspect and drive tasks |
+| `herald run [<id>] --repo <path>` | execute a task (oldest queued when no id) |
+| `herald sweep` | dispatch queued tasks to runner Jobs (Kubernetes) |
+| `herald listen` | ingest on JMAP push events instead of polling |
+| `herald idle --repo <path>` | propose work from recent activity (approval-gated) |
+| `herald approval pending\|approve\|reject` | handle approval requests |
+| `herald decide` / `herald decision` | decision model and calibration |
+| `herald health` | queue health and per-state counts |
+
+Local end-to-end quickstart: [docs/getting-started.md](docs/getting-started.md).
 
 ## Transports
 
@@ -71,7 +92,7 @@ See [`docs/architecture.md`](docs/architecture.md).
 |---|---|---|---|
 | **Cloudflare Email Service** | REST/SMTP/Worker binding | Email Routing → Worker `email()` | Optional forwarder; contains no business logic. |
 | **AgentMail.to** | API | webhooks/WebSockets/IMAP | Drop-in "inbox API for agents". |
-| **Fastmail (JMAP)** | JMAP | JMAP Push | **Recommended primary: the mailbox is the queue.** |
+| **Fastmail (JMAP)** | JMAP | JMAP Push | **Recommended primary ingress.** Durable state is PostgreSQL. |
 | **forwardemail.net** | API/SMTP/IMAP | webhook/forward | Usable fallback. |
 | **Postmark / Resend / SES** | API | inbound webhooks (some) | Good for outbound notifications. |
 | **IRC** | — | bouncer history | Fun, but not store-and-forward; secondary. |
@@ -84,8 +105,8 @@ target: Herald's queue tolerates hours-long tasks.
 
 ## Status
 
-**M1 (queue).** The design (M0) is complete. The durable queue is the transport mailbox
-(Fastmail JMAP first); there is no database. Start with [`AGENTS.md`](AGENTS.md) and
+**M8 (durable state in PostgreSQL).** M0–M7 are done. The durable queue is PostgreSQL; the
+transport mailbox (Fastmail JMAP first) is ingress. Start with [`AGENTS.md`](AGENTS.md) and
 [`docs/roadmap.md`](docs/roadmap.md).
 
 ## Non-goals

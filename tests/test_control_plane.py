@@ -190,6 +190,29 @@ def test_reused_token_is_reported_back_not_silently_ignored() -> None:
     assert transport.outbox  # a fresh-request explanation was sent
 
 
+def test_approval_for_a_task_that_moved_on_does_not_crash() -> None:
+    queue = MemoryQueue()
+    transport = MemoryTransport()
+    plane, approvals = make_approval_plane(queue, transport)
+    action = make_action_task(queue)
+    token = approvals.request("e1", "land")
+    # The task is decided elsewhere before the reply arrives.
+    queue.transition(action, TaskState.DONE)
+    body = f"approve {token}"
+
+    report = plane.ingest(
+        [
+            make_message(
+                body=body, headers={"X-Herald-Signature": sign(body, SECRET, sender=SENDER)}
+            )
+        ],
+        recipient="ops@example.com",
+    )
+
+    assert report.decided == []
+    assert transport.outbox  # an explanation was sent, not a crash
+
+
 def test_approval_reply_without_a_service_is_treated_as_a_normal_message() -> None:
     queue = MemoryQueue()
     plane = ControlPlane(transport=MemoryTransport(), queue=queue, gate=make_gate())

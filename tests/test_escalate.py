@@ -57,3 +57,18 @@ def test_escalation_includes_the_branch_when_given() -> None:
     )
 
     assert "herald/add-healthz" in transport.outbox[0].body
+
+
+def test_escalation_honors_an_explicit_kind_without_an_exit_code() -> None:
+    transport = MemoryTransport()
+
+    Escalator(transport).escalate(
+        make_task(),
+        RunResult(exit_code=0),
+        recipient="ops@x.com",
+        kind=FailureKind.NO_CHANGES,
+    )
+
+    body = transport.outbox[0].body
+    assert "produced no changes" in body
+    assert "exit" not in body

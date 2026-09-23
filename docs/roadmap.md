@@ -101,10 +101,36 @@ deterministic fallback. Advisory only — never a security boundary.
 - [x] **M7.3** Advisory injection + "no source over transport": a `noul` pair feeding the
   `suspicious` report next to `InjectionScanner` and the attachment check, so inline
   diffs/encoded blobs get caught too.
-- [x] **M7.4** Earned thresholds: `DecisionLog` (JSONL, no DB) records every decision for
-  tuning; `herald decide` lets an operator test the routing, with rules or the live model.
+- [x] **M7.4** Earned thresholds: `DecisionLog` (JSONL for now; moves to Postgres in M8)
+  records every decision for tuning; `herald decide` lets an operator test the routing, with
+  rules or the live model.
+
+## M8 — Durable state in PostgreSQL (ADR 0005)
+
+The mailbox becomes ingress; PostgreSQL holds tasks, state, approvals and the decision log.
+See [ADR 0005](decisions/0005-state-store.md).
+
+- [x] **M8.1** Postgres deployment: a kustomize component (`StatefulSet` + `Service` + `PVC`,
+  `registry.redhat.io/rhel9/postgresql-18`) and a local podman equivalent
+  (`scripts/dev-postgres.sh`), sharing one `HERALD_DATABASE_URL`.
+- [x] **M8.2** Schema and a `PostgresQueue` implementing the `Queue` port (unique
+  `transport_id`, guarded `UPDATE` claim, lease sweep); `JmapQueue` retired and the queue
+  backend decoupled from the transport (`HERALD_QUEUE`). Verified against a live Postgres.
+- [x] **M8.3** Approvals and the decision log/labels in Postgres; the file stores remain only
+  as a single-process fallback (`HERALD_APPROVALS_FILE`, `HERALD_DECIDER_LOG=<path>`).
+- [x] **M8.4** The sweep and runner run on the database, and the parsed `TaskSpec` is
+  persisted with the task, so a runner no longer reads the mailbox. No backfill is needed at
+  the current scale (there is no production mailbox state to migrate).
 
 ## Later / ideas
+
+- **Gate high-risk inbound runs behind approval.** The mechanism exists (idle proposals are
+  parked in `action` and released by a `run` approval); extend it to inbound tasks whose
+  decider verdict says a human should look.
+- **Connection resilience**: pool Postgres connections and reconnect on failure for the
+  long-lived control plane; back the store with PITR.
+- Idle: persist the budget/metrics and dedupe proposals on the database.
+- Live OpenShift verification of the Postgres component (as M6 was verified).
 
 - [x] HTTP entrypoint hardening: inbound webhook endpoint (`POST /inbound`, HMAC auth,
   fail-closed without a secret), request-body cap and timeouts.

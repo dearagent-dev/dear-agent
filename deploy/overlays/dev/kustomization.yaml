@@ -3,6 +3,8 @@ kind: Kustomization
 namespace: herald
 resources:
   - ../../base
+components:
+  - ../../components/postgresql
 images:
   - name: ghcr.io/OWNER/herald
     newTag: dev

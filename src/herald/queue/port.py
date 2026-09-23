@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Protocol, runtime_checkable
 
-from herald.queue.models import Task, TaskState
+from herald.queue.models import Evidence, Task, TaskState
 
 
 class QueueError(Exception):
@@ -32,9 +32,10 @@ class StateConflictError(QueueError):
 class Queue(Protocol):
     """Durable task queue.
 
-    The authoritative store is the transport mailbox (Fastmail JMAP first): state lives in
-    mailboxes/keywords and transitions are guarded by ``ifInState``. Implementations must
-    preserve the atomic-claim and dedupe guarantees regardless of backend.
+    The authoritative store is PostgreSQL (ADR 0005): state is a column, dedupe is a unique
+    index on ``transport_id`` and transitions are guarded ``UPDATE``s (compare-and-swap).
+    Implementations must preserve the atomic-claim and dedupe guarantees regardless of
+    backend.
     """
 
     def enqueue(self, task: Task) -> Task | None:
@@ -60,11 +61,26 @@ class Queue(Protocol):
         """
         ...
 
-    def transition(self, task: Task, to_state: TaskState) -> Task:
+    def claim_next(self, *, lease: timedelta) -> Task | None:
+        """Atomically claim the oldest ``Queued`` task, or ``None`` when none is queued.
+
+        Unlike list-then-claim, this cannot race: two workers calling it concurrently
+        always get different tasks.
+        """
+        ...
+
+    def transition(
+        self,
+        task: Task,
+        to_state: TaskState,
+        *,
+        evidence: Evidence | None = None,
+    ) -> Task:
         """Move ``task`` to ``to_state`` if the queue still holds ``task.state``.
 
-        Raise :class:`StateConflictError` on a concurrent change and
-        :class:`TaskNotFoundError` when the task no longer exists.
+        ``evidence`` records the delivered branch/commit/PR when a run finishes. Raise
+        :class:`StateConflictError` on a concurrent change and :class:`TaskNotFoundError`
+        when the task no longer exists.
         """
         ...
 

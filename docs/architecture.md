@@ -8,9 +8,9 @@ and idempotently.
 
 ```
 inbound message ──▶ Transport ──▶ Normalizer ──▶ Queue ──▶ Scheduler ──▶ Runner
-                     (mailbox)      (Task)       (mailbox)   (sweep)      │
-                                                                         │ worktree + model
-                                                                         ▼
+                  (mailbox ingress)  (Task)     (Postgres)  (sweep)      │
+                                                                        │ worktree + model
+                                                                        ▼
 outbound message ◀── Notifier ◀── Evidence ◀──────────────────────── Git plane
    (status/approval)                                                (branch + PR)
 ```
@@ -22,7 +22,7 @@ Inbound: accept a message (webhook push, IMAP/JMAP poll) and hand the raw payloa
 stable transport id to the Normalizer. Outbound: send status and approval messages,
 threaded to the original conversation. See [transports.md](transports.md).
 
-Concretely, inbound has two entrypoints: `JmapTransport.poll()` (the mailbox is the queue)
+Concretely, inbound has two entrypoints: `JmapTransport.poll()` (the mailbox is ingress)
 and `POST /inbound` on the control-plane HTTP server for push transports, authenticated
 with an HMAC over the raw body and disabled (503) when `HERALD_INBOUND_SECRET` is unset.
 Both feed the same `ControlPlane.ingest`.
@@ -43,13 +43,16 @@ A rejected message gets a threaded explanation; an unauthorized one is dropped w
 reply, so a forged sender cannot use Herald as a backscatter amplifier.
 
 ### Queue
-The durable source of truth is the **transport mailbox itself** (Fastmail JMAP first), not
-a database. State lives in mailboxes/keywords, dedupe is on `Message-ID`, and claiming is
-an atomic JMAP `Email/set` with `ifInState`. See [queue.md](queue.md) and
-[ADR 0002](decisions/0002-deployment-topology.md).
+The durable source of truth is **PostgreSQL**; the transport mailbox is **ingress** only.
+Dedupe is a unique index on the transport message id, and claiming is a conditional
+`UPDATE ... FOR UPDATE SKIP LOCKED`. The parsed `TaskSpec` is persisted with the task, so a
+runner never reads the mailbox; approvals (single-use tokens) and the decision log live in the
+same database. See [queue.md](queue.md) and
+[ADR 0005](decisions/0005-state-store.md) (which supersedes
+[ADR 0002](decisions/0002-deployment-topology.md) in part).
 
 ### Scheduler
-A Kubernetes `CronJob` sweep lists `Queued` messages and starts one Job per task, claiming
+A Kubernetes `CronJob` sweep lists `queued` tasks and starts one Job per task, claiming
 each atomically before the work begins. The default is **one running task at a time**.
 
 Concretely: `herald sweep` returns stale `Running` tasks to `Queued` and renders the runner
@@ -61,7 +64,9 @@ is idempotent per task id, so a re-run after a restart is safe.
 ### Runner
 Executes a harness for a claimed task inside an isolated Git worktree and returns
 evidence (branch, commit, logs, PR). The runner is a thin adapter over a harness CLI.
-Herald must not embed a harness.
+Herald must not embed a harness. A `HarnessCatalog` describes the available harnesses
+(OpenCode, Claude Code, Codex, or a custom `command`) with their metadata; the model is
+passed only to a harness that accepts one (OpenCode), never to a subscription harness.
 
 **Interface (to implement):**
 ```
@@ -116,16 +121,18 @@ travels over the transport.
 
 ## Concurrency and durability
 
-- Tasks persist across restarts because the mailbox persists; an interrupted run is
-  **resumable** (a sweep returns a stale `Running` task to `Queued`), never a lost task.
+- Tasks persist across restarts because PostgreSQL persists; an interrupted run is
+  **resumable** (a sweep returns a stale `running` task to `queued`), never a lost task.
 - Worktrees are disposable (`emptyDir` inside a Job); the branch/PR is durable.
 - Serial execution is the default and is not a bug.
 
 ## Deployment
 
 Herald is **Kubernetes/OpenShift by design**. The control plane and the runner are standard
-workloads: one Job per task, a `CronJob` sweep to claim work, no always-on daemon and no
-database. See [ADR 0002](decisions/0002-deployment-topology.md).
+workloads: one Job per task, a `CronJob` sweep to claim work, and no always-on daemon. Durable
+state is a PostgreSQL `StatefulSet` (or a local podman container). See
+[ADR 0002](decisions/0002-deployment-topology.md) and
+[ADR 0005](decisions/0005-state-store.md).
 
 ## Trust boundaries
 

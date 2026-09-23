@@ -3,6 +3,8 @@ kind: Kustomization
 namespace: herald
 resources:
   - ../../base
+components:
+  - ../../components/postgresql
 images:
   - name: ghcr.io/OWNER/herald
     newTag: stable
@@ -14,3 +16,11 @@ patches:
       - op: replace
         path: /spec/replicas
         value: 2
+  # Pin a storage class for the database if the cluster default is not what you want:
+  # - target:
+  #     kind: StatefulSet
+  #     name: herald-postgres
+  #   patch: |-
+  #     - op: add
+  #       path: /spec/volumeClaimTemplates/0/spec/storageClassName
+  #       value: <storage-class>

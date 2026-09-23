@@ -6,7 +6,7 @@ from datetime import timedelta
 from typing import Any
 
 from herald.cli.context import CliContext
-from herald.queue.models import Task, TaskState
+from herald.queue.models import Task, TaskSpec, TaskState
 
 LEASE_SECONDS_DEFAULT = 3600
 
@@ -22,6 +22,12 @@ def _task_payload(task: Task) -> dict[str, Any]:
         "attempts": task.attempts,
         "lease_until": task.lease_until,
         "created_at": task.created_at,
+        "repo": task.spec.repo_url if task.spec else None,
+        "base": task.spec.base_branch if task.spec else None,
+        "model": task.spec.model_request if task.spec else None,
+        "branch": task.evidence.branch if task.evidence else None,
+        "commit": task.evidence.commit if task.evidence else None,
+        "pr_url": task.evidence.pr_url if task.evidence else None,
     }
 
 
@@ -73,6 +79,45 @@ def _handle_show(args: argparse.Namespace, context: CliContext) -> int:
     return 0
 
 
+def _add_enqueue(subparsers: argparse._SubParsersAction) -> None:
+    parser = subparsers.add_parser(
+        "enqueue", help="enqueue a task directly (local/testing; the email path is separate)"
+    )
+    parser.add_argument("instructions", help="what the harness should do")
+    parser.add_argument("--repo", required=True, help="repository URL (or owner/repo)")
+    parser.add_argument("--base", default="main", help="base branch (default: main)")
+    parser.add_argument("--subject", default=None, help="task subject (default: from instructions)")
+    parser.add_argument("--model", default=None, help="provider:model hint for the harness")
+    parser.add_argument("--transport-id", default=None, help="dedupe key (default: generated)")
+    parser.set_defaults(handler=_handle_enqueue)
+
+
+def _handle_enqueue(args: argparse.Namespace, context: CliContext) -> int:
+    import uuid
+
+    transport_id = args.transport_id or f"<manual-{uuid.uuid4().hex}@herald.local>"
+    task = Task(
+        id=transport_id,
+        transport_id=transport_id,
+        subject=args.subject or args.instructions.splitlines()[0][:80],
+        spec=TaskSpec(
+            repo_url=args.repo,
+            base_branch=args.base,
+            instructions=args.instructions,
+            model_request=args.model,
+        ),
+    )
+    stored = context.require_queue().enqueue(task)
+    if stored is None:
+        context.emit(f"task already exists for {transport_id}")
+        return 1
+    if context.as_json:
+        context.emit_json(_task_payload(stored))
+    else:
+        context.emit(f"enqueued {stored.id}")
+    return 0
+
+
 def _add_claim(subparsers: argparse._SubParsersAction) -> None:
     parser = subparsers.add_parser("claim", help="claim a queued task (queued -> running)")
     parser.add_argument("task_id")
@@ -114,20 +159,17 @@ def add_task_commands(
     subparsers: argparse._SubParsersAction, parent: argparse.ArgumentParser
 ) -> None:
     task = subparsers.add_parser("task", help="manage tasks")
-    task.add_argument(
-        "--backend",
-        choices=["memory", "jmap"],
-        default="memory",
-        help="queue backend (default: memory)",
-    )
     task.set_defaults(handler=None)
     task_sub = task.add_subparsers(dest="task_command", required=True)
 
     _add_list(task_sub, task)
     _add_show(task_sub)
+    _add_enqueue(task_sub)
     _add_claim(task_sub)
     _add_terminal(task_sub, "complete", TaskState.DONE, "mark a running task done")
     _add_terminal(task_sub, "fail", TaskState.FAILED, "mark a running task failed")
+    _add_terminal(task_sub, "requeue", TaskState.QUEUED, "return a failed/rejected task to queued")
+    _add_terminal(task_sub, "cancel", TaskState.REJECTED, "reject a task without running it")
 
 
 def add_sweep_commands(
@@ -135,12 +177,6 @@ def add_sweep_commands(
 ) -> None:
     parser = subparsers.add_parser(
         "sweep", help="release stale runs and dispatch queued tasks to runner Jobs"
-    )
-    parser.add_argument(
-        "--backend",
-        choices=["memory", "jmap"],
-        default="memory",
-        help="queue backend (default: memory)",
     )
     parser.add_argument("--template", default=os.environ.get("HERALD_RUNNER_TEMPLATE_CONFIGMAP"))
     parser.add_argument("--limit", type=int, default=20)
@@ -189,22 +225,19 @@ def add_listen_commands(
     parser = subparsers.add_parser(
         "listen", help="ingest on JMAP push events (EventSource) instead of polling"
     )
-    parser.add_argument(
-        "--backend",
-        choices=["memory", "jmap"],
-        default="jmap",
-        help="queue/transport backend (default: jmap)",
-    )
     parser.set_defaults(handler=_handle_listen)
 
 
 def _handle_listen(args: argparse.Namespace, context: CliContext) -> int:
     import os
 
+    from herald.approvals import build_approval_store
+    from herald.approvals_service import ApprovalService
     from herald.control_plane import ControlPlane
     from herald.jmap.client import DEFAULT_SESSION_URL, JmapClient
     from herald.jmap.eventsource import EventSourceListener
     from herald.jmap.trigger import EventSourceLoop, IngestOnChange
+    from herald.notify.notifier import Notifier
     from herald.worker_factory import build_transport
 
     token = os.environ.get("FASTMAIL_API_TOKEN")
@@ -217,9 +250,18 @@ def _handle_listen(args: argparse.Namespace, context: CliContext) -> int:
     )
     client.connect()
 
+    queue = context.require_queue()
     transport = build_transport("jmap")
+    # Wire the notifier and approvals here too, so rejections are explained and an approval
+    # reply ingested on the push path decides the task.
+    approvals = ApprovalService(build_approval_store(), queue)
     callback = IngestOnChange(
-        control_plane=ControlPlane(transport=transport, queue=context.require_queue()),
+        control_plane=ControlPlane(
+            transport=transport,
+            queue=queue,
+            notifier=Notifier(transport),
+            approvals=approvals,
+        ),
         transport=transport,
         recipient=os.environ.get("HERALD_RECIPIENT"),
     )
@@ -232,6 +274,128 @@ def _handle_listen(args: argparse.Namespace, context: CliContext) -> int:
         callback=callback,
     )
     loop.run()
+    return 0
+
+
+def add_idle_commands(
+    subparsers: argparse._SubParsersAction, parent: argparse.ArgumentParser
+) -> None:
+    parser = subparsers.add_parser(
+        "idle", help="propose work from recent repo activity when the queue is empty"
+    )
+    parser.add_argument("--repo", required=True, help="path to a local checkout to read")
+    parser.add_argument(
+        "--repo-url", default=None, help="repo URL for tasks (default: the --repo path)"
+    )
+    parser.add_argument("--max", type=int, default=1, help="max proposals per tick (default: 1)")
+    parser.add_argument(
+        "--min-queue-depth",
+        type=int,
+        default=1,
+        help="only propose when fewer than N tasks are queued (default: 1)",
+    )
+    parser.add_argument(
+        "--no-gate",
+        action="store_true",
+        help="enqueue proposals as runnable tasks instead of parking them for approval",
+    )
+    parser.add_argument(
+        "--recipient",
+        default=None,
+        help="email to send approval requests to (default: HERALD_RECIPIENT)",
+    )
+    parser.set_defaults(handler=_handle_idle)
+
+
+def _handle_idle(args: argparse.Namespace, context: CliContext) -> int:
+    import hashlib
+    from pathlib import Path
+
+    from herald.approvals import build_approval_store
+    from herald.approvals_service import ApprovalService
+    from herald.idle.loop import IdleBudget, IdleLoop
+
+    queue = context.require_queue()
+    repo_path = Path(args.repo)
+    approvals = ApprovalService(build_approval_store(), queue)
+    recipient = args.recipient or os.environ.get("HERALD_RECIPIENT")
+    notifier = None
+    if recipient:
+        from herald.notify.notifier import Notifier
+        from herald.worker_factory import build_transport
+
+        notifier = Notifier(build_transport(), approvals)
+
+    def submit(proposal) -> str | None:
+        # Deterministic id: the same proposal must not be enqueued twice across ticks.
+        digest = hashlib.sha256(
+            f"{proposal.repo_path}|{proposal.title}|{proposal.instructions}".encode()
+        ).hexdigest()[:32]
+        transport_id = f"<idle-{digest}@herald.local>"
+        task = Task(
+            id=transport_id,
+            transport_id=transport_id,
+            subject=proposal.title,
+            spec=TaskSpec(
+                repo_url=args.repo_url or str(proposal.repo_path),
+                instructions=proposal.instructions,
+            ),
+        )
+        stored = queue.enqueue(task)
+        if stored is None:
+            return None
+        if not args.no_gate:
+            # Proposals are approval-gated by construction: park in Action and issue a
+            # single-use token; 'herald approval approve <token>' releases it to run.
+            queue.transition(stored, TaskState.ACTION)
+            if notifier is not None and recipient:
+                notifier.request_approval(
+                    stored, recipient=recipient, action="run", summary=proposal.title
+                )
+            else:
+                approvals.request(stored.id, "run")
+        return stored.id
+
+    loop = IdleLoop(
+        queue=queue,
+        submit=submit,
+        budget=IdleBudget(max_per_run=args.max, min_queue_depth=args.min_queue_depth),
+        repo_name=repo_path.name,
+    )
+    report = loop.tick(str(repo_path))
+    payload = {"skipped": report.skipped, "reason": report.reason, "proposed": report.proposed}
+    if context.as_json:
+        context.emit_json(payload)
+    elif report.skipped:
+        context.emit(f"idle skipped: {report.reason}")
+    else:
+        context.emit(f"proposed {len(report.proposed)}: {', '.join(report.proposed)}")
+    return 0
+
+
+def add_health_commands(
+    subparsers: argparse._SubParsersAction, parent: argparse.ArgumentParser
+) -> None:
+    parser = subparsers.add_parser("health", help="show queue health and per-state counts")
+    parser.add_argument(
+        "--max-running",
+        type=int,
+        default=int(os.environ.get("HERALD_MAX_RUNNING", "1")),
+        help="running tasks above this mark the queue unhealthy (default: 1)",
+    )
+    parser.set_defaults(handler=_handle_health)
+
+
+def _handle_health(args: argparse.Namespace, context: CliContext) -> int:
+    from herald.observability.health import Health
+
+    status = Health(max_running=args.max_running).check(context.require_queue())
+    if context.as_json:
+        context.emit_json(status.to_dict())
+    else:
+        context.emit(f"ok: {status.ok}")
+        for state, count in status.counts.items():
+            context.emit(f"{state}: {count}")
     return 0
 
 
@@ -259,7 +423,7 @@ def add_run_commands(
     subparsers: argparse._SubParsersAction, parent: argparse.ArgumentParser
 ) -> None:
     parser = subparsers.add_parser("run", help="execute one claimed task end to end")
-    parser.add_argument("task_id")
+    parser.add_argument("task_id", nargs="?", default=None, help="task id (default: oldest queued)")
     parser.add_argument("--repo", required=True, help="path to the source repository")
     parser.add_argument("--recipient", default=None, help="email to notify on completion")
     parser.add_argument(
@@ -271,7 +435,7 @@ def add_run_commands(
         "--backend",
         choices=["memory", "jmap"],
         default="memory",
-        help="queue/transport backend (default: memory)",
+        help="transport backend (default: memory); the queue comes from HERALD_QUEUE",
     )
     parser.set_defaults(handler=_handle_run)
 
@@ -280,15 +444,22 @@ def _handle_run(args: argparse.Namespace, context: CliContext) -> int:
     from herald.worker_factory import build_transport, build_worker
 
     queue = context.require_queue()
+    # A model hint from the task (e.g. a 'model:' line) applies when --model is not given.
+    model = args.model
+    if model is None and args.task_id:
+        existing = queue.get(args.task_id)
+        if existing is not None and existing.spec is not None:
+            model = existing.spec.model_request
     transport = build_transport(args.backend)
     worker = build_worker(
         queue=queue,
         transport=transport,
         repo_path=args.repo,
         recipient=args.recipient or None,
-        provider_model=args.model or None,
+        provider_model=model or None,
     )
-    evidence = worker.run(args.task_id)
+    # Without an id, claim the oldest queued task atomically (a local sweep tick).
+    evidence = worker.run(args.task_id) if args.task_id else worker.run_next()
     payload = {
         "task_id": evidence.task_id,
         "branch": evidence.branch,
@@ -299,7 +470,8 @@ def _handle_run(args: argparse.Namespace, context: CliContext) -> int:
         context.emit_json(payload)
     else:
         context.emit(f"{evidence.task_id} {evidence.branch} {evidence.pr_url}")
-    return 0
+    # Mirror the task outcome in the exit code so a runner Job reflects success/failure.
+    return 0 if evidence.ok else 1
 
 
 def add_approval_commands(
@@ -309,6 +481,65 @@ def add_approval_commands(
     approval.set_defaults(handler=None)
     approval_sub = approval.add_subparsers(dest="approval_command", required=True)
     _add_parse_reply(approval_sub)
+    _add_pending_approvals(approval_sub)
+    _add_redeem(approval_sub, "approve", "approved", "redeem a token as an approval")
+    _add_redeem(approval_sub, "reject", "rejected", "redeem a token as a rejection")
+
+
+def _add_redeem(
+    subparsers: argparse._SubParsersAction, name: str, decision: str, help_text: str
+) -> None:
+    parser = subparsers.add_parser(name, help=help_text)
+    parser.add_argument("token")
+    parser.set_defaults(handler=_handle_redeem, decision=decision)
+
+
+def _handle_redeem(args: argparse.Namespace, context: CliContext) -> int:
+    from herald.approvals import ApprovalError, build_approval_store
+    from herald.approvals_service import ApprovalReply, ApprovalService
+
+    service = ApprovalService(build_approval_store(), context.require_queue())
+    try:
+        task = service.apply(ApprovalReply(token=args.token, decision=args.decision))
+    except ApprovalError as exc:
+        raise RuntimeError(str(exc)) from exc
+    context.emit(f"{task.id} -> {task.state.value}")
+    return 0
+
+
+def _add_pending_approvals(subparsers: argparse._SubParsersAction) -> None:
+    parser = subparsers.add_parser("pending", help="list pending approval requests")
+    parser.set_defaults(handler=_handle_pending_approvals, needs_queue=False)
+
+
+def _handle_pending_approvals(args: argparse.Namespace, context: CliContext) -> int:
+    from herald.approvals import build_approval_store
+
+    pending = build_approval_store().pending()
+    if context.as_json:
+        context.emit_json(
+            [
+                {
+                    "task_id": approval.task_id,
+                    "action": approval.action,
+                    "token": approval.token,
+                    "created_at": approval.created_at,
+                    "expires_at": approval.expires_at,
+                }
+                for approval in pending
+            ]
+        )
+    elif not pending:
+        context.emit("no pending approvals")
+    else:
+        for approval in pending:
+            # The token is shown so an operator can approve locally; it is single-use and
+            # short-lived, and is the same secret the email request carries.
+            context.emit(
+                f"{approval.task_id} {approval.action} {approval.token} "
+                f"expires {approval.expires_at.isoformat()}"
+            )
+    return 0
 
 
 def add_decide_commands(
@@ -388,14 +619,30 @@ def _log_path(args: argparse.Namespace) -> str:
     return args.log
 
 
-def _handle_calibrate(args: argparse.Namespace, context: CliContext) -> int:
+def _decision_store(args: argparse.Namespace):
+    """A file ``DecisionLog`` or, for ``--log postgres``, the database store (ADR 0005)."""
+    target = _log_path(args)
+    if target == "postgres":
+        import os
+
+        from herald.db import connect, init_schema
+        from herald.decision.log import PostgresDecisionLog
+
+        dsn = os.environ.get("HERALD_DATABASE_URL")
+        if not dsn:
+            raise RuntimeError("HERALD_DATABASE_URL is required for --log postgres")
+        conn = connect(dsn)
+        init_schema(conn)
+        return PostgresDecisionLog(conn)
     from pathlib import Path
 
     from herald.decision.log import DecisionLog
 
-    report = DecisionLog(path=Path(_log_path(args))).calibrate(
-        question_id=args.question, target=args.target
-    )
+    return DecisionLog(path=Path(target))
+
+
+def _handle_calibrate(args: argparse.Namespace, context: CliContext) -> int:
+    report = _decision_store(args).calibrate(question_id=args.question, target=args.target)
     payload = {
         "question": report.question_id,
         "total": report.total,
@@ -427,11 +674,7 @@ def _add_label(subparsers: argparse._SubParsersAction, parent: argparse.Argument
 
 
 def _handle_label(args: argparse.Namespace, context: CliContext) -> int:
-    from pathlib import Path
-
-    from herald.decision.log import DecisionLog
-
-    updated = DecisionLog(path=Path(_log_path(args))).label(args.index, args.label)
+    updated = _decision_store(args).label(args.index, args.label)
     if not updated:
         raise RuntimeError(f"no decision at index {args.index}")
     context.emit(f"labeled decision {args.index} as {args.label}")

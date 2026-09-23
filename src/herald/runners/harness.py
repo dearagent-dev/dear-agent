@@ -61,6 +61,13 @@ class HarnessRunner:
                 stderr=f"harness binary {self.binary!r} not found",
                 branch=worktree.branch,
             )
+        except OSError as exc:
+            # e.g. a permission or exec-format error: the command could not run at all.
+            return RunResult(
+                exit_code=126,
+                stderr=f"cannot execute harness {self.binary!r}: {exc}",
+                branch=worktree.branch,
+            )
         except subprocess.TimeoutExpired as exc:
             return RunResult(
                 exit_code=124,

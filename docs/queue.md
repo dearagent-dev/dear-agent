@@ -1,26 +1,36 @@
 # Queue and task model
 
-Herald's durable queue is the **transport mailbox itself**, not a database. This is the
-project's core thesis: email is the queue, Git is the artifact plane. The first backend is
-Fastmail JMAP (RFC 8620/8621); see [ADR 0002](decisions/0002-deployment-topology.md).
+Herald's durable queue is **PostgreSQL**. The transport mailbox is **ingress**: email/JMAP/
+webhook delivers a task request, and everything mutable — state, attempts, lease, approvals,
+the decision log — lives in the database. Git remains the only artifact plane. See
+[ADR 0005](decisions/0005-state-store.md), which supersedes the mailbox-as-queue design of
+[ADR 0002](decisions/0002-deployment-topology.md) in part.
+
+> **Status:** implemented. `PostgresQueue` (`src/herald/queue/postgres.py`) is the queue
+> backend, selected with `HERALD_QUEUE=postgres` + `HERALD_DATABASE_URL`; the JMAP queue
+> adapter is retired. The mailbox is ingress only.
 
 ## Task
 
-A task is a parsed inbound message. Its authoritative copy is the email; there is no row in
-a database. The queue record (`Task`) holds only what the mailbox can persist; message-body
-content is a `TaskSpec` produced by the Normalizer.
+A task is a parsed inbound message, persisted as a row. Its authoritative copy is the row;
+the email is the request that produced it. Message-body content is parsed into a `TaskSpec` by
+the Normalizer at ingest and **persisted with the task**, so a runner never needs the mailbox
+to run.
 
 ```
-Task  (queue record — persisted in the mailbox)
-  id             # JMAP Email id (stable, assigned by the server)
-  transport_id   # Message-ID (RFC 5322) — the dedupe key
-  thread_id      # JMAP threadId, the conversation to reply into
-  sender         # from the Email header; advisory (authorization is separate)
-  subject        # from the Email header
-  state          # see lifecycle (mailboxes/keywords)
-  attempts       # $herald-attempt-N keywords
-  lease_until    # encoded in a $herald-lease-<epoch> keyword
-  created_at     # Email.receivedAt
+Task  (row in the queue)
+  id             # internal, stable id — the task identity everywhere
+  transport_id   # Message-ID / JMAP emailId / webhook event id — UNIQUE (the dedupe key)
+  thread_id      # conversation to reply into (transport-specific)
+  sender         # from the message header; advisory (authorization is separate)
+  subject        # from the message header
+  state          # see lifecycle (enum column)
+  attempts       # integer, incremented by the sweep
+  lease_until    # timestamptz, set on claim; NULL when not running
+  created_at     # timestamptz
+  updated_at     # timestamptz
+  spec_*         # the parsed TaskSpec (see below)
+  branch/commit/pr_url  # delivery evidence, recorded when the run finishes
 
 TaskSpec  (content — parsed from the message body by the Normalizer)
   repo_url       # required to run
@@ -29,24 +39,24 @@ TaskSpec  (content — parsed from the message body by the Normalizer)
   model_request  # optional provider/model hint
 ```
 
-`id` and `transport_id` come from the mail server; Herald never invents a task id. Branch,
-commit SHA and PR url are not stored on the task either: they are delivered as threaded
-replies.
+The delivered branch, commit and PR url are stored as links on the task when the run
+finishes, so `herald task show` points at the artifact without reading the mailbox. They are
+links only — never source.
 
 ## States
 
-State lives in mailboxes and keywords, not a column:
+State is a column, not a mailbox:
 
-| State | Mailbox / keyword |
+| State | Meaning |
 |---|---|
-| received | inbound message, no Herald keyword yet |
-| queued | `Queued` mailbox, `$herald-queued` |
-| running | `Running` mailbox, `$herald-running` |
-| action | `Action` mailbox, `$herald-action` |
-| done | `Done` mailbox, `$herald-done` |
-| failed | `Failed` mailbox, `$herald-failed` |
-| rejected | `Rejected` mailbox, `$herald-rejected` |
-| approved / rejected | threaded reply carrying a valid single-use token |
+| received | inbound message accepted, not yet enqueued |
+| queued | waiting for a worker |
+| running | claimed, with a lease |
+| action | needs a human decision |
+| done | finished; a draft PR exists |
+| failed | terminal failure |
+| rejected | refused (no repo / policy) |
+| approved / rejected | human decision on an `action` task |
 
 The lifecycle is unchanged:
 
@@ -64,53 +74,72 @@ received ─▶ queued ─▶ running ─▶ action ─▶ done
 
 ## Idempotency
 
-- The dedupe key is the `Message-ID`. The mail server stores a message once, so a
-  redelivered transport event cannot create a second task.
-- Reprocessing is additionally prevented by state guards: a message already in `Running`
-  or a terminal mailbox is never claimed again.
+- The dedupe key is the transport message id, enforced by a **unique index**. A redelivered
+  transport event hits the constraint and is a no-op, never a second task.
+- Reprocessing is additionally prevented by state guards: a task already `running` or in a
+  terminal state is never claimed again.
 - Outbound notifications are threaded; a reply is matched by thread + single-use token.
 
 ## Atomic claim
 
-Claiming is a single guarded JMAP call:
+Claiming a specific task is one guarded `UPDATE` (compare-and-swap): a lost race is a no-op,
+never a double claim, and there is no read-then-write window.
 
-1. `Email/get` to obtain the current `state`.
-2. `Email/set` with `ifInState` to move the message from `Queued` to `Running`.
+```sql
+UPDATE herald_task
+   SET state = 'running', lease_until = now() + $lease, updated_at = now()
+ WHERE id = $id AND state = 'queued'
+RETURNING *;
+```
 
-If the state changed concurrently, the server returns `stateMismatch`; Herald re-reads and
-retries. A bare `Email/query` followed by an unguarded `Email/set` is forbidden.
+A caller that wants "the next task" uses `claim_next()`, a single statement that selects the
+oldest `queued` row with `FOR UPDATE SKIP LOCKED` and moves it to `running`. Concurrent
+workers pull in parallel and never take the same task; nothing is claimed when the queue is
+empty.
 
 ## Lease and resume
 
-- A `Running` message carries a lease; a scheduled sweep moves messages whose lease expired
-  back to `Queued`, so a crashed run resumes instead of being lost.
-- **Attempts** are tracked with numbered keywords (`$herald-attempt-2`, …), since JMAP has
-  no mutable numeric field. The sweep adds the next keyword when it requeues a stale task.
+- A `running` task carries `lease_until`. A scheduled sweep moves rows whose lease expired
+  back to `queued` and increments `attempts`, so a crashed run resumes instead of being lost.
+- `attempts` is an integer column; no keyword gymnastics.
 
 ## Approvals
 
 - A request for approval sends a threaded message with a short-lived, **single-use** token
-  and the task's id. Tokens are generated with a CSPRNG, compared in constant time where
-  they travel over the wire, and stored beside the queue (`FileApprovalStore` for a
-  long-lived process, `MemoryApprovalStore` for tests) because an immutable email cannot
-  hold mutable state.
-- A reply matching the thread and token (`approve <token>` / `reject <token>`) moves the
-  task to `approved` or `rejected`.
-- A used, unknown or expired token is rejected explicitly; an expired token triggers a new
-  request, not a silent failure. The approval path never touches `main`: it only records a
-  decision.
+  and the task id. Tokens are generated with a CSPRNG, compared in constant time where they
+  travel over the wire, and stored in the database (a table with `used_at`/`expires_at`), so
+  a token survives restarts and is shared across runner Jobs.
+- A reply matching the thread and token (`approve <token>` / `reject <token>`) decides the
+  task. The approval's **action** says what "approved" means: a `run` gate releases the task
+  to `queued` (how approval-gated proposals start), a `land` gate records `approved`.
+  Locally, `herald approval approve|reject <token>` does the same without email.
+- A used, unknown or expired token is rejected explicitly, and a token for a task that is no
+  longer awaiting a decision (not in `action`) is refused without consuming it; an expired
+  token triggers a new request, not a silent failure. The approval path never touches `main`:
+  it only records a decision.
 
 ## Concurrency
 
 - Default: **one running task at a time**. A Kubernetes `CronJob` sweep claims the oldest
-  `Queued` message and starts one Job.
-- Concurrency is bounded by how many Jobs the sweep starts and by the guarded claim.
+  `queued` task and starts one Job.
+- Concurrency is bounded by how many Jobs the sweep starts; the guarded claim makes raising
+  it a configuration change, not a redesign.
 
 ## Storage and retention
 
-- There is **no database**. The mailbox is the durable store and an external dependency:
-  provider retention, quota, rate limits and account availability bound the queue.
-- Terminal messages are retained long enough to act as tombstones so a redelivery cannot
-  resurrect a task.
-- Large harness logs are not stored on the message; they go to object storage, and the
-  message carries only links.
+- The durable store is PostgreSQL: provider retention, quota and rate limits no longer bound
+  the queue.
+- Terminal tasks are retained long enough to act as tombstones so a redelivery cannot
+  resurrect a task; retention is ours to choose.
+- Large harness logs are not stored in the row; they go to object storage, and the row
+  carries only links.
+
+## Deployment
+
+- **In-cluster:** a PostgreSQL 18 `StatefulSet` + `Service` + `PVC`
+  (`registry.redhat.io/rhel9/postgresql-18`), deployed as a kustomize component
+  (`deploy/components/postgresql`).
+- **Local:** an equivalent podman container (`scripts/dev-postgres.sh`).
+- The application selects the backend with `HERALD_QUEUE=memory|postgres` (default `memory`)
+  and connects with a single `HERALD_DATABASE_URL`; Postgres is never exposed outside the
+  cluster or host.

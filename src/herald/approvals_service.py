@@ -4,12 +4,13 @@ import re
 from dataclasses import dataclass
 
 from herald.approvals import (
+    ApprovalNotApplicableError,
     ApprovalStore,
     ExpiredTokenError,
     TokenAlreadyUsedError,
     UnknownTokenError,
 )
-from herald.queue.models import TaskState
+from herald.queue.models import Task, TaskState
 from herald.queue.port import Queue
 
 TOKEN_PATTERN = re.compile(r"\b(?:approve|reject|herald)\s+([A-Za-z0-9_\-]{16,})\b", re.IGNORECASE)
@@ -47,24 +48,40 @@ class ApprovalService:
         """Issue a token and return it; the notifier sends it, never stores it on the email."""
         return self._store.issue(task_id, action).token
 
-    def apply(self, reply: ApprovalReply) -> str:
-        """Redeem ``reply`` and move its task to the matching terminal state.
+    def apply(self, reply: ApprovalReply) -> Task:
+        """Redeem ``reply`` and move its task to the state the action implies.
 
-        Raises an :class:`~herald.approvals.ApprovalError` when the token is unknown,
-        already used or expired, so the caller can send a new request instead of failing
-        silently.
+        A ``run`` approval releases the task to ``queued``; a ``land`` approval records
+        ``approved``. A rejection is always ``rejected``. Raises an
+        :class:`~herald.approvals.ApprovalError` when the token is unknown, already used or
+        expired, so the caller can send a new request instead of failing silently.
         """
-        approval = self._store.redeem(reply.token)
-        target = TaskState.APPROVED if reply.decision == "approved" else TaskState.REJECTED
-
+        # Check applicability before consuming the token, so a token for a task that moved
+        # on is not burned.
+        approval = self._store.get(reply.token)
+        if approval is None:
+            raise UnknownTokenError(reply.token)
         task = self._queue.get(approval.task_id)
         if task is None:
             raise UnknownTokenError(reply.token)
-        transitioned = self._queue.transition(task, target)
-        return transitioned.id
+        if task.state is not TaskState.ACTION:
+            raise ApprovalNotApplicableError(approval.task_id, task.state)
+
+        approval = self._store.redeem(reply.token)
+        # The approval's action decides what "approved" means: a ``run`` gate releases the
+        # task to be executed (ACTION -> QUEUED); a ``land`` gate records the decision
+        # (ACTION -> APPROVED). A rejection is always terminal.
+        if reply.decision != "approved":
+            target = TaskState.REJECTED
+        elif approval.action == "run":
+            target = TaskState.QUEUED
+        else:
+            target = TaskState.APPROVED
+        return self._queue.transition(task, target)
 
 
 __all__ = [
+    "ApprovalNotApplicableError",
     "ApprovalService",
     "ApprovalReply",
     "parse_reply",

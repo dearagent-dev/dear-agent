@@ -1,0 +1,19 @@
+# Headless Service governing the herald-postgres StatefulSet. Clients connect to
+# `herald-postgres:5432`; the name is never exposed outside the cluster (no Route/NodePort).
+apiVersion: v1
+kind: Service
+metadata:
+  name: herald-postgres
+  labels:
+    app.kubernetes.io/name: herald-postgres
+    app.kubernetes.io/component: database
+    app.kubernetes.io/part-of: herald
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: herald-postgres
+  ports:
+    - name: postgresql
+      port: 5432
+      targetPort: postgresql
+      protocol: TCP

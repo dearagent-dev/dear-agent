@@ -13,7 +13,7 @@ from herald.repo import RepoPreparer
 from herald.runners.port import Runner
 from herald.sandbox import BubblewrapSandbox, NoSandbox, Sandbox, SandboxPolicy
 from herald.transports.port import Transport
-from herald.worker import TaskWorker
+from herald.worker import DEFAULT_MAX_ATTEMPTS, TaskWorker
 
 
 class WorktreeSpecResolver:
@@ -30,6 +30,14 @@ class WorktreeSpecResolver:
         self._preparer = preparer or RepoPreparer()
 
     def __call__(self, task: Task, repo_path: str) -> TaskSpec:
+        # The spec is persisted with the task (ADR 0005), so a runner needs no mailbox. Fall
+        # back to re-parsing the message only for tasks enqueued before that.
+        spec = task.spec or self._from_transport(task)
+        if spec.repo_url:
+            self._preparer.ensure(repo_path, spec.repo_url)
+        return spec
+
+    def _from_transport(self, task: Task) -> TaskSpec:
         from herald.normalizer import NormalizedTask, normalize
 
         message = next(
@@ -41,40 +49,41 @@ class WorktreeSpecResolver:
         result = normalize(message)
         if not isinstance(result, NormalizedTask):
             raise ValueError(f"message {task.transport_id!r} does not normalize: {result.reason}")
-        if result.spec.repo_url:
-            self._preparer.ensure(repo_path, result.spec.repo_url)
         return result.spec
 
 
 def build_runner(provider_model: str | None, sandbox: Sandbox) -> Runner:
     """Build the harness runner selected by ``HERALD_HARNESS`` (default: opencode).
 
-    ``opencode`` (default), ``claude`` and ``codex`` are first-class adapters. ``command``
-    wraps an arbitrary harness via ``HERALD_HARNESS_COMMAND`` (a space-separated argv), which
-    is how an operator plugs in a custom runner without forking Herald.
+    ``opencode`` (default), ``claude`` and ``codex`` are first-class adapters; ``auto`` /
+    ``local-agent`` picks the first one available on ``PATH``. ``command`` wraps an arbitrary
+    harness via ``HERALD_HARNESS_COMMAND`` (a space-separated argv), which is how an operator
+    plugs in a custom runner without forking Herald. A model is passed only to harnesses that
+    accept one (OpenCode), never to a subscription harness (Claude Code, Codex).
     """
-    harness = os.environ.get("HERALD_HARNESS", "opencode").lower()
-    if harness == "command":
-        from herald.runners.command import CommandRunner
+    from dataclasses import replace
 
-        raw = os.environ.get("HERALD_HARNESS_COMMAND")
-        if not raw:
-            raise RuntimeError("HERALD_HARNESS_COMMAND is required for HERALD_HARNESS=command")
-        return CommandRunner(command=raw.split())
+    from herald.runners.catalog import EnvHarnessCatalog, build_runner_for, select_harness
 
-    binary = os.environ.get("HERALD_HARNESS_BINARY")
-    if harness == "claude":
-        from herald.runners.claude import ClaudeCodeRunner
+    info = select_harness(EnvHarnessCatalog(), os.environ.get("HERALD_HARNESS"))
+    override = os.environ.get("HERALD_HARNESS_BINARY")
+    if override and info.id != "command":
+        info = replace(info, binary=override)
+    return build_runner_for(info, provider_model, sandbox)
 
-        return ClaudeCodeRunner(model=provider_model, **({"binary": binary} if binary else {}))
-    if harness == "codex":
-        from herald.runners.codex import CodexRunner
 
-        return CodexRunner(model=provider_model, **({"binary": binary} if binary else {}))
+def default_worktrees_root() -> str:
+    """Where disposable worktrees live.
 
-    from herald.runners.opencode import OpenCodeRunner
+    ``HERALD_WORKTREES_ROOT`` wins (the cluster sets ``/work``); otherwise a writable temp
+    directory, so a local run works without configuration.
+    """
+    import tempfile
+    from pathlib import Path
 
-    return OpenCodeRunner(model=provider_model, binary=binary or "opencode", sandbox=sandbox)
+    return os.environ.get(
+        "HERALD_WORKTREES_ROOT", str(Path(tempfile.gettempdir()) / "herald-worktrees")
+    )
 
 
 def default_sandbox() -> Sandbox:
@@ -165,17 +174,21 @@ def build_worker(
     sandbox: Sandbox | None = None,
 ) -> TaskWorker:
     """Wire a TaskWorker from its collaborators."""
+    from herald.approvals import build_approval_store
+    from herald.approvals_service import ApprovalService
+
     sandbox = sandbox or default_sandbox()
     runner = build_routing_runner(sandbox)
     if runner is None:
         runner = build_runner(provider_model, sandbox)
+    approvals = ApprovalService(build_approval_store(), queue)
     executor = TaskExecutor(
         queue=queue,
         runner=runner,
         git=GitPlane(forge=GhForge()),
         repo_path=repo_path,
-        worktrees_root=os.environ.get("HERALD_WORKTREES_ROOT", "/work"),
-        notifier=Notifier(transport),
+        worktrees_root=default_worktrees_root(),
+        notifier=Notifier(transport, approvals=approvals),
         escalator=Escalator(transport),
     )
     return TaskWorker(
@@ -184,7 +197,14 @@ def build_worker(
         resolve_spec=WorktreeSpecResolver(transport),
         repo_path=repo_path,
         recipient=recipient,
+        max_attempts=int(os.environ.get("HERALD_MAX_ATTEMPTS", DEFAULT_MAX_ATTEMPTS)),
     )
 
 
-__all__ = ["WorktreeSpecResolver", "build_runner", "build_worker", "default_sandbox"]
+__all__ = [
+    "WorktreeSpecResolver",
+    "build_runner",
+    "build_worker",
+    "default_sandbox",
+    "default_worktrees_root",
+]

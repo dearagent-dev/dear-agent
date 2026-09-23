@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from herald.queue.jmap import JmapQueue
+from herald.queue.factory import build_queue
 from herald.queue.memory import MemoryQueue
-from herald.queue.models import Task, TaskSpec, TaskState, utcnow
+from herald.queue.models import Evidence, Task, TaskSpec, TaskState, utcnow
 from herald.queue.port import (
     Queue,
     QueueError,
@@ -11,7 +11,7 @@ from herald.queue.port import (
 )
 
 __all__ = [
-    "JmapQueue",
+    "Evidence",
     "MemoryQueue",
     "Queue",
     "QueueError",
@@ -20,5 +20,6 @@ __all__ = [
     "TaskNotFoundError",
     "TaskSpec",
     "TaskState",
+    "build_queue",
     "utcnow",
 ]

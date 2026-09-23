@@ -4,7 +4,7 @@ import copy
 from collections.abc import Callable
 from datetime import datetime, timedelta
 
-from herald.queue.models import Task, TaskState, utcnow
+from herald.queue.models import Evidence, Task, TaskState, utcnow
 from herald.queue.port import StateConflictError, TaskNotFoundError
 
 
@@ -20,7 +20,9 @@ class MemoryQueue:
         self._by_transport: dict[str, str] = {}
 
     def enqueue(self, task: Task) -> Task | None:
-        if task.transport_id in self._by_transport:
+        # Dedupe on either key, so a task whose id and transport_id diverge cannot clobber
+        # an existing record or leave the transport index stale.
+        if task.transport_id in self._by_transport or task.id in self._tasks:
             return None
 
         now = self._clock()
@@ -53,7 +55,22 @@ class MemoryQueue:
         stored.lease_until = now + lease
         return True
 
-    def transition(self, task: Task, to_state: TaskState) -> Task:
+    def claim_next(self, *, lease: timedelta) -> Task | None:
+        queued = [task for task in self._tasks.values() if task.state == TaskState.QUEUED]
+        if not queued:
+            return None
+        stored = min(queued, key=lambda task: (task.created_at, task.id))
+        stored.state = TaskState.RUNNING
+        stored.lease_until = self._clock() + lease
+        return copy.deepcopy(stored)
+
+    def transition(
+        self,
+        task: Task,
+        to_state: TaskState,
+        *,
+        evidence: Evidence | None = None,
+    ) -> Task:
         stored = self._tasks.get(task.id)
         if stored is None:
             raise TaskNotFoundError(task.id)
@@ -63,6 +80,8 @@ class MemoryQueue:
         stored.state = to_state
         if to_state != TaskState.RUNNING:
             stored.lease_until = None
+        if evidence is not None:
+            stored.evidence = evidence
         return copy.deepcopy(stored)
 
     def release_stale(self, *, now: datetime) -> list[Task]:

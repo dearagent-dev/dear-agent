@@ -46,14 +46,18 @@ If a change does not serve one of those goals (or a milestone in
    happen in an isolated worktree and, where available, an OS sandbox. See
    [`docs/security.md`](docs/security.md).
 8. **Durability over cleverness.** Tasks, states and evidence live in the durable queue
-   (the transport mailbox) or in Git, never only in a model's context or a process's
-   memory.
+   (PostgreSQL; the transport mailbox is ingress) or in Git, never only in a model's
+   context or a process's memory.
 
 ## 3. Status and where to start
 
-**Current status: M7 (decision layer) in progress.** M0–M6 are done and verified live on
-OpenShift + Fastmail (the mailbox is the queue; no database). The decision layer uses System
-One models (Jev first) for routing/gates — see
+**Current status: M8 (durable state in PostgreSQL) implemented** (PR #55). M0–M7 are done;
+M0–M6 were verified live on OpenShift + Fastmail. The mailbox is **ingress**: durable tasks,
+state, approvals and the decision log live in PostgreSQL — see
+[`docs/decisions/0005-state-store.md`](docs/decisions/0005-state-store.md), which supersedes
+[ADR 0002](docs/decisions/0002-deployment-topology.md) in part. The local MVP path is in
+[`docs/getting-started.md`](docs/getting-started.md). The decision layer uses System One models
+(Jev first) for routing/gates — see
 [`docs/decisions/0004-decision-model.md`](docs/decisions/0004-decision-model.md). Herald has
 **no direct-LLM path**: a harness codes, a decider decides.
 
@@ -69,23 +73,25 @@ Start here:
    [security](docs/security.md)).
 4. Open an issue (or add a task to `TASKS.md`) describing the slice before coding.
 
-The recommended first slice is **M1.1 — verify Fastmail JMAP and model `Task` + the `Queue`
-port**, because everything else depends on a correct, idempotent queue.
+The recommended next slice is the first unchecked one in
+[`TASKS.md`](TASKS.md) / [`docs/roadmap.md`](docs/roadmap.md).
 
 ## 4. Language and tooling
 
 - **Python 3.12+** for the control plane, queue port and adapters. Rationale: mature
   stdlib/IMAP/JMAP libraries, built-in JSON, and no compile step keep the maintenance
   surface small. (See [`docs/decisions/0001-language.md`](docs/decisions/0001-language.md).)
-- **No database.** The durable queue is the transport mailbox (Fastmail JMAP first),
-  accessed through a `Queue` port. (See
-  [`docs/decisions/0002-deployment-topology.md`](docs/decisions/0002-deployment-topology.md).)
+- **PostgreSQL is the durable queue; the mailbox is ingress.** Tasks and state live in
+  PostgreSQL (18 on UBI 9), accessed through the `Queue` port; email/JMAP/webhook only
+  delivers the request. (See
+  [`docs/decisions/0005-state-store.md`](docs/decisions/0005-state-store.md).)
 - **Transport adapters** are thin and contain no business logic; they map the mailbox to
   `Task` and back.
-- **Deployment** is Kubernetes/OpenShift by design (ADR 0002): one Job per task, a
-  `CronJob` sweep, no always-on daemon.
+- **Deployment** is Kubernetes/OpenShift by design (ADR 0002, ADR 0005): one Job per task, a
+  `CronJob` sweep, no always-on daemon, and a PostgreSQL `StatefulSet` (or a local podman
+  container) for durable state.
 - The **`herald` CLI** is the operator entry point: `herald task ls|show|claim|complete|fail`
-  (`--backend memory|jmap`).
+  (queue backend from `HERALD_QUEUE=memory|postgres`; `--backend` selects the transport).
 - Formatting/linting/tests (add these as they come into existence):
   - `ruff format && ruff check`
   - `pytest`
@@ -99,6 +105,7 @@ herald/
 ├── README.md
 ├── docs/
 │   ├── architecture.md
+│   ├── getting-started.md
 │   ├── transports.md
 │   ├── queue.md
 │   ├── providers.md
@@ -106,15 +113,17 @@ herald/
 │   ├── roadmap.md
 │   └── decisions/            # ADRs, one file per decision
 ├── src/herald/               # Python package
-│   ├── queue/                # Task model + Queue port over the mailbox (JMAP)
+│   ├── db.py                 # Postgres connect + schema composition
+│   ├── queue/                # Task model + Queue port (Postgres; mailbox is ingress)
 │   ├── transports/           # inbound/outbound adapters (jmap, imap, agentmail, irc)
-│   ├── runners/              # harness adapters (opencode, claude, codex, custom)
+│   ├── runners/              # harness adapters (opencode, claude, codex, custom) + catalog
 │   ├── providers/            # model provider config (hosted + local)
 │   ├── gitplane/             # worktree, branch, PR
 │   ├── notify/               # outbound status/approval threading
 │   └── idle/                 # creative loop for empty queues
 ├── deploy/                   # Kubernetes/OpenShift manifests (Kustomize)
 │   ├── base/                 # control plane, runner Job/CronJob
+│   ├── components/           # opt-in pieces (postgresql StatefulSet)
 │   └── overlays/             # dev, prod
 ├── tests/
 └── scripts/                  # dev/ops helpers

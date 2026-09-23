@@ -121,5 +121,6 @@ messages reports ~96.5% accuracy / ROC-AUC 0.99, while TypeSafe's own workflows 
 
 - Which self-hosted shape do we bless as the reference local decider (Simple Jev vs Laya)?
 - Where does the decider run: in-process in the control plane, or its own Deployment?
-- Do we log every decision for future threshold tuning (and where — no DB, so Git or the
-  mailbox)?
+- Do we log every decision for future threshold tuning (and where — with
+  [0005](0005-state-store.md), the Postgres state store is the natural home; a file remains
+  fine for a single-process dev run)?

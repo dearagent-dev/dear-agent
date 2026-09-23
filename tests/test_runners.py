@@ -108,6 +108,17 @@ def test_command_runner_reports_a_nonzero_exit(repo: Path, tmp_path: Path) -> No
     assert result.ok is False
 
 
+def test_command_runner_reports_a_missing_binary(repo: Path, tmp_path: Path) -> None:
+    worktree = Worktree.create(repo, tmp_path / "wt", slug="s", base_branch="main")
+    runner = CommandRunner(command=["definitely-not-a-real-binary-xyz"])
+    try:
+        result = runner.run(make_task(), make_spec(), worktree)
+    finally:
+        worktree.remove()
+
+    assert result.exit_code == 127
+
+
 def test_command_runner_times_out(repo: Path, tmp_path: Path) -> None:
     worktree = Worktree.create(repo, tmp_path / "wt", slug="s", base_branch="main")
     runner = CommandRunner(command=["sleep", "5"], timeout_seconds=1)

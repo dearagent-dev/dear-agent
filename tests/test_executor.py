@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from herald.executor import TaskExecutor, _slug
-from herald.gitplane.plane import GitPlane, PullRequest
+from herald.gitplane.plane import GitError, GitPlane, PullRequest
 from herald.notify.escalate import Escalator, FailureKind
 from herald.notify.notifier import Notifier
 from herald.queue.memory import MemoryQueue
@@ -100,7 +100,10 @@ def test_successful_run_marks_done_and_opens_a_draft_pr(repo: Path) -> None:
 
     evidence = executor.execute(task, make_spec(), recipient="dev@example.com")
 
-    assert queue.get("e1").state is TaskState.DONE
+    stored = queue.get("e1")
+    assert stored.state is TaskState.DONE
+    assert stored.evidence is not None
+    assert stored.evidence.pr_url == "https://example.com/pr/1"
     assert evidence.commit is not None
     assert evidence.pr_url == "https://example.com/pr/1"
     assert forge.calls[0]["branch"].startswith("herald/")
@@ -155,6 +158,38 @@ def test_execute_rejects_a_task_that_is_not_queued(repo: Path) -> None:
         executor.execute(task, make_spec())
 
 
+def test_a_runner_that_raises_fails_the_task(repo: Path) -> None:
+    class RaisingRunner:
+        def run(self, task: Task, spec: TaskSpec, worktree: Worktree) -> RunResult:
+            raise RuntimeError("boom")
+
+    queue = MemoryQueue()
+    task = make_task(queue)
+    transport = MemoryTransport()
+    executor = make_executor(queue, repo, RecordingForge(), RaisingRunner(), transport)
+
+    evidence = executor.execute(task, make_spec(), recipient="dev@example.com")
+
+    assert evidence.failure is FailureKind.HARNESS_FAILED
+    assert queue.get("e1").state is TaskState.FAILED
+
+
+def test_worktree_creation_failure_fails_the_task(repo: Path, monkeypatch) -> None:
+    from unittest import mock
+
+    queue = MemoryQueue()
+    task = make_task(queue)
+    executor = make_executor(queue, repo, RecordingForge(), FakeRunner(), MemoryTransport())
+
+    with (
+        mock.patch("herald.executor.Worktree.create", side_effect=OSError("read-only")),
+        pytest.raises(OSError),
+    ):
+        executor.execute(task, make_spec())
+
+    assert queue.get("e1").state is TaskState.FAILED
+
+
 def test_slug_is_branch_safe() -> None:
     task = Task(id="e1", transport_id="<m1@x>", subject="Add /healthz & metrics!!")
 
@@ -205,6 +240,44 @@ def test_missing_harness_is_escalated_as_such(repo: Path) -> None:
 class MissingRunner:
     def run(self, task: Task, spec: TaskSpec, worktree: Worktree) -> RunResult:
         return RunResult(exit_code=127, stderr="opencode: not found", branch=worktree.branch)
+
+
+class ExplodingGit:
+    """A GitPlane whose push fails (e.g. no remote / auth), after the harness succeeds."""
+
+    def commit_all(self, worktree: Worktree, *, message: str) -> str:
+        return "deadbeef"
+
+    def has_changes_since(self, worktree: Worktree, base_branch: str) -> bool:
+        return True
+
+    def push(self, worktree: Worktree, *, remote: str = "origin") -> None:
+        raise GitError("no remote configured")
+
+    def open_draft_pr(self, *args: object, **kwargs: object) -> PullRequest:
+        raise AssertionError("must not open a PR after a failed push")
+
+
+def test_publish_failure_fails_the_task_and_escalates(repo: Path) -> None:
+    queue = MemoryQueue()
+    task = make_task(queue)
+    transport = MemoryTransport()
+    executor = TaskExecutor(
+        queue=queue,
+        runner=FakeRunner(ok=True),
+        git=ExplodingGit(),  # type: ignore[arg-type]
+        repo_path=str(repo),
+        worktrees_root=str(repo.parent / "wt"),
+        notifier=Notifier(transport),
+        escalator=Escalator(transport),
+    )
+
+    evidence = executor.execute(task, make_spec(), recipient="dev@example.com")
+
+    assert evidence.failure is FailureKind.PUBLISH_FAILED
+    assert evidence.pr_url is None
+    assert queue.get("e1").state is TaskState.FAILED
+    assert "could not be pushed" in transport.outbox[0].body
 
 
 def test_report_skips_an_empty_recipient(tmp_path) -> None:

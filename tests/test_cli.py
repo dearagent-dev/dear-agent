@@ -119,7 +119,7 @@ def test_fail_marks_a_running_task_failed() -> None:
     assert queue.get("e1").state is TaskState.FAILED
 
 
-def test_jmap_backend_without_token_errors_cleanly(monkeypatch: object) -> None:
+def test_postgres_queue_without_dsn_errors_cleanly() -> None:
     import subprocess
     import sys
     from pathlib import Path
@@ -128,16 +128,17 @@ def test_jmap_backend_without_token_errors_cleanly(monkeypatch: object) -> None:
     env = {
         "PATH": "",
         "PYTHONPATH": str(repo_root / "src"),
-        "FASTMAIL_API_TOKEN": "",
+        "HERALD_QUEUE": "postgres",
+        "HERALD_DATABASE_URL": "",
     }
     result = subprocess.run(
-        [sys.executable, "-m", "herald.cli.main", "task", "--backend", "jmap", "ls"],
+        [sys.executable, "-m", "herald.cli.main", "task", "ls"],
         capture_output=True,
         text=True,
         env=env,
     )
     assert result.returncode == 2
-    assert "FASTMAIL_API_TOKEN" in result.stderr
+    assert "HERALD_DATABASE_URL" in result.stderr
 
 
 def test_run_executes_a_task_via_the_worker(monkeypatch) -> None:
@@ -179,6 +180,127 @@ def test_run_executes_a_task_via_the_worker(monkeypatch) -> None:
     assert payload["pr_url"] == "https://example.com/pr/1"
 
 
+def test_run_returns_nonzero_when_the_task_fails() -> None:
+    import contextlib
+    import io
+    from unittest import mock
+
+    from herald.executor import ExecutedTask
+    from herald.notify.escalate import FailureKind
+    from herald.runners.worktree import RunResult
+
+    queue = MemoryQueue()
+    seed(queue, "e1")
+
+    class FakeWorker:
+        def run(self, task_id: str) -> ExecutedTask:
+            return ExecutedTask(
+                task_id=task_id,
+                branch="herald/e1",
+                commit=None,
+                pr_url=None,
+                run=RunResult(exit_code=1, branch="herald/e1"),
+                failure=FailureKind.HARNESS_FAILED,
+            )
+
+    with (
+        mock.patch("herald.cli.main.build_queue", return_value=queue),
+        mock.patch("herald.worker_factory.build_transport", return_value=object()),
+        mock.patch("herald.worker_factory.build_worker", return_value=FakeWorker()),
+        contextlib.redirect_stdout(io.StringIO()),
+    ):
+        code = main(["run", "e1", "--repo", "/repos/source"])
+
+    assert code == 1
+
+
+def test_run_uses_the_task_model_hint() -> None:
+    import contextlib
+    import io
+    from unittest import mock
+
+    from herald.executor import ExecutedTask
+    from herald.queue.models import TaskSpec
+    from herald.runners.worktree import RunResult
+
+    queue = MemoryQueue()
+    queue.enqueue(
+        Task(
+            id="e1",
+            transport_id="<m1@x>",
+            spec=TaskSpec(repo_url="o/r", instructions="x", model_request="deepseek/v4"),
+        )
+    )
+    captured: dict[str, object] = {}
+
+    class FakeWorker:
+        def run(self, task_id: str) -> ExecutedTask:
+            return ExecutedTask(
+                task_id=task_id,
+                branch="herald/e1",
+                commit="deadbeef",
+                pr_url=None,
+                run=RunResult(exit_code=0, branch="herald/e1"),
+            )
+
+    def fake_build_worker(**kwargs: object):
+        captured.update(kwargs)
+        return FakeWorker()
+
+    with (
+        mock.patch("herald.cli.main.build_queue", return_value=queue),
+        mock.patch("herald.worker_factory.build_transport", return_value=object()),
+        mock.patch("herald.worker_factory.build_worker", side_effect=fake_build_worker),
+        contextlib.redirect_stdout(io.StringIO()),
+    ):
+        code = main(["run", "e1", "--repo", "/repos/source"])
+
+    assert code == 0
+    assert captured["provider_model"] == "deepseek/v4"
+
+
+def test_run_without_a_task_id_picks_the_oldest_queued() -> None:
+    import contextlib
+    import io
+    from unittest import mock
+
+    from herald.executor import ExecutedTask
+    from herald.runners.worktree import RunResult
+
+    queue = MemoryQueue()
+    seed(queue, "e1")
+    seed(queue, "e2")
+
+    captured: dict[str, object] = {}
+
+    class FakeWorker:
+        def run(self, task_id: str) -> ExecutedTask:
+            captured["task_id"] = task_id
+            return ExecutedTask(
+                task_id=task_id,
+                branch=f"herald/{task_id}",
+                commit="deadbeef",
+                pr_url=None,
+                run=RunResult(exit_code=0, branch=f"herald/{task_id}"),
+            )
+
+        def run_next(self) -> ExecutedTask:
+            # A real worker claims the oldest atomically; the fake mirrors that.
+            return self.run(queue.list(TaskState.QUEUED, limit=1)[0].id)
+
+    buffer = io.StringIO()
+    with (
+        mock.patch("herald.cli.main.build_queue", return_value=queue),
+        mock.patch("herald.worker_factory.build_transport", return_value=object()),
+        mock.patch("herald.worker_factory.build_worker", return_value=FakeWorker()),
+        contextlib.redirect_stdout(buffer),
+    ):
+        code = main(["run", "--repo", "/repos/source"])
+
+    assert code == 0
+    assert captured["task_id"] == "e1"
+
+
 def test_decide_routes_with_the_rule_decider(monkeypatch) -> None:
     import contextlib
     import io
@@ -205,3 +327,241 @@ def test_decide_can_be_disabled(monkeypatch) -> None:
 
     assert code == 1
     assert "no decider" in buffer.getvalue()
+
+
+def test_enqueue_creates_a_queued_task_with_a_spec() -> None:
+    queue = MemoryQueue()
+
+    code, output = run(
+        ["task", "enqueue", "fix the typo in the CLI help", "--repo", "git@github.com:o/r.git"],
+        queue,
+    )
+
+    assert code == 0
+    assert "enqueued" in output
+    tasks = queue.list(TaskState.QUEUED)
+    assert len(tasks) == 1
+    assert tasks[0].spec is not None
+    assert tasks[0].spec.repo_url == "git@github.com:o/r.git"
+    assert tasks[0].spec.instructions == "fix the typo in the CLI help"
+
+
+def test_approval_pending_lists_issued_tokens(tmp_path, monkeypatch) -> None:
+    from herald.approvals import FileApprovalStore
+
+    path = tmp_path / "approvals.json"
+    FileApprovalStore(path).issue("e1", "land")
+    monkeypatch.setenv("HERALD_APPROVALS_FILE", str(path))
+    monkeypatch.delenv("HERALD_QUEUE", raising=False)
+
+    code, output = run(["--json", "approval", "pending"], MemoryQueue())
+
+    assert code == 0
+    payload = json.loads(output)
+    assert payload[0]["task_id"] == "e1"
+    assert payload[0]["action"] == "land"
+    assert payload[0]["token"]
+
+
+def test_approval_approve_redeems_the_token(tmp_path, monkeypatch) -> None:
+    from herald.approvals import FileApprovalStore
+    from herald.approvals_service import ApprovalService
+
+    path = tmp_path / "approvals.json"
+    monkeypatch.setenv("HERALD_APPROVALS_FILE", str(path))
+    monkeypatch.delenv("HERALD_QUEUE", raising=False)
+    queue = MemoryQueue()
+    seed(queue, "e1")
+    task = queue.get("e1")
+    assert task is not None
+    queue.claim(task, lease=timedelta(hours=1))
+    running = queue.get("e1")
+    assert running is not None
+    queue.transition(running, TaskState.ACTION)
+    token = ApprovalService(FileApprovalStore(path), queue).request("e1", "land")
+
+    code, output = run(["approval", "approve", token], queue)
+
+    assert code == 0
+    assert "e1 -> approved" in output
+    assert queue.get("e1").state is TaskState.APPROVED
+
+
+def test_approval_redeeming_twice_fails_cleanly(tmp_path, monkeypatch) -> None:
+    from herald.approvals import FileApprovalStore
+    from herald.approvals_service import ApprovalService
+
+    path = tmp_path / "approvals.json"
+    monkeypatch.setenv("HERALD_APPROVALS_FILE", str(path))
+    monkeypatch.delenv("HERALD_QUEUE", raising=False)
+    queue = MemoryQueue()
+    seed(queue, "e1")
+    task = queue.get("e1")
+    assert task is not None
+    queue.claim(task, lease=timedelta(hours=1))
+    running = queue.get("e1")
+    assert running is not None
+    queue.transition(running, TaskState.ACTION)
+    token = ApprovalService(FileApprovalStore(path), queue).request("e1", "land")
+    run(["approval", "reject", token], queue)
+
+    code, output = run(["approval", "reject", token], queue)
+
+    assert code == 1
+    assert queue.get("e1").state is TaskState.REJECTED
+
+
+def test_health_reports_queue_counts() -> None:
+    queue = MemoryQueue()
+    seed(queue, "e1")
+    seed(queue, "e2")
+
+    code, output = run(["--json", "health"], queue)
+
+    assert code == 0
+    payload = json.loads(output)
+    assert payload["ok"] is True
+    assert payload["counts"]["queued"] == 2
+    assert payload["counts"]["running"] == 0
+
+
+def test_cancel_rejects_a_queued_task() -> None:
+    queue = MemoryQueue()
+    seed(queue, "e1")
+
+    code, output = run(["task", "cancel", "e1"], queue)
+
+    assert code == 0
+    assert "e1 -> rejected" in output
+    assert queue.get("e1").state is TaskState.REJECTED
+
+
+def test_requeue_returns_a_failed_task_to_queued() -> None:
+    queue = MemoryQueue()
+    seed(queue, "e1")
+    task = queue.get("e1")
+    assert task is not None
+    queue.claim(task, lease=timedelta(seconds=60))
+    running = queue.get("e1")
+    assert running is not None
+    queue.transition(running, TaskState.FAILED)
+
+    code, output = run(["task", "requeue", "e1"], queue)
+
+    assert code == 0
+    assert "e1 -> queued" in output
+    assert queue.get("e1").state is TaskState.QUEUED
+
+
+def _todo_repo(tmp_path):
+    import subprocess
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "app.py").write_text("# TODO: handle the empty case\n")
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "-c", "user.email=t@e", "-c", "user.name=t", "commit", "-q", "-m", "init"],
+        cwd=repo,
+        check=True,
+    )
+    return repo
+
+
+def test_idle_parks_proposals_for_approval(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HERALD_APPROVALS_FILE", str(tmp_path / "approvals.json"))
+    monkeypatch.delenv("HERALD_QUEUE", raising=False)
+    repo = _todo_repo(tmp_path)
+    queue = MemoryQueue()
+
+    code, output = run(["idle", "--repo", str(repo)], queue)
+
+    assert code == 0
+    assert "proposed 1" in output
+    tasks = queue.list(TaskState.ACTION)
+    assert len(tasks) == 1
+    assert tasks[0].spec is not None
+    assert "app.py" in tasks[0].spec.instructions
+    assert queue.list(TaskState.QUEUED) == []
+
+
+def test_idle_gate_emails_the_approval_request(tmp_path, monkeypatch) -> None:
+    from unittest import mock
+
+    from herald.transports.memory import MemoryTransport
+
+    monkeypatch.setenv("HERALD_APPROVALS_FILE", str(tmp_path / "approvals.json"))
+    monkeypatch.delenv("HERALD_QUEUE", raising=False)
+    repo = _todo_repo(tmp_path)
+    queue = MemoryQueue()
+    transport = MemoryTransport()
+
+    with mock.patch("herald.worker_factory.build_transport", return_value=transport):
+        code, _ = run(["idle", "--repo", str(repo), "--recipient", "ops@example.com"], queue)
+
+    assert code == 0
+    assert len(transport.outbox) == 1
+    assert "approval needed" in transport.outbox[0].subject
+
+
+def test_idle_no_gate_enqueues_a_runnable_task(tmp_path) -> None:
+    repo = _todo_repo(tmp_path)
+    queue = MemoryQueue()
+
+    code, _ = run(["idle", "--repo", str(repo), "--no-gate"], queue)
+
+    assert code == 0
+    assert len(queue.list(TaskState.QUEUED)) == 1
+
+
+def test_idle_gate_round_trip_releases_to_queued(tmp_path, monkeypatch) -> None:
+    from herald.approvals import build_approval_store
+
+    monkeypatch.setenv("HERALD_APPROVALS_FILE", str(tmp_path / "approvals.json"))
+    monkeypatch.delenv("HERALD_QUEUE", raising=False)
+    repo = _todo_repo(tmp_path)
+    queue = MemoryQueue()
+    run(["idle", "--repo", str(repo)], queue)
+    token = build_approval_store().pending()[0].token
+
+    code, output = run(["approval", "approve", token], queue)
+
+    assert code == 0
+    assert "-> queued" in output
+    assert len(queue.list(TaskState.QUEUED)) == 1
+
+
+def test_idle_does_not_re_propose_the_same_work(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HERALD_APPROVALS_FILE", str(tmp_path / "approvals.json"))
+    monkeypatch.delenv("HERALD_QUEUE", raising=False)
+    repo = _todo_repo(tmp_path)
+    queue = MemoryQueue()
+    run(["idle", "--repo", str(repo)], queue)
+
+    code, output = run(["idle", "--repo", str(repo)], queue)
+
+    assert code == 0
+    assert "proposed 0" in output
+    assert len(queue.list(TaskState.ACTION)) == 1
+
+
+def test_enqueue_is_idempotent_on_transport_id() -> None:
+    queue = MemoryQueue()
+    argv = [
+        "task",
+        "enqueue",
+        "fix it",
+        "--repo",
+        "o/r",
+        "--transport-id",
+        "<manual-1@herald.local>",
+    ]
+
+    first, _ = run(argv, queue)
+    second, output = run(argv, queue)
+
+    assert first == 0
+    assert second == 1
+    assert "already exists" in output
+    assert len(queue.list(TaskState.QUEUED)) == 1

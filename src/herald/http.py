@@ -5,7 +5,7 @@ import signal
 import sys
 
 from herald.http_server import HealthServer
-from herald.queue.memory import MemoryQueue
+from herald.queue.factory import build_queue
 from herald.queue.port import Queue
 
 
@@ -24,6 +24,8 @@ def build_inbound(queue: Queue):
 
     from datetime import timedelta
 
+    from herald.approvals import build_approval_store
+    from herald.approvals_service import ApprovalService
     from herald.auth import InboundAuthorizer, InboundGate, RateLimiter
     from herald.control_plane import ControlPlane
     from herald.inbound import InboundWebhook
@@ -37,33 +39,19 @@ def build_inbound(queue: Queue):
             window=timedelta(minutes=1),
         ),
     )
+    from herald.notify.notifier import Notifier
+
+    approvals = ApprovalService(build_approval_store(), queue)
     # Auth lives on the webhook (it maps failures to 401/403); the plane must not gate
     # again, or a rejected request would be silently swallowed as "denied".
-    plane = ControlPlane(transport=transport, queue=queue)
+    plane = ControlPlane(
+        transport=transport,
+        queue=queue,
+        notifier=Notifier(transport),
+        approvals=approvals,
+    )
     recipient = os.environ.get("HERALD_RECIPIENT")
     return InboundWebhook(control_plane=plane, gate=gate, recipient=recipient)
-
-
-def build_queue() -> Queue:
-    """Build the queue named by ``HERALD_BACKEND`` (default: memory)."""
-    backend = os.environ.get("HERALD_BACKEND", "memory")
-    if backend == "memory":
-        return MemoryQueue()
-    if backend == "jmap":
-        from herald.jmap.client import DEFAULT_SESSION_URL, JmapClient
-        from herald.queue.jmap import JmapQueue
-
-        token = os.environ.get("FASTMAIL_API_TOKEN")
-        if not token:
-            raise RuntimeError("FASTMAIL_API_TOKEN is required for the jmap backend")
-        client = JmapClient(
-            token,
-            account_id=os.environ.get("FASTMAIL_ACCOUNT_ID"),
-            session_url=os.environ.get("FASTMAIL_SESSION_URL", DEFAULT_SESSION_URL),
-        )
-        client.connect()
-        return JmapQueue(client, mailbox_name=os.environ.get("HERALD_MAILBOX", "Herald"))
-    raise RuntimeError(f"unknown backend {backend!r}")
 
 
 def main() -> int:

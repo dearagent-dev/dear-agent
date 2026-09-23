@@ -31,6 +31,19 @@ class CommandRunner:
                 timeout=self.timeout_seconds,
                 check=False,
             )
+        except FileNotFoundError:
+            binary = self.command[0] if self.command else "command"
+            return RunResult(
+                exit_code=127,
+                stderr=f"harness binary {binary!r} not found",
+                branch=worktree.branch,
+            )
+        except OSError as exc:
+            return RunResult(
+                exit_code=126,
+                stderr=f"cannot execute command: {exc}",
+                branch=worktree.branch,
+            )
         except subprocess.TimeoutExpired as exc:
             output = exc.stdout or ""
             errors = exc.stderr or ""

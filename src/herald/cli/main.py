@@ -8,6 +8,8 @@ from herald.cli.commands import (
     add_approval_commands,
     add_decide_commands,
     add_decision_commands,
+    add_health_commands,
+    add_idle_commands,
     add_listen_commands,
     add_run_commands,
     add_sweep_commands,
@@ -31,6 +33,8 @@ def build_parser() -> argparse.ArgumentParser:
     add_decide_commands(subparsers, parser)
     add_decision_commands(subparsers, parser)
     add_approval_commands(subparsers, parser)
+    add_idle_commands(subparsers, parser)
+    add_health_commands(subparsers, parser)
     return parser
 
 
@@ -44,7 +48,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
 
     try:
-        queue = build_queue(args) if getattr(args, "needs_queue", True) else None
+        queue = build_queue() if getattr(args, "needs_queue", True) else None
     except RuntimeError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

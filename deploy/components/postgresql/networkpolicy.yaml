@@ -1,0 +1,24 @@
+# Only Herald pods may reach the database. The cluster-wide default is unchanged; this
+# narrows what can talk to herald-postgres:5432 (see docs/security.md: network is explicit).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: herald-postgres
+  labels:
+    app.kubernetes.io/name: herald-postgres
+    app.kubernetes.io/component: database
+    app.kubernetes.io/part-of: herald
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: herald-postgres
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/part-of: herald
+      ports:
+        - protocol: TCP
+          port: 5432

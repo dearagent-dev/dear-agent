@@ -3,10 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import timedelta
 
-from herald.gitplane.plane import GitPlane
+from herald.gitplane.plane import GitError, GitPlane
 from herald.notify.escalate import Escalator, FailureKind
 from herald.notify.notifier import Notifier, TaskLinks
-from herald.queue.models import Task, TaskSpec, TaskState
+from herald.queue.models import Evidence, Task, TaskSpec, TaskState
 from herald.queue.port import Queue
 from herald.runners.port import Runner
 from herald.runners.worktree import RunResult, Worktree
@@ -60,37 +60,68 @@ class TaskExecutor:
         self._escalator = escalator
         self._lease = lease
 
-    def execute(self, task: Task, spec: TaskSpec, *, recipient: str | None = None) -> ExecutedTask:
-        if not self._queue.claim(task, lease=self._lease):
+    def execute(
+        self,
+        task: Task,
+        spec: TaskSpec,
+        *,
+        recipient: str | None = None,
+        claimed: bool = False,
+    ) -> ExecutedTask:
+        """Run ``task`` end to end.
+
+        Set ``claimed=True`` when the caller already claimed the task atomically (e.g.
+        :meth:`~herald.queue.port.Queue.claim_next`), so it is not claimed twice.
+        """
+        if not claimed and not self._queue.claim(task, lease=self._lease):
             raise RuntimeError(f"task {task.id} is not claimable")
         running = self._queue.get(task.id)
         assert running is not None
 
-        worktree = Worktree.create(
-            repo_path=self._repo_path,
-            worktrees_root=self._worktrees_root,
-            slug=_slug(task),
-            base_branch=spec.base_branch,
-        )
         try:
-            run = self._runner.run(task, spec, worktree)
+            worktree = Worktree.create(
+                repo_path=self._repo_path,
+                worktrees_root=self._worktrees_root,
+                slug=_slug(task),
+                base_branch=spec.base_branch,
+            )
+        except Exception:
+            # A worktree that cannot be created (bad worktrees root, unwritable dir) must
+            # fail the task, not leave it running until the lease expires.
+            self._queue.transition(running, TaskState.FAILED)
+            raise
+        try:
+            try:
+                run = self._runner.run(task, spec, worktree)
+            except Exception as exc:  # noqa: BLE001 - a broken runner must not wedge the task
+                run = RunResult(
+                    exit_code=1,
+                    stderr=f"runner raised {type(exc).__name__}",
+                    branch=worktree.branch,
+                )
             failure: FailureKind | None = None
             commit: str | None = None
             pr_url: str | None = None
 
             if run.ok:
-                commit = self._git.commit_all(worktree, message=_commit_message(task, spec))
-                if not self._git.has_changes_since(worktree, spec.base_branch):
-                    failure = FailureKind.NO_CHANGES
-                else:
-                    self._git.push(worktree)
-                    pr = self._git.open_draft_pr(
-                        worktree,
-                        base_branch=spec.base_branch,
-                        title=_pr_title(task),
-                        body=_pr_body(task),
-                    )
-                    pr_url = pr.url
+                # The harness succeeded; a git/forge error here must fail the task cleanly,
+                # never leave it `running` until the lease expires.
+                try:
+                    commit = self._git.commit_all(worktree, message=_commit_message(task, spec))
+                    if not self._git.has_changes_since(worktree, spec.base_branch):
+                        failure = FailureKind.NO_CHANGES
+                    else:
+                        self._git.push(worktree)
+                        pr = self._git.open_draft_pr(
+                            worktree,
+                            base_branch=spec.base_branch,
+                            title=_pr_title(task),
+                            body=_pr_body(task),
+                        )
+                        pr_url = pr.url
+                except GitError:
+                    failure = FailureKind.PUBLISH_FAILED
+                    pr_url = None
             else:
                 failure = (
                     FailureKind.HARNESS_MISSING
@@ -109,7 +140,13 @@ class TaskExecutor:
                 failure=failure,
             )
             final = self._queue.transition(
-                running, TaskState.DONE if evidence.ok else TaskState.FAILED
+                running,
+                TaskState.DONE if evidence.ok else TaskState.FAILED,
+                evidence=Evidence(
+                    branch=evidence.branch,
+                    commit=evidence.commit,
+                    pr_url=evidence.pr_url,
+                ),
             )
             evidence.task_id = final.id
             self._report(evidence, recipient=recipient)
@@ -125,7 +162,11 @@ class TaskExecutor:
             return
         if evidence.failure is not None and self._escalator is not None:
             self._escalator.escalate(
-                task, evidence.run, recipient=recipient, branch=evidence.branch
+                task,
+                evidence.run,
+                recipient=recipient,
+                branch=evidence.branch,
+                kind=evidence.failure,
             )
             return
         if self._notifier is None:

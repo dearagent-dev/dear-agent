@@ -4,6 +4,8 @@ kind: ConfigMap
 metadata:
   name: herald-config
 data:
+  HERALD_QUEUE: "postgres"
+  HERALD_BACKEND: "jmap"
   HERALD_MAILBOX: "Herald"
   HERALD_WORKTREES_ROOT: "/work"
   HERALD_MODEL: "local:model"
