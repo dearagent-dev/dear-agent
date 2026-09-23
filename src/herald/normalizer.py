@@ -7,7 +7,7 @@ from enum import StrEnum
 from herald.queue.models import Task, TaskSpec
 from herald.transports.base import RawMessage
 
-METADATA_RE = re.compile(r"^\s*(repo|base|branch|model)\s*:\s*(\S.*)$", re.IGNORECASE)
+METADATA_RE = re.compile(r"^\s*(repo|base|branch|model|verify)\s*:\s*(\S.*)$", re.IGNORECASE)
 REPO_URL_RE = re.compile(r"^(?:https?://|git@)[^\s]+$|^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$")
 ROUTING_RE = re.compile(r"^(?P<owner>[A-Za-z0-9._-]+)-(?P<repo>[A-Za-z0-9._-]+)@")
 DEFAULT_BASE_BRANCH = "main"
@@ -75,6 +75,7 @@ def normalize(message: RawMessage, *, recipient: str | None = None) -> Normaliza
         base_branch=fields.get("base", DEFAULT_BASE_BRANCH),
         instructions=instructions.strip(),
         model_request=fields.get("model"),
+        verify=fields.get("verify"),
     )
     task = Task(
         id=message.transport_id,

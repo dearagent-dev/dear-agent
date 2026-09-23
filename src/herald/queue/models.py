@@ -77,3 +77,6 @@ class TaskSpec:
     base_branch: str = "main"
     instructions: str = ""
     model_request: str | None = None
+    # A command the change must pass before a PR is opened. It runs only if it is on the
+    # operator's allowlist (golden rule 7: never execute a message-derived command blindly).
+    verify: str | None = None

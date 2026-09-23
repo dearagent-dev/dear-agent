@@ -333,7 +333,15 @@ def test_enqueue_creates_a_queued_task_with_a_spec() -> None:
     queue = MemoryQueue()
 
     code, output = run(
-        ["task", "enqueue", "fix the typo in the CLI help", "--repo", "git@github.com:o/r.git"],
+        [
+            "task",
+            "enqueue",
+            "fix the typo in the CLI help",
+            "--repo",
+            "git@github.com:o/r.git",
+            "--verify",
+            "pytest -q",
+        ],
         queue,
     )
 
@@ -344,6 +352,7 @@ def test_enqueue_creates_a_queued_task_with_a_spec() -> None:
     assert tasks[0].spec is not None
     assert tasks[0].spec.repo_url == "git@github.com:o/r.git"
     assert tasks[0].spec.instructions == "fix the typo in the CLI help"
+    assert tasks[0].spec.verify == "pytest -q"
 
 
 def test_approval_pending_lists_issued_tokens(tmp_path, monkeypatch) -> None:

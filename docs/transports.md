@@ -95,6 +95,7 @@ Allowed metadata (optional, one per line):
   base:      main
   model:     local:qwen3.6 | anthropic:claude | openai:gpt   (optional)
   branch:    herald/<slug>                                   (optional)
+  verify:    pytest -q                                       (optional; allowlisted)
 ```
 
 Rules:
@@ -106,6 +107,9 @@ Rules:
 - A message with no resolvable repo, or with no instructions after metadata is removed, is
   rejected with a reason instead of being guessed at.
 - Deduplicate on `Message-ID` (or the transport's stable event id).
+- `verify:` runs in the worktree after the harness and before the PR; if it fails, the task
+  fails and escalates. It executes only when its argv is on the operator's allowlist
+  (`HERALD_VERIFY_ALLOW`), never through a shell (golden rule 7).
 
 The Normalizer returns either a `NormalizedTask` (`Task` + `TaskSpec`) or a `Rejected`
 with a `RejectReason` (`attachments`, `no_repo`, `empty`). It never executes message text.

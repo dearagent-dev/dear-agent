@@ -208,6 +208,7 @@ def build_worker(
     """Wire a TaskWorker from its collaborators."""
     from herald.approvals import build_approval_store
     from herald.approvals_service import ApprovalService
+    from herald.verify import CommandVerifier
 
     sandbox = sandbox or default_sandbox()
     runner = build_routing_runner(sandbox)
@@ -222,6 +223,7 @@ def build_worker(
         worktrees_root=default_worktrees_root(),
         notifier=Notifier(transport, approvals=approvals),
         escalator=Escalator(transport),
+        verifier=CommandVerifier.from_env(os.environ),
     )
     return TaskWorker(
         queue=queue,

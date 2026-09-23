@@ -88,6 +88,11 @@ def _add_enqueue(subparsers: argparse._SubParsersAction) -> None:
     parser.add_argument("--base", default="main", help="base branch (default: main)")
     parser.add_argument("--subject", default=None, help="task subject (default: from instructions)")
     parser.add_argument("--model", default=None, help="provider:model hint for the harness")
+    parser.add_argument(
+        "--verify",
+        default=None,
+        help="command that must pass before the PR (must be on HERALD_VERIFY_ALLOW)",
+    )
     parser.add_argument("--transport-id", default=None, help="dedupe key (default: generated)")
     parser.set_defaults(handler=_handle_enqueue)
 
@@ -105,6 +110,7 @@ def _handle_enqueue(args: argparse.Namespace, context: CliContext) -> int:
             base_branch=args.base,
             instructions=args.instructions,
             model_request=args.model,
+            verify=args.verify,
         ),
     )
     stored = context.require_queue().enqueue(task)
