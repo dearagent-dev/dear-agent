@@ -85,75 +85,66 @@ class Decider(Protocol):
 
 
 @dataclass(slots=True, frozen=True)
-class ModelInfo:
-    """A model offered by a catalog: identity, limits, price and capabilities.
+class DeciderInfo:
+    """Metadata describing one decider a catalog offers (ADR 0004, M7).
 
-    Vendor-neutral: no provider name, URL or wire format leaks in. ``prompt_price`` and
-    ``completion_price`` are per-token costs in the catalog's own units; a catalog documents
-    its convention, and ``is_free`` is true when both are zero.
+    Vendor-neutral: the core reads this and never imports a vendor SDK. ``protocol`` says
+    *how* the decider answers: ``system-one`` is native (choice/score/noul in one typed
+    pass — Jev, Laya), ``openai-compat`` emulates it over a chat endpoint (``native_types``
+    is then false and answers are parsed from text), and ``rules`` is the deterministic
+    fallback. ``native_types`` decides preference: a native decider is preferred over an
+    emulated one, because it cannot return a malformed type.
     """
 
     id: str
-    context_length: int = 0
-    prompt_price: float = 0.0
-    completion_price: float = 0.0
-    supports_json: bool = False
-    output_modalities: tuple[str, ...] = ("text",)
+    protocol: str = "system-one"
+    endpoint: str = ""
+    model: str = ""
+    native_types: bool = True
+    local: bool = False
+    free: bool = False
+    api_key_env: str | None = None
 
     @property
-    def is_free(self) -> bool:
-        return self.prompt_price == 0.0 and self.completion_price == 0.0
-
-    def supports(self, *, min_context: int) -> bool:
-        """True when this model meets a decider's requirements.
-
-        A decider needs a **text-only** output (a model that also emits audio or images is not
-        a chat model), JSON support, and enough context.
-        """
-        return (
-            self.supports_json
-            and self.output_modalities == ("text",)
-            and (self.context_length >= min_context)
-        )
+    def is_native(self) -> bool:
+        return self.protocol == "system-one" and self.native_types
 
 
 @runtime_checkable
-class ModelCatalog(Protocol):
-    """Lists the models a provider offers, with the metadata to choose among them.
+class DeciderCatalog(Protocol):
+    """Lists the deciders available to this deployment, with the metadata to choose among them.
 
-    The core asks the catalog for models and applies its own selection policy; it never
-    knows whether the models come from OpenRouter, a local vLLM, or a static list. This is
-    what lets Herald use a hosted catalog today and a self-hosted one tomorrow by swapping
-    the implementation (golden rule 5).
+    The core asks the catalog and applies its own :class:`~herald.decision.policy.DeciderPolicy`;
+    it never knows whether the entries come from the environment, TypeSafe, or a local list.
     """
 
-    def list_models(self) -> list[ModelInfo]:
-        """Return the available models. Raise :class:`DecisionError` on failure."""
+    def list_deciders(self) -> list[DeciderInfo]:
+        """Return the configured deciders. Raise :class:`DecisionError` on failure."""
         ...
 
 
 @runtime_checkable
-class ModelProvider(Protocol):
-    """Builds a :class:`Decider` for a specific model chosen from a catalog (ADR 0004).
+class DeciderProvider(Protocol):
+    """Builds a :class:`Decider` for a :class:`DeciderInfo` chosen from a catalog.
 
-    The catalog decides *what exists*; the provider decides *how to run one of them*. Keeping
-    them apart means the selection policy is written once against the core, and a provider
-    (OpenRouter, a local endpoint, TypeSafe) is one implementation of both ports.
+    The catalog decides *what exists*; the provider decides *how to run one of them* (which
+    adapter, with what credentials). One implementation per protocol keeps the core free of
+    vendor knowledge.
     """
 
-    def decider_for(self, model: ModelInfo) -> Decider:
-        """Return a decider bound to ``model``. Raise :class:`DecisionError` if unsupported."""
+    def decider_for(self, info: DeciderInfo) -> Decider:
+        """Return a decider for ``info``. Raise :class:`DecisionError` if unsupported."""
         ...
 
 
 __all__ = [
     "Answer",
     "Decider",
+    "DeciderCatalog",
+    "DeciderInfo",
+    "DeciderProvider",
     "Decision",
     "DecisionError",
     "DecisionKind",
-    "ModelCatalog",
-    "ModelInfo",
-    "ModelProvider",
     "Question",
 ]
