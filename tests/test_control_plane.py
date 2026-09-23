@@ -413,3 +413,49 @@ def test_security_decider_adds_a_suspicious_flag() -> None:
 
     assert report.suspicious == ["<m1@x>"]
     assert report.accepted == ["<m1@x>"]
+
+
+def test_a_needs_human_verdict_gates_the_task() -> None:
+    from herald.control_plane import ControlPlane
+    from herald.decision.port import Answer, Decision, DecisionKind
+    from herald.decision.router import HumanGate
+
+    class _Model:
+        def decide(self, state, questions):
+            return Decision(answers={"needs_human": Answer(kind=DecisionKind.NOUL, noul=0.9)})
+
+    queue = MemoryQueue()
+    store = MemoryApprovalStore()
+    plane = ControlPlane(
+        transport=MemoryTransport(),
+        queue=queue,
+        approvals=ApprovalService(store, queue),
+        human_gate=HumanGate(decider=_Model()),
+    )
+
+    report = plane.ingest([make_message(headers={})])
+
+    assert report.gated == ["<m1@x>"]
+    assert report.needs_human == ["<m1@x>"]
+    assert queue.get("<m1@x>").state is TaskState.ACTION
+    assert [approval.task_id for approval in store.pending()] == ["<m1@x>"]
+
+
+def test_the_human_gate_fails_open_without_a_decider() -> None:
+    from herald.control_plane import ControlPlane
+    from herald.decision.router import HumanGate
+
+    queue = MemoryQueue()
+    store = MemoryApprovalStore()
+    plane = ControlPlane(
+        transport=MemoryTransport(),
+        queue=queue,
+        approvals=ApprovalService(store, queue),
+        human_gate=HumanGate(decider=None),
+    )
+
+    report = plane.ingest([make_message(headers={})])
+
+    assert report.gated == []
+    assert report.needs_human == []
+    assert queue.get("<m1@x>").state is TaskState.QUEUED

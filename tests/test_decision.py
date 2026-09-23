@@ -213,6 +213,31 @@ def test_security_decider_never_raises() -> None:
     assert verdict.suspicious is False
 
 
+def test_human_gate_reads_the_needs_human_verdict() -> None:
+    from herald.decision.router import HumanGate
+
+    class Scripted:
+        def decide(self, state, questions):
+            from herald.decision.port import Answer, Decision
+
+            return Decision(answers={"needs_human": Answer(kind=DecisionKind.NOUL, noul=0.8)})
+
+    assert HumanGate(decider=Scripted()).needs_human("touch production") is True
+    assert HumanGate(decider=Scripted(), threshold=0.9).needs_human("touch production") is False
+
+
+def test_human_gate_is_silent_without_a_model() -> None:
+    from herald.decision.router import HumanGate
+
+    assert HumanGate(decider=None).needs_human("anything") is False
+
+
+def test_human_gate_never_raises() -> None:
+    from herald.decision.router import HumanGate
+
+    assert HumanGate(decider=FakeDecider(error=True)).needs_human("anything") is False
+
+
 def test_decision_log_round_trips(tmp_path) -> None:
     from herald.decision.log import DecisionLog, DecisionRecord
 

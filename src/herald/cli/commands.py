@@ -318,6 +318,7 @@ def _inbound_plane(queue, transport):
     from herald.auth import EmailAuthGate, SenderAllowlist
     from herald.control_plane import ControlPlane
     from herald.decision.factory import build_decider
+    from herald.decision.router import HumanGate
     from herald.decision.security import SecurityDecider
     from herald.events import build_event_log
     from herald.notify.notifier import Notifier
@@ -327,6 +328,7 @@ def _inbound_plane(queue, transport):
     gate = EmailAuthGate.from_env(os.environ)
     if gate is None:
         gate = SenderAllowlist.from_env(os.environ.get("HERALD_ALLOWED_SENDERS"))
+    decider = build_decider()
     return ControlPlane(
         transport=transport,
         queue=queue,
@@ -334,7 +336,8 @@ def _inbound_plane(queue, transport):
         gate=gate,
         approvals=ApprovalService(build_approval_store(), queue),
         scanner=InjectionScanner(),
-        security=SecurityDecider(decider=build_decider()),
+        security=SecurityDecider(decider=decider),
+        human_gate=HumanGate(decider=decider),
         events=build_event_log(),
         policies=build_policy_store(),
     )
@@ -365,13 +368,15 @@ def _handle_poll(args: argparse.Namespace, context: CliContext) -> int:
         "denied": report.denied,
         "decided": report.decided,
         "suspicious": report.suspicious,
+        "gated": report.gated,
+        "needs_human": report.needs_human,
     }
     if context.as_json:
         context.emit_json(payload)
     else:
         context.emit(
             f"accepted={len(report.accepted)} rejected={len(report.rejected)} "
-            f"denied={len(report.denied)}"
+            f"denied={len(report.denied)} gated={len(report.gated)}"
         )
     return 0
 

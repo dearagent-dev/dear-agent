@@ -29,6 +29,7 @@ def build_inbound(queue: Queue):
     from herald.auth import InboundAuthorizer, InboundGate, RateLimiter
     from herald.control_plane import ControlPlane
     from herald.decision.factory import build_decider
+    from herald.decision.router import HumanGate
     from herald.decision.security import SecurityDecider
     from herald.events import build_event_log
     from herald.inbound import InboundWebhook
@@ -47,6 +48,7 @@ def build_inbound(queue: Queue):
     from herald.notify.notifier import Notifier
 
     approvals = ApprovalService(build_approval_store(), queue)
+    decider = build_decider()
     # Auth lives on the webhook (it maps failures to 401/403); the plane must not gate
     # again, or a rejected request would be silently swallowed as "denied".
     plane = ControlPlane(
@@ -55,7 +57,8 @@ def build_inbound(queue: Queue):
         notifier=Notifier(transport),
         approvals=approvals,
         scanner=InjectionScanner(),
-        security=SecurityDecider(decider=build_decider()),
+        security=SecurityDecider(decider=decider),
+        human_gate=HumanGate(decider=decider),
         events=build_event_log(),
         policies=build_policy_store(),
     )

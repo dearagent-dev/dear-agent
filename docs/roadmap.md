@@ -124,9 +124,9 @@ See [ADR 0005](decisions/0005-state-store.md).
 
 ## Later / ideas
 
-- **Gate high-risk inbound runs behind approval.** The mechanism exists (idle proposals are
-  parked in `action` and released by a `run` approval); extend it to inbound tasks whose
-  decider verdict says a human should look.
+- [x] **Gate high-risk inbound runs behind approval.** Inbound tasks whose decider verdict
+  says a human should look are parked in `action` and released by a `run` approval, like
+  suspicious messages (`HumanGate`, `HERALD_DECIDER`).
 - **Connection resilience**: pool Postgres connections and reconnect on failure for the
   long-lived control plane; back the store with PITR.
 - Idle: persist the budget/metrics and dedupe proposals on the database.
