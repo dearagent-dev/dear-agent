@@ -83,6 +83,7 @@ class TaskExecutor:
         *,
         recipient: str | None = None,
         claimed: bool = False,
+        verifier: CommandVerifier | None = None,
     ) -> ExecutedTask:
         """Run ``task`` end to end.
 
@@ -124,7 +125,7 @@ class TaskExecutor:
                 # The harness succeeded. Run the task's verify gate first (only if the
                 # command is allowlisted), then publish. A git/forge error must fail the task
                 # cleanly, never leave it `running` until the lease expires.
-                failure = self._verify(task, spec, worktree)
+                failure = self._verify(task, spec, worktree, verifier)
                 if failure is None:
                     try:
                         commit = self._git.commit_all(worktree, message=_commit_message(task, spec))
@@ -182,14 +183,21 @@ class TaskExecutor:
         finally:
             worktree.remove()
 
-    def _verify(self, task: Task, spec: TaskSpec, worktree: Worktree) -> FailureKind | None:
+    def _verify(
+        self,
+        task: Task,
+        spec: TaskSpec,
+        worktree: Worktree,
+        verifier: CommandVerifier | None = None,
+    ) -> FailureKind | None:
         """Run the task's verify gate, if any. Returns a failure kind, or ``None`` to pass."""
         if not spec.verify:
             return None
-        if self._verifier is None:
+        active = verifier or self._verifier
+        if active is None:
             self._emit(task.id, "verify.blocked", command=spec.verify)
             return FailureKind.VERIFY_BLOCKED
-        result = self._verifier.run(spec.verify, str(worktree.path))
+        result = active.run(spec.verify, str(worktree.path))
         if result.blocked:
             self._emit(task.id, "verify.blocked", command=spec.verify)
             return FailureKind.VERIFY_BLOCKED

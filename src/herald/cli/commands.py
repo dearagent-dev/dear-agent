@@ -465,6 +465,96 @@ def _handle_idle(args: argparse.Namespace, context: CliContext) -> int:
     return 0
 
 
+def add_policy_commands(
+    subparsers: argparse._SubParsersAction, parent: argparse.ArgumentParser
+) -> None:
+    policy = subparsers.add_parser(
+        "policy", help="manage per-project policy (markdown projected into the store)"
+    )
+    policy.set_defaults(handler=None)
+    sub = policy.add_subparsers(dest="policy_command", required=True)
+
+    sync = sub.add_parser("sync", help="project the markdown policy directory into the store")
+    sync.add_argument("--dir", default=os.environ.get("HERALD_POLICY_DIR", "policy"))
+    sync.set_defaults(handler=_handle_policy_sync, needs_queue=False)
+
+    listing = sub.add_parser("ls", help="list projected policies")
+    listing.set_defaults(handler=_handle_policy_ls, needs_queue=False)
+
+    show = sub.add_parser("show", help="show one project policy")
+    show.add_argument("project")
+    show.set_defaults(handler=_handle_policy_show, needs_queue=False)
+
+    match = sub.add_parser("match", help="show which policy applies to a repository")
+    match.add_argument("repo")
+    match.set_defaults(handler=_handle_policy_match, needs_queue=False)
+
+
+def _policy_payload(policy) -> dict[str, Any]:
+    return {
+        "project": policy.project,
+        "enabled": policy.enabled,
+        "repos": list(policy.repos),
+        "base_branch": policy.base_branch,
+        "harness": policy.harness,
+        "model": policy.model,
+        "verify_allow": list(policy.verify_allow),
+        "source": policy.source,
+    }
+
+
+def _handle_policy_sync(args: argparse.Namespace, context: CliContext) -> int:
+    from herald.policy import build_policy_store, sync_policies
+
+    policies = sync_policies(args.dir, build_policy_store())
+    if context.as_json:
+        context.emit_json([_policy_payload(policy) for policy in policies])
+    else:
+        context.emit(f"synced {len(policies)} policies from {args.dir}")
+    return 0
+
+
+def _handle_policy_ls(args: argparse.Namespace, context: CliContext) -> int:
+    from herald.policy import build_policy_store
+
+    policies = build_policy_store().list()
+    if context.as_json:
+        context.emit_json([_policy_payload(policy) for policy in policies])
+    elif not policies:
+        context.emit("no policies")
+    else:
+        for policy in policies:
+            context.emit(
+                f"{policy.project} enabled={policy.enabled} repos={','.join(policy.repos)}"
+            )
+    return 0
+
+
+def _handle_policy_show(args: argparse.Namespace, context: CliContext) -> int:
+    from herald.policy import build_policy_store
+
+    policy = build_policy_store().get(args.project)
+    if policy is None:
+        raise RuntimeError(f"no policy for project {args.project!r}")
+    if context.as_json:
+        context.emit_json(_policy_payload(policy))
+    else:
+        for key, value in _policy_payload(policy).items():
+            context.emit(f"{key}: {value}")
+    return 0
+
+
+def _handle_policy_match(args: argparse.Namespace, context: CliContext) -> int:
+    from herald.policy import build_policy_store
+
+    policy = build_policy_store().for_repo(args.repo)
+    if policy is None:
+        context.emit(f"no policy matches {args.repo}")
+        return 1
+    context.emit(f"{args.repo} -> {policy.project}")
+    return 0
+
+
 def add_health_commands(
     subparsers: argparse._SubParsersAction, parent: argparse.ArgumentParser
 ) -> None:

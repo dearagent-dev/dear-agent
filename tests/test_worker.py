@@ -13,6 +13,7 @@ class CapturingExecutor:
     def __init__(self) -> None:
         self.calls: list[tuple[str, TaskSpec, str | None]] = []
         self.claimed = False
+        self.verifier: object | None = None
 
     def execute(
         self,
@@ -21,8 +22,10 @@ class CapturingExecutor:
         *,
         recipient: str | None = None,
         claimed: bool = False,
+        verifier: object | None = None,
     ) -> ExecutedTask:
         self.claimed = claimed
+        self.verifier = verifier
         self.calls.append((task.id, spec, recipient))
         return ExecutedTask(
             task_id=task.id,
@@ -199,6 +202,85 @@ def test_build_routing_runner_maps_classes(monkeypatch) -> None:
     assert isinstance(runner, RoutingRunner)
     assert set(runner.runners) == {"local", "hosted"}
     assert runner.default == "hosted"
+
+
+def test_worker_fails_a_task_in_a_disabled_project() -> None:
+    from herald.policy import MemoryPolicyStore, ProjectPolicy
+    from herald.queue.models import TaskState
+
+    queue = MemoryQueue()
+    queue.enqueue(
+        Task(
+            id="e1",
+            transport_id="<e1@x>",
+            spec=TaskSpec(repo_url="https://github.com/acme/widget"),
+        )
+    )
+    worker = TaskWorker(
+        queue=queue,
+        executor=CapturingExecutor(),  # type: ignore[arg-type]
+        resolve_spec=lambda task, repo: TaskSpec(repo_url="x"),
+        repo_path=".",
+        policies=MemoryPolicyStore(
+            [ProjectPolicy(project="acme", enabled=False, repos=("acme/*",))]
+        ),
+    )
+
+    with pytest.raises(TaskWorkerError):
+        worker.run("e1")
+
+    assert queue.get("e1").state is TaskState.FAILED
+
+
+def test_worker_applies_the_project_verify_allowlist() -> None:
+    from herald.policy import MemoryPolicyStore, ProjectPolicy
+    from herald.verify import CommandVerifier
+
+    queue = MemoryQueue()
+    queue.enqueue(
+        Task(id="e1", transport_id="<e1@x>", spec=TaskSpec(repo_url="https://github.com/acme/w"))
+    )
+    executor = CapturingExecutor()
+    base = CommandVerifier.from_env({"HERALD_VERIFY_ALLOW": "pytest"})
+    worker = TaskWorker(
+        queue=queue,
+        executor=executor,  # type: ignore[arg-type]
+        resolve_spec=lambda task, repo: TaskSpec(repo_url="x"),
+        repo_path=".",
+        verifier=base,
+        policies=MemoryPolicyStore(
+            [ProjectPolicy(project="acme", repos=("acme/*",), verify_allow=("make test",))]
+        ),
+    )
+
+    worker.run("e1")
+
+    assert executor.verifier is not None
+    assert executor.verifier.allows("make test") is True  # type: ignore[attr-defined]
+    assert executor.verifier.allows("pytest -q") is True  # type: ignore[attr-defined]
+
+
+def test_worker_applies_the_project_base_branch_default() -> None:
+    from herald.policy import MemoryPolicyStore, ProjectPolicy
+
+    queue = MemoryQueue()
+    queue.enqueue(
+        Task(id="e1", transport_id="<e1@x>", spec=TaskSpec(repo_url="https://github.com/acme/w"))
+    )
+    executor = CapturingExecutor()
+    worker = TaskWorker(
+        queue=queue,
+        executor=executor,  # type: ignore[arg-type]
+        resolve_spec=lambda task, repo: TaskSpec(repo_url="x", base_branch="main"),
+        repo_path=".",
+        policies=MemoryPolicyStore(
+            [ProjectPolicy(project="acme", repos=("acme/*",), base_branch="develop")]
+        ),
+    )
+
+    worker.run("e1")
+
+    assert executor.calls[0][1].base_branch == "develop"
 
 
 def test_worker_stops_when_the_error_budget_is_exhausted() -> None:

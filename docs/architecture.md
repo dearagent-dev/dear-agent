@@ -135,6 +135,11 @@ travels over the transport.
 - A task may declare `depends-on:` task ids; it stays `queued` (skipped by the sweep and
   `herald run`) until they are `done`, and is failed if a dependency fails. A small typed
   dependency graph, not a workflow engine.
+- **Per-project policy** is markdown (YAML front matter + prose) under `policy/`, projected
+  into `herald_policy` with `herald policy sync`; the worker reads the row. A policy can
+  enable/disable a repo (a disabled repo's tasks fail), default the base branch, and extend
+  the verify allowlist for that repo — it only *narrows* or *defaults*, never widens what an
+  untrusted message may do.
 
 ## Deployment
 
