@@ -109,8 +109,9 @@ Rules:
   rejected with a reason instead of being guessed at.
 - Deduplicate on `Message-ID` (or the transport's stable event id).
 - `verify:` runs in the worktree after the harness and before the PR; if it fails, the task
-  fails and escalates. It executes only when its argv is on the operator's allowlist
-  (`DEAR_AGENT_VERIFY_ALLOW`), never through a shell (golden rule 7).
+  fails and escalates. It executes only when its full argv matches an operator allowlist entry
+  exactly (`DEAR_AGENT_VERIFY_ALLOW`), under the same sandbox as the harness, never through a
+  shell (golden rule 7).
 - `depends-on:` lists task ids that must be `done` before this task runs. Until then it stays
   `queued` and is skipped by the sweep and `dear-agent run`; if a dependency fails, the task is
   failed too. This is a small typed dependency graph (e.g. plan → implement → test).

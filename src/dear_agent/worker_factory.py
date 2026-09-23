@@ -246,7 +246,7 @@ def build_worker(
         runner = build_runner(provider_model, sandbox)
     approvals = ApprovalService(build_approval_store(), queue)
     events = build_event_log()
-    verifier = CommandVerifier.from_env(os.environ)
+    verifier = CommandVerifier.from_env(os.environ, sandbox=sandbox)
     executor = TaskExecutor(
         queue=queue,
         runner=runner,
