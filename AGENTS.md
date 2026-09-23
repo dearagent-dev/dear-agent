@@ -51,19 +51,23 @@ If a change does not serve one of those goals (or a milestone in
 
 ## 3. Status and where to start
 
-**Current status: M1 (queue).** The M0 design is complete. The durable queue is the
-transport mailbox (Fastmail JMAP first); there is no database. See
-[`docs/decisions/0002-deployment-topology.md`](docs/decisions/0002-deployment-topology.md).
+**Current status: M7 (decision layer) in progress.** M0–M6 are done and verified live on
+OpenShift + Fastmail (the mailbox is the queue; no database). The decision layer uses System
+One models (Jev first) for routing/gates — see
+[`docs/decisions/0004-decision-model.md`](docs/decisions/0004-decision-model.md). Herald has
+**no direct-LLM path**: a harness codes, a decider decides.
 
 Start here:
 
-1. Read [`docs/roadmap.md`](docs/roadmap.md) and pick the **first unchecked slice** of the
-   earliest milestone.
-2. Read the relevant design doc for that slice
+1. Read [`TASKS.md`](TASKS.md) for the **current, in-progress slice** and its handoff; that
+   supersedes the roadmap for what to do right now.
+2. Otherwise read [`docs/roadmap.md`](docs/roadmap.md) and pick the **first unchecked slice**
+   of the earliest milestone.
+3. Read the relevant design doc for that slice
    ([architecture](docs/architecture.md) · [transports](docs/transports.md) ·
    [queue](docs/queue.md) · [providers](docs/providers.md) ·
    [security](docs/security.md)).
-3. Open an issue (or a task in `TASKS.md` if it exists) describing the slice before coding.
+4. Open an issue (or add a task to `TASKS.md`) describing the slice before coding.
 
 The recommended first slice is **M1.1 — verify Fastmail JMAP and model `Task` + the `Queue`
 port**, because everything else depends on a correct, idempotent queue.
