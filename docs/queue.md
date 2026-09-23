@@ -109,11 +109,14 @@ empty.
   and the task id. Tokens are generated with a CSPRNG, compared in constant time where they
   travel over the wire, and stored in the database (a table with `used_at`/`expires_at`), so
   a token survives restarts and is shared across runner Jobs.
-- A reply matching the thread and token (`approve <token>` / `reject <token>`) moves the
-  task to `approved` or `rejected`.
-- A used, unknown or expired token is rejected explicitly; an expired token triggers a new
-  request, not a silent failure. The approval path never touches `main`: it only records a
-  decision.
+- A reply matching the thread and token (`approve <token>` / `reject <token>`) decides the
+  task. The approval's **action** says what "approved" means: a `run` gate releases the task
+  to `queued` (how approval-gated proposals start), a `land` gate records `approved`.
+  Locally, `herald approval approve|reject <token>` does the same without email.
+- A used, unknown or expired token is rejected explicitly, and a token for a task that is no
+  longer awaiting a decision (not in `action`) is refused without consuming it; an expired
+  token triggers a new request, not a silent failure. The approval path never touches `main`:
+  it only records a decision.
 
 ## Concurrency
 

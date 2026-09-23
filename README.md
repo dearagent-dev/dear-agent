@@ -68,6 +68,24 @@ See [`docs/architecture.md`](docs/architecture.md).
 | **Notifier** | sends results/approvals back over the transport, threading replies. |
 | **Idle loop** | proposes new work when the queue is empty. |
 
+## CLI
+
+The `herald` CLI is the operator entry point. Queue backend from
+`HERALD_QUEUE=memory|postgres`; transport from `HERALD_BACKEND=memory|jmap`.
+
+| Command | Purpose |
+|---|---|
+| `herald task ls\|show\|enqueue\|claim\|complete\|fail\|requeue` | inspect and drive tasks |
+| `herald run [<id>] --repo <path>` | execute a task (oldest queued when no id) |
+| `herald sweep` | dispatch queued tasks to runner Jobs (Kubernetes) |
+| `herald listen` | ingest on JMAP push events instead of polling |
+| `herald idle --repo <path>` | propose work from recent activity (approval-gated) |
+| `herald approval pending\|approve\|reject` | handle approval requests |
+| `herald decide` / `herald decision` | decision model and calibration |
+| `herald health` | queue health and per-state counts |
+
+Local end-to-end quickstart: [docs/getting-started.md](docs/getting-started.md).
+
 ## Transports
 
 | Provider | Send | Receive | Notes |
