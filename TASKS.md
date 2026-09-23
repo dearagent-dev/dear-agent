@@ -45,9 +45,12 @@ log). See [ADR 0005](docs/decisions/0005-state-store.md).
 ## Configuration (see .env, never committed)
 
 - State: `HERALD_QUEUE=memory|postgres` (default `memory`), `HERALD_DATABASE_URL`.
-- Transport: `HERALD_BACKEND=memory|jmap`, `FASTMAIL_API_TOKEN`, `FASTMAIL_ACCOUNT_ID`,
-  `HERALD_MAILBOX` (folder to read, default `Herald`), `HERALD_ALLOWED_SENDERS`
-  (comma-separated addresses or `@domain`; unset = accept any sender).
+- Transport: `HERALD_BACKEND=memory|jmap|imap`. JMAP: `FASTMAIL_API_TOKEN`,
+  `FASTMAIL_ACCOUNT_ID`, `HERALD_MAILBOX`. IMAP/SMTP: `HERALD_IMAP_HOST|PORT|USER|PASSWORD|SSL|MAILBOX|DONE_MAILBOX`,
+  `HERALD_SMTP_HOST|PORT|USER|PASSWORD|STARTTLS|SSL|FROM`.
+- Inbound auth: `HERALD_AUTH_DOMAINS` (DMARC-aligned domains), `HERALD_AUTH_MECHANISMS`
+  (default `dmarc`), `HERALD_AUTH_SERV_ID` (default `messagingengine.com`),
+  `HERALD_ALLOWED_SENDERS` (addresses/`@domain`; unset = accept any sender).
 - Harness: `HERALD_HARNESS=opencode|claude|codex|auto|command`, `HERALD_HARNESS_BINARY`,
   `HERALD_HARNESS_COMMAND`, `HERALD_HARNESSES`, `HERALD_HARNESS_DEFAULT`, `HERALD_SANDBOX`,
   `HERALD_MAX_ATTEMPTS` (default 3).

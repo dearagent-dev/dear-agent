@@ -43,6 +43,18 @@ changed, so the listener re-polls (idempotent) rather than trusting the event. T
 parser and the callback are socket-free and unit-tested; `JmapClient.push_create` can also
 register a webhook `url` so Fastmail POSTs to `POST /inbound` instead.
 
+## IMAP + SMTP
+
+For any provider that speaks standard mail — Gmail, Outlook/M365, Yahoo, iCloud, Fastmail,
+self-hosted, or Proton via Bridge — `HERALD_BACKEND=imap` uses `ImapSmtpTransport`: IMAP
+lists `UNSEEN` and fetches the message, SMTP submits a threaded reply. `herald poll` runs one
+ingest pass (driven by a loop or a Kubernetes `CronJob`), sharing the same inbound wiring as
+the webhook and JMAP paths. Processed messages are filed into
+`HERALD_IMAP_DONE_MAILBOX` (`Herald-Done`), so they are not reprocessed.
+
+Config: `HERALD_IMAP_HOST|PORT|USER|PASSWORD|SSL|MAILBOX|DONE_MAILBOX` and
+`HERALD_SMTP_HOST|PORT|USER|PASSWORD|STARTTLS|SSL|FROM`.
+
 ## Comparison
 
 | Provider | Send | Receive | Async model | Notes |
@@ -50,6 +62,7 @@ register a webhook `url` so Fastmail POSTs to `POST /inbound` instead.
 | **Cloudflare Email Service** | REST / SMTP / Worker `env.EMAIL.send()` | Email Routing → Worker `email()` handler | webhook | Recommended primary. Serverless, send+receive in one platform, Agents SDK `onEmail` hook, Email MCP server, `wrangler` CLI, and an official `agentic-inbox` reference app. Sending is on the Workers paid plan; receiving works on free. |
 | **AgentMail.to** | REST + Python/TS SDKs | webhooks / WebSockets / IMAP | webhook/ws | Drop-in "inbox API for AI agents": programmatic inboxes, threading, attachments, custom domains with SPF/DKIM/DMARC, MCP server. Fastest path if you do not want to build on Cloudflare. |
 | **Fastmail (JMAP)** | JMAP `Email/set` | JMAP Push (EventSource) + `Email/get` | push/poll | Standards-based, fully async, excellent threading/search. Best if you want to own the agent glue and avoid vendor-specific APIs. |
+| **Any IMAP/SMTP** | SMTP | IMAP (poll; IDLE later) | poll | Universal: Gmail, Outlook, Yahoo, iCloud, Fastmail, self-hosted, Proton via Bridge. `HERALD_BACKEND=imap`; no vendor API. |
 | **forwardemail.net** | API / SMTP | forwarding + webhook | webhook | Privacy-focused; usable fallback. Check API/webhook maturity for bidirectional threads. |
 | **Postmark / Resend / SES / Mailgun** | REST API | inbound webhooks (Postmark, SES, Mailgun) | webhook | Strong outbound deliverability; inbound support varies. Good for notifications, weaker for full bidirectional threads. |
 | **IRC** | server | bouncer (ZNC) history | realtime | Fun, but no store-and-forward: a disconnected agent misses messages. Secondary only. |
@@ -62,8 +75,11 @@ register a webhook `url` so Fastmail POSTs to `POST /inbound` instead.
 - **Fast alternative:** AgentMail.to — an inbox per agent with webhooks, if the goal is to
   validate the concept without building email plumbing.
 - **Standards option:** Fastmail JMAP — for a vendor-neutral, push-based inbox.
+- **Portability:** IMAP + SMTP (`HERALD_BACKEND=imap`) — the universal fallback that also
+  covers self-hosted and Proton (via Bridge), independent of any vendor API.
 
-The core must ship the interface above so all three are interchangeable.
+The core ships the interface above, so all of these are interchangeable: swapping providers
+is a configuration change, not a code change.
 
 ## Message contract
 
@@ -99,8 +115,10 @@ summary, and links (branch, commit SHA, PR). No source.
 
 ## Security
 
-- SPF/DKIM/DMARC must be configured on the domain; reject or quarantine unauthenticated
-  mail if the provider supports it.
-- Treat the `From` as advisory; authorize by a shared secret in the body or a signed
-  header/reply token, not by address alone.
+- The email transports verify the **receiving MTA's** `Authentication-Results` (SPF/DKIM/
+  DMARC). `HERALD_AUTH_DOMAINS` allowlists the DMARC-aligned domain and the `From` domain
+  must match it, which defeats a spoofed `From`; `HERALD_ALLOWED_SENDERS` narrows further.
+  A missing verdict fails closed.
+- The push/webhook path is stronger: authorize by the HMAC signature (`HERALD_INBOUND_SECRET`)
+  over the raw body, with the sender bound in, not by address alone.
 - Rate-limit inbound per sender; a burst must not spawn a burst of agent runs.
