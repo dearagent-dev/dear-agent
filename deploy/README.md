@@ -138,7 +138,7 @@ The base manifests were applied to a validation namespace and the control plane 
 `1/1 Running`, serving `/health` from inside the cluster. Two real issues were found and
 fixed by doing this:
 
-1. The image build failed because `pyproject.toml` references `LICENSE`; the `Dockerfile`
+1. The image build failed because `pyproject.toml` references `LICENSE`; the `Containerfile`
    now copies it.
 2. Pods failed with `CreateContainerConfigError` when the referenced Secret had no keys, so
    every `secretKeyRef` is now `optional: true`; the app fails closed on a missing token at

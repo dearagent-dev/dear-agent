@@ -49,9 +49,9 @@ jobs:
       HERALD_TEST_IMAP_TO: green@example.com
       HERALD_TEST_IMAP_SSL: "0"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
@@ -68,12 +68,17 @@ jobs:
   image:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      # Build the real UBI 9 image so Dockerfile/dependency regressions are caught in CI
-      # (the deployable artifact must install psycopg[bin] and run the CLI).
+      # Build the real UBI 9 image so Containerfile/dependency regressions are caught in CI
+      # (the deployable artifact must install psycopg[bin] and run the CLI). Buildah uses the
+      # Containerfile natively; no docker.
       - name: Build the container image
-        run: docker build -t herald:ci .
+        uses: redhat-actions/buildah-build@v3
+        with:
+          image: herald
+          tags: ci
+          containerfiles: ./Containerfile
 
       - name: Smoke-check the image
-        run: docker run --rm herald:ci herald --help
+        run: podman run --rm herald:ci herald --help

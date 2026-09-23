@@ -43,8 +43,8 @@ harness's business (golden rule 3), and the model/endpoint stays configuration (
 5. **Container env is an allowlist**, not the host environment: `HERALD_HARNESS_CONTAINER_ENV`
    names the variables passed with `--env NAME=VALUE`. Egress is `host` by default (a hosted
    model must answer); `HERALD_HARNESS_CONTAINER_NETWORK=none` denies it.
-6. **No Dockerfiles in this repo.** Herald consumes images; it does not build harness images.
-   A harness with no usable image simply waits for one (Codex, deferred).
+6. **No Containerfiles in this repo.** Herald consumes images; it does not build harness
+   images. A harness with no usable image simply waits for one (Codex, deferred).
 
 ## Rationale
 
@@ -65,7 +65,7 @@ harness's business (golden rule 3), and the model/endpoint stays configuration (
 - **A container runtime (`podman`) is now a supported dependency** for `podman` isolation;
   `bwrap` remains the zero-dependency default.
 - **Codex is deferred:** it has no official image, so it runs containerised only once an
-  operator sets `HERALD_HARNESS_IMAGE`. No Dockerfile is added for it.
+  operator sets `HERALD_HARNESS_IMAGE`. No Containerfile is added for it.
 - **New configuration surface** (`HERALD_HARNESS_*`, `HERALD_CONTAINER_BINARY`) documented in
   `TASKS.md`; defaults may need adjusting to the image's user (`HERALD_HARNESS_CONTAINER_HOME`).
 
@@ -74,7 +74,7 @@ harness's business (golden rule 3), and the model/endpoint stays configuration (
 - **Install every harness in Herald's own image.** Rejected: vendoring harnesses, a larger
   attack surface, and a rebuild per harness release.
 - **Only bwrap.** Rejected: forces the harness runtime onto the host and cannot vary per task.
-- **A Dockerfile per harness.** Rejected: the harnesses with official images do not need one,
+- **A Containerfile per harness.** Rejected: the harnesses with official images do not need one,
   and maintaining the others is not Herald's job.
 - **gVisor / Kata.** Deferred, not rejected: they harden the runtime further but add a
   dependency the current threat model does not yet require.
