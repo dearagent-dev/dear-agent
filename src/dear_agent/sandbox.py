@@ -138,6 +138,9 @@ class ContainerSandbox:
     binary: str = DEFAULT_CONTAINER_BINARY
     userns_keep_id: bool = False
     extra_args: tuple[str, ...] = ()
+    cap_drop: bool = True
+    pids_limit: int | None = 512
+    read_only: bool = False
     # SELinux handling for the bind mounts (Fedora/RHEL/OpenShift run enforcing):
     #   auto    - relabel the disposable worktree with :Z when SELinux is enabled; leave the
     #             credential mounts alone (relabel them explicitly with ``Z``/``z`` if needed)
@@ -152,6 +155,8 @@ class ContainerSandbox:
                 f"invalid selinux mode {self.selinux!r}; expected one of "
                 f"{', '.join(sorted(_SELINUX_MODES))}"
             )
+        if self.pids_limit is not None and self.pids_limit <= 0:
+            raise SandboxError(f"pids_limit must be positive, got {self.pids_limit}")
 
     @property
     def available(self) -> bool:
@@ -170,6 +175,14 @@ class ContainerSandbox:
             "--rm",
             "--security-opt",
             "no-new-privileges",
+        ]
+        if self.cap_drop:
+            command += ["--cap-drop", "ALL"]
+        if self.pids_limit is not None:
+            command += ["--pids-limit", str(self.pids_limit)]
+        if self.read_only:
+            command += ["--read-only", "--tmpfs", "/tmp"]
+        command += [
             "--volume",
             f"{worktree}:{self.workdir}:rw{self._worktree_relabel()}",
             "--workdir",

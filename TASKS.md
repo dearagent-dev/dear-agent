@@ -68,6 +68,9 @@ log). See [ADR 0005](docs/decisions/0005-state-store.md).
   (default `/work`), `DEAR_AGENT_HARNESS_CONTAINER_USERNS=keep-id`, `DEAR_AGENT_HARNESS_CONTAINER_ARGS`,
   `DEAR_AGENT_HARNESS_CONTAINER_SELINUX=auto|z|Z|disable|none` (default `auto`; `auto` relabels
   the worktree with `:Z` on SELinux hosts), `DEAR_AGENT_CONTAINER_BINARY` (default `podman`).
+  Hardening: `DEAR_AGENT_HARNESS_CONTAINER_CAP_DROP` (default `true`, `--cap-drop ALL`),
+  `DEAR_AGENT_HARNESS_CONTAINER_PIDS` (default `512`; `none` to omit), and
+  `DEAR_AGENT_HARNESS_CONTAINER_READONLY=true` for a read-only rootfs with a `/tmp` tmpfs.
 - Harness: `DEAR_AGENT_HARNESS=opencode|claude|codex|auto|command`, `DEAR_AGENT_HARNESS_BINARY`,
   `DEAR_AGENT_HARNESS_COMMAND`, `DEAR_AGENT_HARNESSES`, `DEAR_AGENT_HARNESS_DEFAULT`, `DEAR_AGENT_SANDBOX`,
   `DEAR_AGENT_MAX_ATTEMPTS` (default 3), `DEAR_AGENT_VERIFY_ALLOW` (allowlisted `verify:` commands).

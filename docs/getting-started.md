@@ -51,6 +51,10 @@ On an SELinux host (Fedora/RHEL) the worktree is relabelled with `:Z` automatica
 (`DEAR_AGENT_HARNESS_CONTAINER_SELINUX=auto`, the default). Set it to `Z` to relabel the credential
 mounts too, `disable` to pass `--security-opt label=disable`, or `none` to never touch labels.
 
+The container also drops all capabilities (`--cap-drop ALL`), caps processes (`--pids-limit 512`),
+and refuses privilege escalation by default; set `DEAR_AGENT_HARNESS_CONTAINER_READONLY=true` for a
+read-only rootfs with a `/tmp` tmpfs.
+
 ## 3. Enqueue a task
 
 The email path is [below](#the-email-path); for a quick run you can enqueue directly:

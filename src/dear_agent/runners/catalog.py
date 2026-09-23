@@ -120,7 +120,8 @@ def container_sandbox(info: HarnessInfo, env: Mapping[str, str]) -> ContainerSan
     The image, mounts and container env default to the harness metadata; each is overridden
     wholesale by ``DEAR_AGENT_HARNESS_IMAGE``, ``DEAR_AGENT_HARNESS_MOUNTS`` and
     ``DEAR_AGENT_HARNESS_CONTAINER_ENV``. The remaining knobs (network, container home, workdir,
-    container binary, userns, extra args) come from ``DEAR_AGENT_HARNESS_CONTAINER_*`` /
+    container binary, userns, extra args, SELinux, and the hardening flags ``CAP_DROP`` /
+    ``PIDS`` / ``READONLY``) come from ``DEAR_AGENT_HARNESS_CONTAINER_*`` /
     ``DEAR_AGENT_CONTAINER_BINARY``. A harness with no default image needs
     ``DEAR_AGENT_HARNESS_IMAGE`` set, or the run fails loudly rather than silently unsandboxed.
     """
@@ -144,11 +145,20 @@ def container_sandbox(info: HarnessInfo, env: Mapping[str, str]) -> ContainerSan
         userns_keep_id=env.get("DEAR_AGENT_HARNESS_CONTAINER_USERNS", "").lower() == "keep-id",
         extra_args=tuple(_split_list(env.get("DEAR_AGENT_HARNESS_CONTAINER_ARGS"))),
         selinux=env.get("DEAR_AGENT_HARNESS_CONTAINER_SELINUX", "auto").strip(),
+        cap_drop=env.get("DEAR_AGENT_HARNESS_CONTAINER_CAP_DROP", "true").lower() != "false",
+        pids_limit=_optional_int(env.get("DEAR_AGENT_HARNESS_CONTAINER_PIDS", "512")),
+        read_only=env.get("DEAR_AGENT_HARNESS_CONTAINER_READONLY", "").lower() == "true",
     )
 
 
 def _split_list(value: str | None) -> list[str]:
     return [part.strip() for part in (value or "").split(",") if part.strip()]
+
+
+def _optional_int(value: str | None) -> int | None:
+    if value is None or value.strip().lower() in ("", "none"):
+        return None
+    return int(value)
 
 
 def build_runner_for(info: HarnessInfo, model: str | None, sandbox: Sandbox) -> Runner:
