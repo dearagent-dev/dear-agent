@@ -119,7 +119,7 @@ def test_fail_marks_a_running_task_failed() -> None:
     assert queue.get("e1").state is TaskState.FAILED
 
 
-def test_jmap_backend_without_token_errors_cleanly(monkeypatch: object) -> None:
+def test_postgres_queue_without_dsn_errors_cleanly() -> None:
     import subprocess
     import sys
     from pathlib import Path
@@ -128,16 +128,17 @@ def test_jmap_backend_without_token_errors_cleanly(monkeypatch: object) -> None:
     env = {
         "PATH": "",
         "PYTHONPATH": str(repo_root / "src"),
-        "FASTMAIL_API_TOKEN": "",
+        "HERALD_QUEUE": "postgres",
+        "HERALD_DATABASE_URL": "",
     }
     result = subprocess.run(
-        [sys.executable, "-m", "herald.cli.main", "task", "--backend", "jmap", "ls"],
+        [sys.executable, "-m", "herald.cli.main", "task", "ls"],
         capture_output=True,
         text=True,
         env=env,
     )
     assert result.returncode == 2
-    assert "FASTMAIL_API_TOKEN" in result.stderr
+    assert "HERALD_DATABASE_URL" in result.stderr
 
 
 def test_run_executes_a_task_via_the_worker(monkeypatch) -> None:

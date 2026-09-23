@@ -12,28 +12,28 @@ Goal: the mailbox becomes **ingress**; PostgreSQL is the durable queue for tasks
 approvals and the decision log. Decision:
 [ADR 0005](docs/decisions/0005-state-store.md) supersedes ADR 0002 in part.
 
-This slice (M8.1) is **infrastructure + decision only**:
+Done:
 
-- [x] ADR 0005 accepted; ADR 0002 marked superseded in part; docs aligned (AGENTS, README,
-      architecture, queue, roadmap).
-- [x] `deploy/components/postgresql/` — PostgreSQL 18 on UBI 9
-      (`registry.redhat.io/rhel9/postgresql-18`) `StatefulSet` + headless `Service` + `PVC`,
-      included by the dev/prod overlays; `herald-postgres` secret reference added.
-- [x] `scripts/dev-postgres.sh` — the same image under podman for local development.
-- [x] Manifest tests for the Postgres invariants (UBI/PG18, never exposed, persists data).
+- [x] **M8.1** ADR 0005 accepted; ADR 0002 marked superseded in part; docs aligned.
+      `deploy/components/postgresql/` (PG18 on UBI 9 `StatefulSet` + headless `Service` +
+      `PVC`) included by the dev/prod overlays; `scripts/dev-postgres.sh`; manifest tests.
+- [x] **M8.2** `PostgresQueue` + schema (`src/herald/queue/postgres.py`), unique
+      `transport_id` and guarded-`UPDATE` claim/lease; `JmapQueue` retired; queue backend
+      decoupled from the transport (`HERALD_QUEUE`, `HERALD_DATABASE_URL`); CI Postgres
+      service. Verified against a live Postgres (podman).
 
-Next (M8.2+):
+Next:
 
-1. Schema + migrations and a `PostgresQueue` implementing the `Queue` port (unique
-   `transport_id`, `FOR UPDATE SKIP LOCKED` claim, lease sweep); retire `JmapQueue`.
-2. Move approvals and the decision log/labels into Postgres; drop the file stores.
-3. One-time backfill of in-flight tasks from the mailbox; cut the sweep and runner over.
+1. **M8.3** Move approvals and the decision log/labels into Postgres; drop the file stores.
+2. **M8.4** One-time backfill of in-flight tasks from the mailbox; cut the sweep and runner
+   over to the database.
 
 Note: the M7 decider refactor is a separate branch (`herald-m7-decider-refactor`, PR #54).
 
 ## Configuration (see .env, never committed)
 
-- State: `HERALD_DATABASE_URL` (PostgreSQL 18 on UBI 9; local podman or in-cluster).
+- State: `HERALD_QUEUE=memory|postgres` (default `memory`) and `HERALD_DATABASE_URL`
+  (PostgreSQL 18 on UBI 9; local podman or in-cluster).
 - Decision: `HERALD_DECIDER=rules|jev|openai-compat|none` (alias `openrouter`),
   `HERALD_DECIDER_MODEL`, `HERALD_DECIDER_ENDPOINT`, `HERALD_DECIDER_BASE_URL`,
   `HERALD_DECIDER_THRESHOLD`, `HERALD_DECIDER_LOG`, `TYPESAFE_API_KEY`, `OPENROUTER_API_KEY`.

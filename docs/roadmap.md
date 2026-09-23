@@ -110,11 +110,12 @@ deterministic fallback. Advisory only — never a security boundary.
 The mailbox becomes ingress; PostgreSQL holds tasks, state, approvals and the decision log.
 See [ADR 0005](decisions/0005-state-store.md).
 
-- [ ] **M8.1** Postgres deployment: a kustomize component (`StatefulSet` + `Service` + `PVC`,
+- [x] **M8.1** Postgres deployment: a kustomize component (`StatefulSet` + `Service` + `PVC`,
   `registry.redhat.io/rhel9/postgresql-18`) and a local podman equivalent
   (`scripts/dev-postgres.sh`), sharing one `HERALD_DATABASE_URL`.
-- [ ] **M8.2** Schema + migrations and a `PostgresQueue` implementing the `Queue` port
-  (unique `transport_id`, `FOR UPDATE SKIP LOCKED` claim, lease sweep); `JmapQueue` retired.
+- [x] **M8.2** Schema and a `PostgresQueue` implementing the `Queue` port (unique
+  `transport_id`, guarded `UPDATE` claim, lease sweep); `JmapQueue` retired and the queue
+  backend decoupled from the transport (`HERALD_QUEUE`). Verified against a live Postgres.
 - [ ] **M8.3** Move approvals and the decision log/labels into Postgres; drop the file stores.
 - [ ] **M8.4** One-time backfill of in-flight tasks from the mailbox; cut the sweep and runner
   over to the database.

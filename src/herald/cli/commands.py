@@ -114,12 +114,6 @@ def add_task_commands(
     subparsers: argparse._SubParsersAction, parent: argparse.ArgumentParser
 ) -> None:
     task = subparsers.add_parser("task", help="manage tasks")
-    task.add_argument(
-        "--backend",
-        choices=["memory", "jmap"],
-        default="memory",
-        help="queue backend (default: memory)",
-    )
     task.set_defaults(handler=None)
     task_sub = task.add_subparsers(dest="task_command", required=True)
 
@@ -135,12 +129,6 @@ def add_sweep_commands(
 ) -> None:
     parser = subparsers.add_parser(
         "sweep", help="release stale runs and dispatch queued tasks to runner Jobs"
-    )
-    parser.add_argument(
-        "--backend",
-        choices=["memory", "jmap"],
-        default="memory",
-        help="queue backend (default: memory)",
     )
     parser.add_argument("--template", default=os.environ.get("HERALD_RUNNER_TEMPLATE_CONFIGMAP"))
     parser.add_argument("--limit", type=int, default=20)
@@ -188,12 +176,6 @@ def add_listen_commands(
 ) -> None:
     parser = subparsers.add_parser(
         "listen", help="ingest on JMAP push events (EventSource) instead of polling"
-    )
-    parser.add_argument(
-        "--backend",
-        choices=["memory", "jmap"],
-        default="jmap",
-        help="queue/transport backend (default: jmap)",
     )
     parser.set_defaults(handler=_handle_listen)
 
@@ -271,7 +253,7 @@ def add_run_commands(
         "--backend",
         choices=["memory", "jmap"],
         default="memory",
-        help="queue/transport backend (default: memory)",
+        help="transport backend (default: memory); the queue comes from HERALD_QUEUE",
     )
     parser.set_defaults(handler=_handle_run)
 

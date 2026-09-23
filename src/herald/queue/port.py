@@ -32,9 +32,10 @@ class StateConflictError(QueueError):
 class Queue(Protocol):
     """Durable task queue.
 
-    The authoritative store is the transport mailbox (Fastmail JMAP first): state lives in
-    mailboxes/keywords and transitions are guarded by ``ifInState``. Implementations must
-    preserve the atomic-claim and dedupe guarantees regardless of backend.
+    The authoritative store is PostgreSQL (ADR 0005): state is a column, dedupe is a unique
+    index on ``transport_id`` and transitions are guarded ``UPDATE``s (compare-and-swap).
+    Implementations must preserve the atomic-claim and dedupe guarantees regardless of
+    backend.
     """
 
     def enqueue(self, task: Task) -> Task | None:

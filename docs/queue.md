@@ -6,9 +6,9 @@ the decision log — lives in the database. Git remains the only artifact plane.
 [ADR 0005](decisions/0005-state-store.md), which supersedes the mailbox-as-queue design of
 [ADR 0002](decisions/0002-deployment-topology.md) in part.
 
-> **Status:** accepted target model. The `PostgresQueue` adapter and schema are the next
-> slice (M8); until then `JmapQueue` is the running backend. This document describes the
-> target.
+> **Status:** implemented. `PostgresQueue` (`src/herald/queue/postgres.py`) is the queue
+> backend, selected with `HERALD_QUEUE=postgres` + `HERALD_DATABASE_URL`; the JMAP queue
+> adapter is retired. The mailbox is ingress only.
 
 ## Task
 
@@ -78,21 +78,19 @@ received ─▶ queued ─▶ running ─▶ action ─▶ done
 
 ## Atomic claim
 
-Claiming is a single database operation, with real per-row concurrency:
+Claiming a specific task is one guarded `UPDATE` (compare-and-swap): a lost race is a no-op,
+never a double claim, and there is no read-then-write window.
 
 ```sql
-UPDATE task
+UPDATE herald_task
    SET state = 'running', lease_until = now() + $lease, updated_at = now()
- WHERE id = (SELECT id FROM task
-              WHERE state = 'queued'
-              ORDER BY created_at
-              FOR UPDATE SKIP LOCKED
-              LIMIT 1)
+ WHERE id = $id AND state = 'queued'
 RETURNING *;
 ```
 
-`SKIP LOCKED` lets many workers (the sweep and any runner) claim in parallel without taking
-the same task; a lost race simply claims a different task. There is no read-then-write window.
+A caller that wants "the next task" lists `queued` oldest-first (`ORDER BY created_at, id`)
+and claims each; a lost claim just moves on to the next. (A future `claim_next` could use
+`SELECT ... FOR UPDATE SKIP LOCKED` to let many workers pull in parallel without listing.)
 
 ## Lease and resume
 
@@ -134,5 +132,6 @@ the same task; a lost race simply claims a different task. There is no read-then
   (`registry.redhat.io/rhel9/postgresql-18`), deployed as a kustomize component
   (`deploy/components/postgresql`).
 - **Local:** an equivalent podman container (`scripts/dev-postgres.sh`).
-- The application sees a single `HERALD_DATABASE_URL`; Postgres is never exposed outside the
+- The application selects the backend with `HERALD_QUEUE=memory|postgres` (default `memory`)
+  and connects with a single `HERALD_DATABASE_URL`; Postgres is never exposed outside the
   cluster or host.

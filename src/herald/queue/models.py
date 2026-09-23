@@ -29,12 +29,11 @@ def utcnow() -> datetime:
 
 @dataclass(slots=True)
 class Task:
-    """Queue record for an inbound message.
+    """Queue record for an inbound message, persisted as a row (ADR 0005).
 
-    Holds only what the mailbox can persist: identity, mailboxes/keywords, attempts and
-    lease. ``id`` is the JMAP ``Email`` id (server-assigned) and ``transport_id`` is the
-    RFC 5322 ``Message-ID`` (the dedupe key). Content that lives in the message body is
-    modelled by :class:`TaskSpec` and parsed by the Normalizer.
+    ``id`` is Herald's stable internal task id and ``transport_id`` is the RFC 5322
+    ``Message-ID`` (the dedupe key, a unique index in the database). Content that lives in
+    the message body is modelled by :class:`TaskSpec` and parsed by the Normalizer.
     """
 
     id: str

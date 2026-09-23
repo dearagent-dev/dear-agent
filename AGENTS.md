@@ -90,7 +90,7 @@ port**, because everything else depends on a correct, idempotent queue.
   `CronJob` sweep, no always-on daemon, and a PostgreSQL `StatefulSet` (or a local podman
   container) for durable state.
 - The **`herald` CLI** is the operator entry point: `herald task ls|show|claim|complete|fail`
-  (`--backend memory|jmap`).
+  (queue backend from `HERALD_QUEUE=memory|postgres`; `--backend` selects the transport).
 - Formatting/linting/tests (add these as they come into existence):
   - `ruff format && ruff check`
   - `pytest`

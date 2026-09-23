@@ -44,7 +44,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
 
     try:
-        queue = build_queue(args) if getattr(args, "needs_queue", True) else None
+        queue = build_queue() if getattr(args, "needs_queue", True) else None
     except RuntimeError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

@@ -39,7 +39,7 @@ case "$command" in
         -v "${VOLUME}:/var/lib/pgsql/data:Z" \
         "$IMAGE"
     fi
-    echo "postgres://${POSTGRESQL_USER}@127.0.0.1:${PORT}/${POSTGRESQL_DATABASE}"
+    echo "HERALD_DATABASE_URL=postgresql://${POSTGRESQL_USER}:${POSTGRESQL_PASSWORD}@127.0.0.1:${PORT}/${POSTGRESQL_DATABASE}"
     ;;
   down)
     podman rm -f "$CONTAINER" >/dev/null 2>&1 || true

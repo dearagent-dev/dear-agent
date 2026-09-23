@@ -41,14 +41,16 @@ opt-in and already included by the `dev`/`prod` overlays:
   `herald-postgres:5432` inside the namespace and **never** exposed with a Route/NodePort.
 - The PVC uses the cluster default storage class. Pin one per environment with the patch
   commented in `overlays/prod/kustomization.yaml`.
-- Credentials come from the `herald-postgres` Secret (keys `POSTGRESQL_USER`,
-  `POSTGRESQL_PASSWORD`, `POSTGRESQL_DATABASE`, `POSTGRESQL_ADMIN_PASSWORD`); the application
-  uses `HERALD_DATABASE_URL`.
+- Credentials come from the `herald-postgres` Secret: `POSTGRESQL_USER`, `POSTGRESQL_PASSWORD`,
+  `POSTGRESQL_DATABASE` and `POSTGRESQL_ADMIN_PASSWORD` feed the StatefulSet, and `DATABASE_URL`
+  is the DSN the application reads as `HERALD_DATABASE_URL`.
+- The workloads select the backend with `HERALD_QUEUE=postgres` (set in `base/config.yaml`)
+  and get `HERALD_DATABASE_URL` from the Secret; the mailbox is ingress, not the queue.
 
 For local development without a cluster, run the same image with podman:
 
 ```sh
-scripts/dev-postgres.sh up     # prints the connection URL
+scripts/dev-postgres.sh up     # prints HERALD_DATABASE_URL
 scripts/dev-postgres.sh psql
 scripts/dev-postgres.sh down   # keeps the named volume
 ```
@@ -65,7 +67,7 @@ One credential per purpose, least privilege, referenced by `secretKeyRef`:
 | `herald-git-push` | `ssh-privatekey` | push `herald/<slug>`, open draft PR | write deploy key, `herald/*` only |
 | `herald-jmap` | `FASTMAIL_API_TOKEN` | read/send mail | `Email` (+ `Email submission`) |
 | `herald-model` | provider-specific | model calls | scoped provider key |
-| `herald-postgres` | `POSTGRESQL_*` | database credentials | one database, least privilege |
+| `herald-postgres` | `POSTGRESQL_*`, `DATABASE_URL` | database credentials | one database, least privilege |
 
 Create them without putting values in git, for example:
 
@@ -82,7 +84,8 @@ oc create secret generic herald-postgres \
   --from-literal=POSTGRESQL_USER=herald \
   --from-literal=POSTGRESQL_PASSWORD="$HERALD_POSTGRES_PASSWORD" \
   --from-literal=POSTGRESQL_DATABASE=herald \
-  --from-literal=POSTGRESQL_ADMIN_PASSWORD="$HERALD_POSTGRES_ADMIN_PASSWORD"
+  --from-literal=POSTGRESQL_ADMIN_PASSWORD="$HERALD_POSTGRES_ADMIN_PASSWORD" \
+  --from-literal=DATABASE_URL="postgresql://herald:$HERALD_POSTGRES_PASSWORD@herald-postgres:5432/herald"
 ```
 
 For production, project these from an external store (External Secrets Operator, Secrets
@@ -110,13 +113,14 @@ selected repositories.
 
 - The runner is a **`JobTemplate`** (`herald-runner-template` ConfigMap), not a static Job:
   a Job is immutable and one-per-task, so the scheduler renders it per claimed task. The
-  template invokes `herald run --backend jmap <task-id>`, which claims the task, runs the
-  harness in a worktree and opens the draft PR. `herald sweep` (the CronJob) creates one
-  Job per queued task with the task id injected.
+  template invokes `herald run --backend jmap <task-id>` (`--backend` is the *transport*;
+  the queue comes from `HERALD_QUEUE`), which claims the task, runs the harness in a worktree
+  and opens the draft PR. `herald sweep` (the CronJob) creates one Job per queued task with
+  the task id injected.
 - The runner's `--repo /work/source` is cloned read-only on first use from the task's
   `repo:` URL, using the mounted `herald-git-read` key (`GIT_SSH_COMMAND`).
-- The database is deployed but not yet used by the application: the `PostgresQueue` adapter,
-  schema and migrations are M8.2 (ADR 0005). `herald` still runs on `JmapQueue` until then.
+- Approvals and the decision log still use their file stores; moving them into Postgres is
+  M8.3 (ADR 0005).
 
 ## Verified on a live OpenShift cluster
 
