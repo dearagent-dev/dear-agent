@@ -138,6 +138,20 @@ class ContainerSandbox:
     binary: str = DEFAULT_CONTAINER_BINARY
     userns_keep_id: bool = False
     extra_args: tuple[str, ...] = ()
+    # SELinux handling for the bind mounts (Fedora/RHEL/OpenShift run enforcing):
+    #   auto    - relabel the disposable worktree with :Z when SELinux is enabled; leave the
+    #             credential mounts alone (relabel them explicitly with ``Z``/``z`` if needed)
+    #   Z / z   - relabel every mount (private ``Z`` / shared ``z``); mutates the host label
+    #   disable - pass ``--security-opt label=disable`` and relabel nothing
+    #   none    - never touch SELinux labels
+    selinux: str = "auto"
+
+    def __post_init__(self) -> None:
+        if self.selinux not in _SELINUX_MODES:
+            raise SandboxError(
+                f"invalid selinux mode {self.selinux!r}; expected one of "
+                f"{', '.join(sorted(_SELINUX_MODES))}"
+            )
 
     @property
     def available(self) -> bool:
@@ -157,19 +171,21 @@ class ContainerSandbox:
             "--security-opt",
             "no-new-privileges",
             "--volume",
-            f"{worktree}:{self.workdir}:rw",
+            f"{worktree}:{self.workdir}:rw{self._worktree_relabel()}",
             "--workdir",
             self.workdir,
             "--network",
             self.network,
         ]
+        if self.selinux == "disable":
+            command += ["--security-opt", "label=disable"]
         if self.userns_keep_id:
             command.append("--userns=keep-id")
         for mount in self.mounts:
             host = str(Path(mount.host).expanduser())
             container = _container_path(mount.container, self.container_home)
             mode = "ro" if mount.readonly else "rw"
-            command += ["--volume", f"{host}:{container}:{mode}"]
+            command += ["--volume", f"{host}:{container}:{mode}{self._mount_relabel()}"]
         for name in self.env_allowlist:
             if name in os.environ:
                 command += ["--env", f"{name}={os.environ[name]}"]
@@ -177,6 +193,23 @@ class ContainerSandbox:
         command += [self.image]
         command += argv
         return command
+
+    def _worktree_relabel(self) -> str:
+        if self.selinux in ("z", "Z"):
+            return f",{self.selinux}"
+        if self.selinux == "auto" and _selinux_enabled():
+            return ",Z"
+        return ""
+
+    def _mount_relabel(self) -> str:
+        return f",{self.selinux}" if self.selinux in ("z", "Z") else ""
+
+
+_SELINUX_MODES = frozenset({"auto", "none", "z", "Z", "disable"})
+
+
+def _selinux_enabled() -> bool:
+    return Path("/sys/fs/selinux").exists()
 
 
 def _container_path(path: str, container_home: str) -> str:

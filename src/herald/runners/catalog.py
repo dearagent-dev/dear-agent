@@ -139,6 +139,7 @@ def container_sandbox(info: HarnessInfo, env: Mapping[str, str]) -> ContainerSan
         binary=env.get("HERALD_CONTAINER_BINARY", "podman"),
         userns_keep_id=env.get("HERALD_HARNESS_CONTAINER_USERNS", "").lower() == "keep-id",
         extra_args=tuple(_split_list(env.get("HERALD_HARNESS_CONTAINER_ARGS"))),
+        selinux=env.get("HERALD_HARNESS_CONTAINER_SELINUX", "auto").strip(),
     )
 
 
