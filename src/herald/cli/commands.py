@@ -237,6 +237,7 @@ def _handle_listen(args: argparse.Namespace, context: CliContext) -> int:
     from herald.jmap.client import DEFAULT_SESSION_URL, JmapClient
     from herald.jmap.eventsource import EventSourceListener
     from herald.jmap.trigger import EventSourceLoop, IngestOnChange
+    from herald.notify.notifier import Notifier
     from herald.worker_factory import build_transport
 
     token = os.environ.get("FASTMAIL_API_TOKEN")
@@ -251,10 +252,16 @@ def _handle_listen(args: argparse.Namespace, context: CliContext) -> int:
 
     queue = context.require_queue()
     transport = build_transport("jmap")
-    # Wire approvals here too, so a reply ingested on the push path decides the task.
+    # Wire the notifier and approvals here too, so rejections are explained and an approval
+    # reply ingested on the push path decides the task.
     approvals = ApprovalService(build_approval_store(), queue)
     callback = IngestOnChange(
-        control_plane=ControlPlane(transport=transport, queue=queue, approvals=approvals),
+        control_plane=ControlPlane(
+            transport=transport,
+            queue=queue,
+            notifier=Notifier(transport),
+            approvals=approvals,
+        ),
         transport=transport,
         recipient=os.environ.get("HERALD_RECIPIENT"),
     )

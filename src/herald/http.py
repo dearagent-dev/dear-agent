@@ -39,10 +39,17 @@ def build_inbound(queue: Queue):
             window=timedelta(minutes=1),
         ),
     )
+    from herald.notify.notifier import Notifier
+
     approvals = ApprovalService(build_approval_store(), queue)
     # Auth lives on the webhook (it maps failures to 401/403); the plane must not gate
     # again, or a rejected request would be silently swallowed as "denied".
-    plane = ControlPlane(transport=transport, queue=queue, approvals=approvals)
+    plane = ControlPlane(
+        transport=transport,
+        queue=queue,
+        notifier=Notifier(transport),
+        approvals=approvals,
+    )
     recipient = os.environ.get("HERALD_RECIPIENT")
     return InboundWebhook(control_plane=plane, gate=gate, recipient=recipient)
 
