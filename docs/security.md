@@ -68,7 +68,12 @@ Owner: normalizer + runner prompt construction.
 
 - Run in an OS sandbox (bubblewrap / gVisor); non-root, arbitrary UID (OpenShift SCC).
   `herald.sandbox.BubblewrapSandbox` wraps the harness argv in `bwrap` with the worktree as
-  the only writable path.
+  the only writable path. Alternatively `HERALD_ISOLATION=podman` uses
+  `herald.sandbox.ContainerSandbox`: the harness runs in its per-harness image
+  (`HarnessInfo.image`) with the worktree bind-mounted at `/work` and only explicitly
+  configured credential paths mounted (read-only by default). The container is the jail, so
+  no harness runtime has to be trusted on the host. See
+  [ADR 0006](decisions/0006-container-isolation.md).
 - **Default-deny egress**, allowlisting only the Git remote and the model endpoint. No
   network means no exfiltration and no tool download. `SandboxPolicy(allow_network=False)`
   is the default and adds `--unshare-net`.

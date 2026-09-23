@@ -13,6 +13,20 @@ class SandboxError(RuntimeError):
 
 
 @dataclass(slots=True, frozen=True)
+class Mount:
+    """One host path exposed inside a container.
+
+    ``host`` may start with ``~`` (the host home). ``container`` may start with ``~`` to mean
+    the image's home (``ContainerSandbox.container_home``), so the same metadata works for an
+    image whose user is ``root`` or ``node``.
+    """
+
+    host: str
+    container: str
+    readonly: bool = True
+
+
+@dataclass(slots=True, frozen=True)
 class SandboxPolicy:
     """What a run may touch.
 
@@ -97,6 +111,100 @@ class BubblewrapSandbox:
         return command
 
 
+DEFAULT_CONTAINER_BINARY = "podman"
+
+
+@dataclass(slots=True)
+class ContainerSandbox:
+    """Wraps a command in an OCI container (``podman`` by default).
+
+    Unlike ``bwrap``, the image brings the harness and its whole runtime, so nothing has to
+    be installed on the host. The worktree is bind-mounted read-write at ``workdir`` — the
+    container writes there, and only there, so no source code has to leave the host (golden
+    rule 1). Credentials are exposed through ``mounts``; each is read-only unless the mount
+    says otherwise, so a harness cannot rewrite the operator's config.
+
+    ``container_home`` is the image's home: a mount whose container path starts with ``~`` is
+    resolved against it, so the same metadata works for an image whose user is ``root`` or
+    ``node``.
+    """
+
+    image: str
+    mounts: tuple[Mount, ...] = ()
+    env_allowlist: tuple[str, ...] = ()
+    network: str = "host"
+    container_home: str = "/root"
+    workdir: str = "/work"
+    binary: str = DEFAULT_CONTAINER_BINARY
+    userns_keep_id: bool = False
+    extra_args: tuple[str, ...] = ()
+
+    @property
+    def available(self) -> bool:
+        return shutil.which(self.binary) is not None
+
+    def wrap(self, argv: list[str], *, worktree: Path) -> list[str]:
+        if not self.available:
+            raise SandboxError(f"{self.binary!r} is not available")
+        return self.build_wrapped_argv(argv, worktree=worktree)
+
+    def build_wrapped_argv(self, argv: list[str], *, worktree: Path) -> list[str]:
+        """Build the container invocation without checking availability."""
+        command: list[str] = [
+            self.binary,
+            "run",
+            "--rm",
+            "--security-opt",
+            "no-new-privileges",
+            "--volume",
+            f"{worktree}:{self.workdir}:rw",
+            "--workdir",
+            self.workdir,
+            "--network",
+            self.network,
+        ]
+        if self.userns_keep_id:
+            command.append("--userns=keep-id")
+        for mount in self.mounts:
+            host = str(Path(mount.host).expanduser())
+            container = _container_path(mount.container, self.container_home)
+            mode = "ro" if mount.readonly else "rw"
+            command += ["--volume", f"{host}:{container}:{mode}"]
+        for name in self.env_allowlist:
+            if name in os.environ:
+                command += ["--env", f"{name}={os.environ[name]}"]
+        command += list(self.extra_args)
+        command += [self.image]
+        command += argv
+        return command
+
+
+def _container_path(path: str, container_home: str) -> str:
+    if path == "~":
+        return container_home
+    if path.startswith("~/"):
+        return f"{container_home}/{path[2:]}"
+    return path
+
+
+def parse_mounts(value: str | None) -> list[Mount]:
+    """Parse ``host:container[:ro|rw]`` entries (comma- or semicolon-separated).
+
+    Both sides may start with ``~`` (host home, or the image home on the container side).
+    """
+    mounts: list[Mount] = []
+    for entry in _split_paths(value):
+        host, sep, rest = entry.partition(":")
+        if not sep or not host.strip() or not rest.strip():
+            raise SandboxError(f"invalid mount {entry!r}; expected host:container[:ro|rw]")
+        container, _, mode = rest.partition(":")
+        mode = mode.strip().lower()
+        if mode not in ("", "ro", "rw"):
+            raise SandboxError(f"invalid mount mode {mode!r} in {entry!r}")
+        mounts.append(Mount(host=host.strip(), container=container.strip(), readonly=mode != "rw"))
+    return mounts
+
+
 def sandbox_policy_from_env(env: Mapping[str, str] | None = None) -> SandboxPolicy:
     """Build the sandbox policy from ``HERALD_SANDBOX_*``.
 
@@ -142,9 +250,12 @@ def _harness_dir(env: Mapping[str, str]) -> str | None:
 
 __all__ = [
     "BubblewrapSandbox",
+    "ContainerSandbox",
+    "Mount",
     "NoSandbox",
     "Sandbox",
     "SandboxError",
     "SandboxPolicy",
+    "parse_mounts",
     "sandbox_policy_from_env",
 ]

@@ -35,10 +35,17 @@ The schema is created automatically at startup; there is no separate migration s
 export HERALD_HARNESS=opencode           # or claude | codex | auto | command
 # export HERALD_HARNESS_BINARY=/path/to/opencode   # optional override
 export HERALD_SANDBOX=bwrap              # default; falls back to no sandbox if bwrap is absent
+# export HERALD_ISOLATION=podman         # run the harness in its own image (see ADR 0006)
+# export HERALD_HARNESS_IMAGE=...        # required for a harness without a default image (Codex)
 ```
 
 Only harnesses that accept a model (OpenCode) are passed `--model`; Claude Code and Codex use
 their own subscription. `HERALD_HARNESS=auto` picks the first harness found on `PATH`.
+
+With `HERALD_ISOLATION=podman` the harness runs in its per-harness container image
+(OpenCode defaults to `ghcr.io/anomalyco/opencode:latest`) with the worktree at `/work`;
+credentials are mounted read-only (`HERALD_HARNESS_MOUNTS` overrides). See
+[ADR 0006](decisions/0006-container-isolation.md).
 
 ## 3. Enqueue a task
 
