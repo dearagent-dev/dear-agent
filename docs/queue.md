@@ -90,9 +90,10 @@ UPDATE herald_task
 RETURNING *;
 ```
 
-A caller that wants "the next task" lists `queued` oldest-first (`ORDER BY created_at, id`)
-and claims each; a lost claim just moves on to the next. (A future `claim_next` could use
-`SELECT ... FOR UPDATE SKIP LOCKED` to let many workers pull in parallel without listing.)
+A caller that wants "the next task" uses `claim_next()`, a single statement that selects the
+oldest `queued` row with `FOR UPDATE SKIP LOCKED` and moves it to `running`. Concurrent
+workers pull in parallel and never take the same task; nothing is claimed when the queue is
+empty.
 
 ## Lease and resume
 

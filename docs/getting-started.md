@@ -93,8 +93,12 @@ and missing repos with a threaded explanation; re-delivery is a no-op (dedupe on
 ## Operating without Kubernetes
 
 In production a `CronJob` sweep dispatches one Job per task. Locally, skip it and run tasks
-yourself with `herald run` as above. Everything else — the queue, approvals, the decision log —
-is the same PostgreSQL database.
+yourself with `herald run` as above (without an id it atomically claims the oldest queued
+task, so two `herald run` loops can share the queue safely). Everything else — the queue,
+approvals, the decision log — is the same PostgreSQL database.
+
+A task that keeps crashing is left `failed` after `HERALD_MAX_ATTEMPTS` (default 3) instead of
+retrying forever; put it back with `herald task requeue <id>`.
 
 ## Decision layer (optional)
 
