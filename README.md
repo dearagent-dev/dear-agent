@@ -1,8 +1,5 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-lockup-dark.svg">
-    <img alt="Dear Agent" src="docs/assets/logo-lockup.svg" width="380">
-  </picture>
+  <img alt="Dear Agent" src="docs/assets/logo.svg" width="104">
 </p>
 
 <h1 align="center">Dear Agent</h1>
