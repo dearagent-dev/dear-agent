@@ -267,6 +267,20 @@ def test_enqueue_creates_a_queued_task_with_a_spec() -> None:
     assert tasks[0].spec.instructions == "fix the typo in the CLI help"
 
 
+def test_health_reports_queue_counts() -> None:
+    queue = MemoryQueue()
+    seed(queue, "e1")
+    seed(queue, "e2")
+
+    code, output = run(["--json", "health"], queue)
+
+    assert code == 0
+    payload = json.loads(output)
+    assert payload["ok"] is True
+    assert payload["counts"]["queued"] == 2
+    assert payload["counts"]["running"] == 0
+
+
 def test_requeue_returns_a_failed_task_to_queued() -> None:
     queue = MemoryQueue()
     seed(queue, "e1")

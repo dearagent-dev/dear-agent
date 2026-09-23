@@ -207,6 +207,27 @@ def test_release_stale_requeues_expired_running_and_bumps_attempts(queue, clock:
     assert requeued.lease_until is None
 
 
+def test_concurrent_claim_next_takes_different_tasks(queue, clock: FakeClock) -> None:
+    # Two workers, two connections: SKIP LOCKED must hand them different tasks.
+    pytest.importorskip("psycopg")
+    from herald.db import connect
+    from herald.queue.postgres import PostgresQueue
+
+    queue.enqueue(make_task(id="e1"))
+    queue.enqueue(make_task(id="e2", transport_id="<msg-2@example.com>"))
+    first_conn = connect(DSN)
+    second_conn = connect(DSN)
+    try:
+        first = PostgresQueue(first_conn, clock=clock).claim_next(lease=LEASE)
+        second = PostgresQueue(second_conn, clock=clock).claim_next(lease=LEASE)
+    finally:
+        first_conn.close()
+        second_conn.close()
+
+    assert first is not None and second is not None
+    assert {first.id, second.id} == {"e1", "e2"}
+
+
 def test_release_stale_ignores_unexpired_and_non_running(queue, clock: FakeClock) -> None:
     running = queue.enqueue(make_task(id="e1"))
     queued = queue.enqueue(make_task(id="e2", transport_id="<msg-2@example.com>"))

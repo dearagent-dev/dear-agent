@@ -318,6 +318,32 @@ def _handle_idle(args: argparse.Namespace, context: CliContext) -> int:
     return 0
 
 
+def add_health_commands(
+    subparsers: argparse._SubParsersAction, parent: argparse.ArgumentParser
+) -> None:
+    parser = subparsers.add_parser("health", help="show queue health and per-state counts")
+    parser.add_argument(
+        "--max-running",
+        type=int,
+        default=int(os.environ.get("HERALD_MAX_RUNNING", "1")),
+        help="running tasks above this mark the queue unhealthy (default: 1)",
+    )
+    parser.set_defaults(handler=_handle_health)
+
+
+def _handle_health(args: argparse.Namespace, context: CliContext) -> int:
+    from herald.observability.health import Health
+
+    status = Health(max_running=args.max_running).check(context.require_queue())
+    if context.as_json:
+        context.emit_json(status.to_dict())
+    else:
+        context.emit(f"ok: {status.ok}")
+        for state, count in status.counts.items():
+            context.emit(f"{state}: {count}")
+    return 0
+
+
 def _add_parse_reply(subparsers: argparse._SubParsersAction) -> None:
     parser = subparsers.add_parser("parse-reply", help="parse a reply body for a decision")
     parser.add_argument("text")
