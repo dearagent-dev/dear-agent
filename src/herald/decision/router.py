@@ -3,8 +3,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from herald.decision.port import Decider, DecisionKind, Question
-from herald.decision.selection import QUESTION_MODEL, QUESTION_NEEDS_HUMAN, ROUTE_QUESTION
 from herald.providers.registry import Provider, ProviderRegistry
+
+# The questions the router asks; kept here so the rule fallback and model deciders agree.
+QUESTION_MODEL = "model"
+QUESTION_NEEDS_HUMAN = "needs_human"
+
+ROUTE_QUESTION = Question(
+    kind=DecisionKind.CHOICE,
+    instructions="Which model class should execute this repository task?",
+    criteria={
+        "local": "small, mechanical, low-risk change a small local model can complete correctly",
+        "hosted": "needs real reasoning: architecture, security, subtle debugging, design",
+    },
+)
 
 HUMAN_QUESTION = Question(
     kind=DecisionKind.NOUL,
@@ -86,4 +98,11 @@ class ModelRouter:
         return None
 
 
-__all__ = ["HUMAN_QUESTION", "ROUTE_QUESTION", "ModelRouter", "Routing"]
+__all__ = [
+    "HUMAN_QUESTION",
+    "QUESTION_MODEL",
+    "QUESTION_NEEDS_HUMAN",
+    "ROUTE_QUESTION",
+    "ModelRouter",
+    "Routing",
+]

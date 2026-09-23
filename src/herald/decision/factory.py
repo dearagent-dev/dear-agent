@@ -2,14 +2,32 @@ from __future__ import annotations
 
 import contextlib
 import os
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+from urllib.parse import urlparse
 
 from herald.decision.log import DecisionLog, DecisionRecord, DecisionStore
-from herald.decision.port import Answer, Decider, Decision, DecisionError, DecisionKind, Question
+from herald.decision.policy import DeciderPolicy
+from herald.decision.port import (
+    Answer,
+    Decider,
+    DeciderInfo,
+    Decision,
+    DecisionError,
+    DecisionKind,
+    Question,
+)
 from herald.decision.rules import RuleDecider
-from herald.decision.selection import QUESTION_MODEL, QUESTION_NEEDS_HUMAN
 
 DEFAULT_CONFIDENCE_THRESHOLD = 0.5
+DEFAULT_OPENAI_BASE_URL = "https://openrouter.ai/api/v1"
+
+_RULES = "rules"
+_SYSTEM_ONE = "system-one"
+_OPENAI_COMPAT = "openai-compat"
+_LOCAL_HOSTS = {"127.0.0.1", "localhost", "0.0.0.0", "::1"}
+# ``openrouter`` was the value before the plane was renamed; keep it working as an alias.
+_ALIASES = {"openrouter": _OPENAI_COMPAT}
 
 
 @dataclass(slots=True)
@@ -78,69 +96,152 @@ class LoggingDecider:
         return decision
 
 
-def build_decider() -> Decider | None:
-    """Build the configured decider, or ``None`` when none is configured.
+@dataclass(slots=True)
+class EnvDeciderCatalog:
+    """The deciders this deployment can run, read from ``HERALD_DECIDER_*`` (ADR 0004, M7).
 
-    ``HERALD_DECIDER`` selects the primary: ``rules`` (default) uses only the deterministic
-    path; ``jev`` wraps the hosted TypeSafe API; ``openrouter`` selects a model from
-    OpenRouter's catalog by :class:`~herald.decision.selection.SelectionPolicy` (free first)
-    and wraps the generic OpenAI-compatible decider. Every model-backed decider is wrapped in
-    :class:`FallbackDecider`, so any error or low confidence falls back to the rules.
+    The environment-backed :class:`~herald.decision.port.DeciderCatalog`: the core asks it
+    *what exists* and never learns the answer came from variables. The deterministic ``rules``
+    fallback is always listed; a native System One entry appears when its provider is
+    configured, and the emulated OpenAI-compatible entry appears when a base URL or key is
+    set. Entries reference credentials by ``api_key_env`` and never carry a secret.
     """
-    primary = os.environ.get("HERALD_DECIDER", "rules").lower()
-    threshold = float(os.environ.get("HERALD_DECIDER_THRESHOLD", DEFAULT_CONFIDENCE_THRESHOLD))
-    rules = RuleDecider()
 
-    if primary == "none":
-        return None
-    if primary == "rules":
-        return _maybe_log(rules)
-    if primary == "jev":
-        api_key = os.environ.get("TYPESAFE_API_KEY")
-        if not api_key:
-            raise DecisionError("TYPESAFE_API_KEY is required for HERALD_DECIDER=jev")
+    env: Mapping[str, str] = field(default_factory=lambda: dict(os.environ))
+
+    def list_deciders(self) -> list[DeciderInfo]:
+        infos = [DeciderInfo(id=_RULES, protocol=_RULES, native_types=False, local=True, free=True)]
+        system_one = self._system_one()
+        if system_one is not None:
+            infos.append(system_one)
+        emulated = self._openai_compat()
+        if emulated is not None:
+            infos.append(emulated)
+        return infos
+
+    def _system_one(self) -> DeciderInfo | None:
+        if not self.env.get("TYPESAFE_API_KEY"):
+            return None
+        from herald.decision.jev import DEFAULT_ENDPOINT, DEFAULT_MODEL
+
+        return DeciderInfo(
+            id="jev",
+            protocol=_SYSTEM_ONE,
+            endpoint=self.env.get("HERALD_DECIDER_ENDPOINT", DEFAULT_ENDPOINT),
+            model=self.env.get("HERALD_DECIDER_MODEL", DEFAULT_MODEL),
+            native_types=True,
+            api_key_env="TYPESAFE_API_KEY",
+        )
+
+    def _openai_compat(self) -> DeciderInfo | None:
+        endpoint = self.env.get("HERALD_DECIDER_BASE_URL")
+        api_key_env = "OPENROUTER_API_KEY" if self.env.get("OPENROUTER_API_KEY") else None
+        if endpoint is None and api_key_env is None:
+            return None
+        endpoint = endpoint or DEFAULT_OPENAI_BASE_URL
+        return DeciderInfo(
+            id=_OPENAI_COMPAT,
+            protocol=_OPENAI_COMPAT,
+            endpoint=endpoint,
+            model=self.env.get("HERALD_DECIDER_MODEL", ""),
+            native_types=False,
+            local=_is_local(endpoint),
+            api_key_env=api_key_env,
+        )
+
+
+@dataclass(slots=True)
+class EnvDeciderProvider:
+    """Builds the concrete decider for a :class:`DeciderInfo` from the environment.
+
+    One provider for the in-tree protocols: ``rules`` is local, ``system-one`` is
+    :class:`~herald.decision.jev.JevDecider`, and ``openai-compat`` is the emulated
+    :class:`~herald.decision.openai.OpenAICompatibleDecider`. Credentials are resolved here,
+    by ``api_key_env``, so a catalog entry never holds a secret.
+    """
+
+    env: Mapping[str, str] = field(default_factory=lambda: dict(os.environ))
+
+    def decider_for(self, info: DeciderInfo) -> Decider:
+        if info.protocol == _RULES:
+            return RuleDecider()
+        if info.protocol == _SYSTEM_ONE:
+            return self._system_one(info)
+        if info.protocol == _OPENAI_COMPAT:
+            return self._openai_compat(info)
+        raise DecisionError(f"unsupported decider protocol {info.protocol!r}")
+
+    def _system_one(self, info: DeciderInfo) -> Decider:
         from herald.decision.jev import DEFAULT_ENDPOINT, DEFAULT_MODEL, JevDecider
 
-        return _maybe_log(
-            FallbackDecider(
-                primary=JevDecider(
-                    api_key=api_key,
-                    model=os.environ.get("HERALD_DECIDER_MODEL", DEFAULT_MODEL),
-                    endpoint=os.environ.get("HERALD_DECIDER_ENDPOINT", DEFAULT_ENDPOINT),
-                ),
-                fallback=rules,
-                threshold=threshold,
-            )
+        return JevDecider(
+            api_key=self._key(info),
+            model=info.model or DEFAULT_MODEL,
+            endpoint=info.endpoint or DEFAULT_ENDPOINT,
         )
-    if primary == "openrouter":
-        return _maybe_log(_build_openrouter(threshold, rules))
-    raise DecisionError(f"unknown decider {primary!r}")
 
+    def _openai_compat(self, info: DeciderInfo) -> Decider:
+        from herald.decision.openai import OpenAICompatibleDecider
 
-def _build_openrouter(threshold: float, rules: Decider) -> Decider:
-    from herald.decision.openrouter import OpenRouterProvider
-    from herald.decision.selection import SelectionPolicy
-
-    api_key = os.environ.get("OPENROUTER_API_KEY")
-    if not api_key:
-        raise DecisionError("OPENROUTER_API_KEY is required for HERALD_DECIDER=openrouter")
-    provider = OpenRouterProvider(
-        api_key=api_key,
-        base_url=os.environ.get("HERALD_DECIDER_BASE_URL", "https://openrouter.ai/api/v1"),
-        referer=os.environ.get("HERALD_DECIDER_REFERER"),
-    )
-    model_id = os.environ.get("HERALD_DECIDER_MODEL")
-    if model_id:
-        from herald.decision.port import ModelInfo
-
-        model = ModelInfo(id=model_id, context_length=1_000_000, supports_json=True)
-    else:
-        policy = SelectionPolicy(
-            min_context=int(os.environ.get("HERALD_DECIDER_MIN_CONTEXT", "8192")),
-            allow_paid=os.environ.get("HERALD_DECIDER_ALLOW_PAID", "false").lower() == "true",
+        if not info.model:
+            raise DecisionError("HERALD_DECIDER_MODEL is required for an openai-compat decider")
+        return OpenAICompatibleDecider(
+            api_key=self._key(info) or "local",
+            model=info.model,
+            base_url=info.endpoint or DEFAULT_OPENAI_BASE_URL,
+            extra_headers=self._referer_headers(),
         )
-        model = policy.select(provider.catalog())
-    return FallbackDecider(primary=provider.decider_for(model), fallback=rules, threshold=threshold)
+
+    def _key(self, info: DeciderInfo) -> str:
+        if info.api_key_env is None:
+            return ""
+        value = self.env.get(info.api_key_env)
+        if not value:
+            raise DecisionError(f"{info.api_key_env} is required for decider {info.id!r}")
+        return value
+
+    def _referer_headers(self) -> dict[str, str]:
+        referer = self.env.get("HERALD_DECIDER_REFERER")
+        if not referer:
+            return {}
+        return {"HTTP-Referer": referer, "X-Title": "Herald"}
+
+
+def build_decider() -> Decider | None:
+    """Build the configured decider, or ``None`` when disabled (ADR 0004).
+
+    ``HERALD_DECIDER`` names the decider to use (``rules`` is the default): the catalog lists
+    what this deployment can run, the policy applies native > emulated and local > hosted, and
+    the provider builds it. A model-backed decider is wrapped in :class:`FallbackDecider` so
+    any error or low confidence falls back to rules; every decider is wrapped in
+    :class:`LoggingDecider` when ``HERALD_DECIDER_LOG`` is set.
+    """
+    requested = _normalize(os.environ.get("HERALD_DECIDER", _RULES))
+    if requested == "none":
+        return None
+
+    threshold = float(os.environ.get("HERALD_DECIDER_THRESHOLD", DEFAULT_CONFIDENCE_THRESHOLD))
+    require_native = os.environ.get("HERALD_DECIDER_REQUIRE_NATIVE", "").lower() == "true"
+
+    catalog = EnvDeciderCatalog()
+    if requested not in {info.id for info in catalog.list_deciders()}:
+        raise DecisionError(f"decider {requested!r} is not configured")
+
+    policy = DeciderPolicy(preferred=requested, require_native=require_native)
+    info = policy.select(catalog)
+    decider = EnvDeciderProvider().decider_for(info)
+    if info.protocol != _RULES:
+        decider = FallbackDecider(primary=decider, fallback=RuleDecider(), threshold=threshold)
+    return _maybe_log(decider)
+
+
+def _normalize(name: str) -> str:
+    name = name.strip().lower()
+    return _ALIASES.get(name, name)
+
+
+def _is_local(endpoint: str) -> bool:
+    return (urlparse(endpoint).hostname or "") in _LOCAL_HOSTS
 
 
 def _maybe_log(decider: Decider) -> Decider:
@@ -164,8 +265,9 @@ def _maybe_log(decider: Decider) -> Decider:
 
 __all__ = [
     "DEFAULT_CONFIDENCE_THRESHOLD",
-    "QUESTION_MODEL",
-    "QUESTION_NEEDS_HUMAN",
+    "DEFAULT_OPENAI_BASE_URL",
+    "EnvDeciderCatalog",
+    "EnvDeciderProvider",
     "FallbackDecider",
     "LoggingDecider",
     "build_decider",

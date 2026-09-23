@@ -61,18 +61,25 @@ confidence. Below the threshold, fall back to the deterministic default. This ru
 `Decider` port so no core code depends on the vendor, and it is advisory: it picks a model,
 it never authorizes an action.
 
-The decision layer is built from two ports in the core, each with pluggable adapters:
+Herald has no direct-LLM path: the harness codes, the decider only decides. The decision
+layer is built from three ports in the core, each with pluggable adapters:
 
-- `ModelCatalog` — *what models exist*, with price, context and capabilities. Adapters:
-  `OpenRouterCatalog` (live `/models`, free-first selection), or a static/local list.
-- `ModelProvider` — *how to run a chosen model*. Adapters: `OpenAICompatibleProvider`
-  (OpenRouter, vLLM, llama.cpp), and `JevDecider` for TypeSafe's System One API.
+- `DeciderCatalog` — *what deciders exist*, with `protocol` (`system-one` native vs
+  `openai-compat` emulated), endpoint, model, locality and credentials by name. The in-tree
+  adapter is `EnvDeciderCatalog` (reads `HERALD_DECIDER_*`); a static or remote catalog is a
+  drop-in.
+- `DeciderProvider` — *how to run a chosen decider*. The in-tree `EnvDeciderProvider` builds
+  `JevDecider` (native System One), `OpenAICompatibleDecider` (emulated over a chat endpoint:
+  OpenRouter, vLLM, llama.cpp), or `RuleDecider`.
+- `DeciderPolicy` — *which one to prefer*: native over emulated, local over hosted, free over
+  paid; a `preferred` id wins outright and `require_native` forbids emulation. If nothing
+  qualifies, the deterministic `RuleDecider` is the fallback.
 
-`SelectionPolicy` is vendor-neutral and picks the most convenient model from any catalog
-(free first, then cheapest, then larger context; text-only, JSON-capable). Configure with
-`HERALD_DECIDER=openrouter` and `OPENROUTER_API_KEY`; unset a model to use the free tier, or
-set `HERALD_DECIDER_MODEL` to pin one. `HERALD_DECIDER_ALLOW_PAID=true` lets it choose a paid
-model when no free one qualifies.
+Configure with `HERALD_DECIDER=rules|jev|openai-compat|none` (default `rules`). `jev` needs
+`TYPESAFE_API_KEY`; `openai-compat` needs `HERALD_DECIDER_BASE_URL` and `HERALD_DECIDER_MODEL`
+(with `OPENROUTER_API_KEY` as the default base URL's key). `HERALD_DECIDER_THRESHOLD` sets the
+confidence below which the rules answer is used, and `HERALD_DECIDER_LOG` records every
+decision for calibration.
 
 ## Routing the harness per task
 

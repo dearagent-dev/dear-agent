@@ -552,7 +552,7 @@ def add_decide_commands(
     parser.add_argument(
         "--decider",
         default=None,
-        help="override HERALD_DECIDER (rules|jev|none) for this call",
+        help="override HERALD_DECIDER (rules|jev|openai-compat|none) for this call",
     )
     parser.set_defaults(handler=_handle_decide, needs_queue=False)
 
