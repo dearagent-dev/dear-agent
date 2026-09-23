@@ -102,7 +102,7 @@ class _ApprovalRegistry:
     def issue(self, task_id: str, action: str) -> Approval:
         now = self._clock()
         approval = Approval(
-            token=secrets.token_urlsafe(TOKEN_BYTES),
+            token=secrets.token_hex(TOKEN_BYTES),
             task_id=task_id,
             action=action,
             created_at=now,
@@ -210,7 +210,7 @@ class PostgresApprovalStore:
     def issue(self, task_id: str, action: str) -> Approval:
         now = self._clock()
         approval = Approval(
-            token=secrets.token_urlsafe(TOKEN_BYTES),
+            token=secrets.token_hex(TOKEN_BYTES),
             task_id=task_id,
             action=action,
             created_at=now,
