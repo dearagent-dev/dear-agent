@@ -66,6 +66,17 @@ def test_runner_template_mounts_no_write_key() -> None:
     assert "git-push" not in names
 
 
+def test_runner_template_carries_no_mail_credential() -> None:
+    # The runner claims a persisted task and sends no mail without --recipient, so it must
+    # not carry the mailbox token (the harness shares the container).
+    job = runner_template(build("dev"))
+    container = job["spec"]["template"]["spec"]["containers"][0]
+    env_names = {entry["name"] for entry in container.get("env", [])}
+
+    assert "FASTMAIL_API_TOKEN" not in env_names
+    assert "jmap" not in container.get("args", [])
+
+
 def test_runner_template_has_the_hardening() -> None:
     job = runner_template(build("dev"))
     pod = job["spec"]["template"]["spec"]

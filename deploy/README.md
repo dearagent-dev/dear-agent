@@ -116,10 +116,13 @@ selected repositories.
 
 - The runner is a **`JobTemplate`** (`herald-runner-template` ConfigMap), not a static Job:
   a Job is immutable and one-per-task, so the scheduler renders it per claimed task. The
-  template invokes `herald run --backend jmap <task-id>` (`--backend` is the *transport*;
-  the queue comes from `HERALD_QUEUE`), which claims the task, runs the harness in a worktree
-  and opens the draft PR. `herald sweep` (the CronJob) creates one Job per queued task with
-  the task id injected.
+  template invokes `herald run <task-id>` (the transport defaults to memory; the queue comes
+  from `HERALD_QUEUE`), which claims the task, runs the harness in a worktree and opens the
+  draft PR. `herald sweep` (the CronJob) creates one Job per queued task with the task id
+  injected.
+- The runner carries **no mail credential**: the parsed spec is on the task row, and without
+  `--recipient` it sends no notifications. To notify from the runner, add `--recipient` and
+  `--backend jmap` and mount `herald-jmap`.
 - The runner's `--repo /work/source` is cloned read-only on first use from the task's
   `repo:` URL, using the mounted `herald-git-read` key (`GIT_SSH_COMMAND`).
 - Approvals and the decision log live in Postgres (`herald_approval`, `herald_decision`);

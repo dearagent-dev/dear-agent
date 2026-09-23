@@ -35,10 +35,12 @@ data:
             - name: runner
               image: ghcr.io/OWNER/herald:latest
               command: ["herald"]
+              # The runner claims a persisted task and runs the harness; it needs no mailbox
+              # (the spec lives on the task row) and sends no mail without --recipient, so it
+              # carries no mail credential. The transport defaults to memory. To notify from
+              # the runner, add --recipient and --backend jmap and mount herald-jmap.
               args:
                 - "run"
-                - "--backend"
-                - "jmap"
                 - "--repo"
                 - "/work/source"
                 - "--model"
@@ -52,12 +54,6 @@ data:
                   value: ""
                 - name: HERALD_MODEL
                   value: ""
-                - name: FASTMAIL_API_TOKEN
-                  valueFrom:
-                    secretKeyRef:
-                      name: herald-jmap
-                      key: FASTMAIL_API_TOKEN
-                      optional: true
                 - name: HERALD_DATABASE_URL
                   valueFrom:
                     secretKeyRef:

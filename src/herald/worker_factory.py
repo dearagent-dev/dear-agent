@@ -109,8 +109,9 @@ def default_sandbox() -> Sandbox:
 
     The policy comes from ``HERALD_SANDBOX_*`` (``sandbox_policy_from_env``); by default the
     network is denied and only the worktree is writable. Set ``HERALD_SANDBOX=none`` to skip
-    the sandbox — unsafe for untrusted input (a harness with network and usable credentials
-    can exfiltrate).
+    the sandbox. In a container the pod/Job is already the isolation boundary, so ``bwrap``
+    is not required there — the harness environment is still restricted (see
+    ``runners.harness.harness_env``).
     """
     if os.environ.get("HERALD_SANDBOX", "bwrap") == "bwrap":
         candidate = BubblewrapSandbox(policy=sandbox_policy_from_env())
