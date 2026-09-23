@@ -428,13 +428,19 @@ def _handle_run(args: argparse.Namespace, context: CliContext) -> int:
     from herald.worker_factory import build_transport, build_worker
 
     queue = context.require_queue()
+    # A model hint from the task (e.g. a 'model:' line) applies when --model is not given.
+    model = args.model
+    if model is None and args.task_id:
+        existing = queue.get(args.task_id)
+        if existing is not None and existing.spec is not None:
+            model = existing.spec.model_request
     transport = build_transport(args.backend)
     worker = build_worker(
         queue=queue,
         transport=transport,
         repo_path=args.repo,
         recipient=args.recipient or None,
-        provider_model=args.model or None,
+        provider_model=model or None,
     )
     # Without an id, claim the oldest queued task atomically (a local sweep tick).
     evidence = worker.run(args.task_id) if args.task_id else worker.run_next()

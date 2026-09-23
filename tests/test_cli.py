@@ -180,6 +180,51 @@ def test_run_executes_a_task_via_the_worker(monkeypatch) -> None:
     assert payload["pr_url"] == "https://example.com/pr/1"
 
 
+def test_run_uses_the_task_model_hint() -> None:
+    import contextlib
+    import io
+    from unittest import mock
+
+    from herald.executor import ExecutedTask
+    from herald.queue.models import TaskSpec
+    from herald.runners.worktree import RunResult
+
+    queue = MemoryQueue()
+    queue.enqueue(
+        Task(
+            id="e1",
+            transport_id="<m1@x>",
+            spec=TaskSpec(repo_url="o/r", instructions="x", model_request="deepseek/v4"),
+        )
+    )
+    captured: dict[str, object] = {}
+
+    class FakeWorker:
+        def run(self, task_id: str) -> ExecutedTask:
+            return ExecutedTask(
+                task_id=task_id,
+                branch="herald/e1",
+                commit="deadbeef",
+                pr_url=None,
+                run=RunResult(exit_code=0, branch="herald/e1"),
+            )
+
+    def fake_build_worker(**kwargs: object):
+        captured.update(kwargs)
+        return FakeWorker()
+
+    with (
+        mock.patch("herald.cli.main.build_queue", return_value=queue),
+        mock.patch("herald.worker_factory.build_transport", return_value=object()),
+        mock.patch("herald.worker_factory.build_worker", side_effect=fake_build_worker),
+        contextlib.redirect_stdout(io.StringIO()),
+    ):
+        code = main(["run", "e1", "--repo", "/repos/source"])
+
+    assert code == 0
+    assert captured["provider_model"] == "deepseek/v4"
+
+
 def test_run_without_a_task_id_picks_the_oldest_queued() -> None:
     import contextlib
     import io
