@@ -26,6 +26,9 @@ WORKTREE = Path("/tmp/wt")
 
 
 def container_argv(argv: list[str], **kwargs: object) -> list[str]:
+    # Default to no SELinux handling so the argv is the same on any host; the SELinux tests
+    # opt in explicitly.
+    kwargs.setdefault("selinux", "none")
     sandbox = ContainerSandbox(image="img:latest", **kwargs)  # type: ignore[arg-type]
     return sandbox.build_wrapped_argv(argv, worktree=WORKTREE)
 
@@ -106,6 +109,66 @@ def test_parse_mounts_reads_mode_and_defaults_to_read_only() -> None:
 def test_parse_mounts_rejects_malformed_entries(value: str) -> None:
     with pytest.raises(SandboxError):
         parse_mounts(value)
+
+
+def test_container_relabels_the_worktree_on_selinux(monkeypatch) -> None:
+    monkeypatch.setattr("herald.sandbox._selinux_enabled", lambda: True)
+
+    wrapped = container_argv(["true"], selinux="auto")
+
+    assert f"{WORKTREE}:/work:rw,Z" in wrapped
+
+
+def test_container_does_not_relabel_without_selinux(monkeypatch) -> None:
+    monkeypatch.setattr("herald.sandbox._selinux_enabled", lambda: False)
+
+    wrapped = container_argv(["true"], selinux="auto")
+
+    assert f"{WORKTREE}:/work:rw" in wrapped
+
+
+def test_container_auto_leaves_mounts_alone_on_selinux(monkeypatch) -> None:
+    monkeypatch.setattr("herald.sandbox._selinux_enabled", lambda: True)
+
+    wrapped = container_argv(["true"], selinux="auto", mounts=(Mount("/h/.cfg", "/root/.cfg"),))
+
+    assert "/h/.cfg:/root/.cfg:ro" in wrapped
+
+
+def test_container_relabels_every_mount_with_Z() -> None:
+    wrapped = container_argv(["true"], selinux="Z", mounts=(Mount("/h/.cfg", "/root/.cfg"),))
+
+    assert f"{WORKTREE}:/work:rw,Z" in wrapped
+    assert "/h/.cfg:/root/.cfg:ro,Z" in wrapped
+
+
+def test_container_can_disable_selinux_labels() -> None:
+    wrapped = container_argv(["true"], selinux="disable")
+
+    assert "label=disable" in wrapped
+    assert f"{WORKTREE}:/work:rw" in wrapped
+
+
+def test_container_selinux_none_never_relabels(monkeypatch) -> None:
+    monkeypatch.setattr("herald.sandbox._selinux_enabled", lambda: True)
+
+    wrapped = container_argv(["true"], selinux="none", mounts=(Mount("/h/.cfg", "/root/.cfg"),))
+
+    assert f"{WORKTREE}:/work:rw" in wrapped
+    assert "/h/.cfg:/root/.cfg:ro" in wrapped
+
+
+def test_container_rejects_an_unknown_selinux_mode() -> None:
+    with pytest.raises(SandboxError):
+        ContainerSandbox(image="img", selinux="bogus")
+
+
+def test_container_sandbox_selinux_from_env() -> None:
+    info = select_harness(EnvHarnessCatalog(env={}), "opencode")
+
+    sandbox = container_sandbox(info, {"HERALD_HARNESS_CONTAINER_SELINUX": "Z"})
+
+    assert sandbox.selinux == "Z"
 
 
 def test_container_sandbox_uses_the_harness_image_and_mounts() -> None:

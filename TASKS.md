@@ -66,7 +66,8 @@ log). See [ADR 0005](docs/decisions/0005-state-store.md).
   home), `HERALD_HARNESS_CONTAINER_ENV`, `HERALD_HARNESS_CONTAINER_NETWORK` (default `host`),
   `HERALD_HARNESS_CONTAINER_HOME` (default `/root`), `HERALD_HARNESS_CONTAINER_WORKDIR`
   (default `/work`), `HERALD_HARNESS_CONTAINER_USERNS=keep-id`, `HERALD_HARNESS_CONTAINER_ARGS`,
-  `HERALD_CONTAINER_BINARY` (default `podman`).
+  `HERALD_HARNESS_CONTAINER_SELINUX=auto|z|Z|disable|none` (default `auto`; `auto` relabels
+  the worktree with `:Z` on SELinux hosts), `HERALD_CONTAINER_BINARY` (default `podman`).
 - Harness: `HERALD_HARNESS=opencode|claude|codex|auto|command`, `HERALD_HARNESS_BINARY`,
   `HERALD_HARNESS_COMMAND`, `HERALD_HARNESSES`, `HERALD_HARNESS_DEFAULT`, `HERALD_SANDBOX`,
   `HERALD_MAX_ATTEMPTS` (default 3), `HERALD_VERIFY_ALLOW` (allowlisted `verify:` commands).

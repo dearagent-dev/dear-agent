@@ -47,6 +47,10 @@ With `HERALD_ISOLATION=podman` the harness runs in its per-harness container ima
 credentials are mounted read-only (`HERALD_HARNESS_MOUNTS` overrides). See
 [ADR 0006](decisions/0006-container-isolation.md).
 
+On an SELinux host (Fedora/RHEL) the worktree is relabelled with `:Z` automatically
+(`HERALD_HARNESS_CONTAINER_SELINUX=auto`, the default). Set it to `Z` to relabel the credential
+mounts too, `disable` to pass `--security-opt label=disable`, or `none` to never touch labels.
+
 ## 3. Enqueue a task
 
 The email path is [below](#the-email-path); for a quick run you can enqueue directly:
