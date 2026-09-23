@@ -105,6 +105,7 @@ herald/
 ├── README.md
 ├── docs/
 │   ├── architecture.md
+│   ├── getting-started.md
 │   ├── transports.md
 │   ├── queue.md
 │   ├── providers.md
@@ -112,9 +113,10 @@ herald/
 │   ├── roadmap.md
 │   └── decisions/            # ADRs, one file per decision
 ├── src/herald/               # Python package
+│   ├── db.py                 # Postgres connect + schema composition
 │   ├── queue/                # Task model + Queue port (Postgres; mailbox is ingress)
 │   ├── transports/           # inbound/outbound adapters (jmap, imap, agentmail, irc)
-│   ├── runners/              # harness adapters (opencode, claude, codex, custom)
+│   ├── runners/              # harness adapters (opencode, claude, codex, custom) + catalog
 │   ├── providers/            # model provider config (hosted + local)
 │   ├── gitplane/             # worktree, branch, PR
 │   ├── notify/               # outbound status/approval threading
