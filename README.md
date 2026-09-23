@@ -93,6 +93,7 @@ Local end-to-end quickstart: [docs/getting-started.md](docs/getting-started.md).
 | **Cloudflare Email Service** | REST/SMTP/Worker binding | Email Routing → Worker `email()` | Optional forwarder; contains no business logic. |
 | **AgentMail.to** | API | webhooks/WebSockets/IMAP | Drop-in "inbox API for agents". |
 | **Fastmail (JMAP)** | JMAP | JMAP Push | **Recommended primary ingress.** Durable state is PostgreSQL. |
+| **Any IMAP/SMTP** | SMTP | IMAP poll | Universal (Gmail, Outlook, Yahoo, iCloud, self-hosted, Proton via Bridge); `HERALD_BACKEND=imap`. |
 | **forwardemail.net** | API/SMTP/IMAP | webhook/forward | Usable fallback. |
 | **Postmark / Resend / SES** | API | inbound webhooks (some) | Good for outbound notifications. |
 | **IRC** | — | bouncer history | Fun, but not store-and-forward; secondary. |
@@ -122,7 +123,18 @@ MIT — see [`LICENSE`](LICENSE).
 
 ## Prior art
 
-Herald learns from `ElectricJack/agent-queue` (durable task graph + review gates),
-`voundbrand/overnight` (review-driven PR loop) and `a20185/OvernightAgent` (resumable,
-worktree-isolated runs). It combines their ideas around a transport-agnostic, Git-first
-model.
+Herald learns from `ElectricJack/agent-queue` (durable task graph, review gates, rate-limit
+recovery), `voundbrand/overnight` (a review-driven PR loop that never merges to `main`) and
+`a20185/OvernightAgent` (resumable, worktree-isolated runs). It shares their core pieces —
+a durable task graph, gates, resumability, one reviewable PR per task — and adds:
+
+- **Enqueue over a transport, not a chat or a local orchestrator.** The inbox is the entry
+  point; the queue is a separate, queryable store (PostgreSQL), so the mailbox/protocol is
+  pluggable (JMAP, IMAP/SMTP, webhook) and swapping providers is configuration.
+- **A decider at the edges** (ADR 0004): small typed judgments route work and flag risk,
+  advisory only, with a deterministic fallback.
+- **Git-first, human-gated landing** as a hard invariant: every result is a draft PR the
+  human lands; agents never write a protected branch.
+
+The shared pieces are table stakes; Herald's bet is transport-agnostic enqueue plus a
+decision layer, with all durable state outside the transport.

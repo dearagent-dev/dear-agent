@@ -115,7 +115,9 @@ herald/
 ├── src/herald/               # Python package
 │   ├── db.py                 # Postgres connect + schema composition
 │   ├── queue/                # Task model + Queue port (Postgres; mailbox is ingress)
-│   ├── transports/           # inbound/outbound adapters (jmap, imap, agentmail, irc)
+│   ├── transports/           # inbound/outbound adapters (jmap, imap/smtp, webhook, memory)
+│   ├── imap/                 # IMAP client (receive) for the IMAP/SMTP transport
+│   ├── smtp/                 # SMTP client (send) for the IMAP/SMTP transport
 │   ├── runners/              # harness adapters (opencode, claude, codex, custom) + catalog
 │   ├── providers/            # model provider config (hosted + local)
 │   ├── gitplane/             # worktree, branch, PR
