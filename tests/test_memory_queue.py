@@ -129,6 +129,23 @@ def test_claim_returns_false_for_unknown_task(queue: MemoryQueue) -> None:
     assert queue.claim(make_task(id="missing"), lease=LEASE) is False
 
 
+def test_claim_next_claims_the_oldest_queued(queue: MemoryQueue, clock: FakeClock) -> None:
+    queue.enqueue(make_task(id="e1"))
+    clock.advance(timedelta(minutes=1))
+    queue.enqueue(make_task(id="e2", transport_id="<msg-2@example.com>"))
+
+    claimed = queue.claim_next(lease=LEASE)
+
+    assert claimed is not None
+    assert claimed.id == "e1"
+    assert queue.get("e1").state is TaskState.RUNNING
+    assert queue.get("e2").state is TaskState.QUEUED
+
+
+def test_claim_next_returns_none_when_empty(queue: MemoryQueue) -> None:
+    assert queue.claim_next(lease=LEASE) is None
+
+
 def test_transition_raises_on_state_conflict(queue: MemoryQueue) -> None:
     task = queue.enqueue(make_task())
     assert task is not None

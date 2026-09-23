@@ -61,6 +61,14 @@ class Queue(Protocol):
         """
         ...
 
+    def claim_next(self, *, lease: timedelta) -> Task | None:
+        """Atomically claim the oldest ``Queued`` task, or ``None`` when none is queued.
+
+        Unlike list-then-claim, this cannot race: two workers calling it concurrently
+        always get different tasks.
+        """
+        ...
+
     def transition(self, task: Task, to_state: TaskState) -> Task:
         """Move ``task`` to ``to_state`` if the queue still holds ``task.state``.
 

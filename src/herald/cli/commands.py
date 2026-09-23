@@ -363,12 +363,6 @@ def _handle_run(args: argparse.Namespace, context: CliContext) -> int:
     from herald.worker_factory import build_transport, build_worker
 
     queue = context.require_queue()
-    task_id = args.task_id
-    if task_id is None:
-        queued = queue.list(TaskState.QUEUED, limit=1)
-        if not queued:
-            raise RuntimeError("no queued task to run")
-        task_id = queued[0].id
     transport = build_transport(args.backend)
     worker = build_worker(
         queue=queue,
@@ -377,7 +371,8 @@ def _handle_run(args: argparse.Namespace, context: CliContext) -> int:
         recipient=args.recipient or None,
         provider_model=args.model or None,
     )
-    evidence = worker.run(task_id)
+    # Without an id, claim the oldest queued task atomically (a local sweep tick).
+    evidence = worker.run(args.task_id) if args.task_id else worker.run_next()
     payload = {
         "task_id": evidence.task_id,
         "branch": evidence.branch,

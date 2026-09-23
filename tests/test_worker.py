@@ -12,8 +12,17 @@ from herald.worker import TaskWorker, TaskWorkerError
 class CapturingExecutor:
     def __init__(self) -> None:
         self.calls: list[tuple[str, TaskSpec, str | None]] = []
+        self.claimed = False
 
-    def execute(self, task: Task, spec: TaskSpec, *, recipient: str | None = None) -> ExecutedTask:
+    def execute(
+        self,
+        task: Task,
+        spec: TaskSpec,
+        *,
+        recipient: str | None = None,
+        claimed: bool = False,
+    ) -> ExecutedTask:
+        self.claimed = claimed
         self.calls.append((task.id, spec, recipient))
         return ExecutedTask(
             task_id=task.id,
@@ -42,6 +51,51 @@ def test_worker_resolves_and_executes() -> None:
 
     assert executor.calls == [("e1", spec, "dev@example.com")]
     assert evidence.pr_url == "https://example.com/pr/1"
+
+
+def test_worker_run_next_claims_the_oldest_without_double_claiming() -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from herald.queue.models import TaskState
+
+    class Clock:
+        def __init__(self) -> None:
+            self.now = datetime(2026, 1, 1, tzinfo=UTC)
+
+        def __call__(self):
+            return self.now
+
+    clock = Clock()
+    queue = MemoryQueue(clock=clock)
+    queue.enqueue(Task(id="e1", transport_id="<m1@x>"))
+    clock.now += timedelta(minutes=1)
+    queue.enqueue(Task(id="e2", transport_id="<m2@x>"))
+    executor = CapturingExecutor()
+    worker = TaskWorker(
+        queue=queue,
+        executor=executor,  # type: ignore[arg-type]
+        resolve_spec=lambda task, repo: TaskSpec(repo_url="x"),
+        repo_path=".",
+    )
+
+    evidence = worker.run_next()
+
+    assert evidence.task_id == "e1"
+    assert executor.claimed is True
+    assert queue.get("e1").state is TaskState.RUNNING
+    assert queue.get("e2").state is TaskState.QUEUED
+
+
+def test_worker_run_next_raises_when_nothing_is_queued() -> None:
+    worker = TaskWorker(
+        queue=MemoryQueue(),
+        executor=CapturingExecutor(),  # type: ignore[arg-type]
+        resolve_spec=lambda task, repo: TaskSpec(repo_url="x"),
+        repo_path=".",
+    )
+
+    with pytest.raises(TaskWorkerError):
+        worker.run_next()
 
 
 def test_worker_rejects_an_unknown_task() -> None:

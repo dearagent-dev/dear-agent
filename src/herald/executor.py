@@ -60,8 +60,20 @@ class TaskExecutor:
         self._escalator = escalator
         self._lease = lease
 
-    def execute(self, task: Task, spec: TaskSpec, *, recipient: str | None = None) -> ExecutedTask:
-        if not self._queue.claim(task, lease=self._lease):
+    def execute(
+        self,
+        task: Task,
+        spec: TaskSpec,
+        *,
+        recipient: str | None = None,
+        claimed: bool = False,
+    ) -> ExecutedTask:
+        """Run ``task`` end to end.
+
+        Set ``claimed=True`` when the caller already claimed the task atomically (e.g.
+        :meth:`~herald.queue.port.Queue.claim_next`), so it is not claimed twice.
+        """
+        if not claimed and not self._queue.claim(task, lease=self._lease):
             raise RuntimeError(f"task {task.id} is not claimable")
         running = self._queue.get(task.id)
         assert running is not None

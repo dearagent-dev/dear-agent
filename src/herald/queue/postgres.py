@@ -152,6 +152,28 @@ class PostgresQueue:
         self._conn.commit()
         return row is not None
 
+    def claim_next(self, *, lease: timedelta) -> Task | None:
+        now = self._clock()
+        with self._conn.cursor() as cur:
+            cur.execute(
+                f"""
+                UPDATE herald_task
+                   SET state = %s, lease_until = %s, updated_at = %s
+                 WHERE id = (
+                     SELECT id FROM herald_task
+                      WHERE state = %s
+                      ORDER BY created_at, id
+                      FOR UPDATE SKIP LOCKED
+                      LIMIT 1
+                 )
+                 RETURNING {_COLUMNS}
+                """,
+                (TaskState.RUNNING.value, now + lease, now, TaskState.QUEUED.value),
+            )
+            row = cur.fetchone()
+        self._conn.commit()
+        return _task_from_row(row) if row else None
+
     def transition(self, task: Task, to_state: TaskState) -> Task:
         now = self._clock()
         with self._conn.cursor() as cur:

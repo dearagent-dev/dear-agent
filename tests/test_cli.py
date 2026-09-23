@@ -205,6 +205,10 @@ def test_run_without_a_task_id_picks_the_oldest_queued() -> None:
                 run=RunResult(exit_code=0, branch=f"herald/{task_id}"),
             )
 
+        def run_next(self) -> ExecutedTask:
+            # A real worker claims the oldest atomically; the fake mirrors that.
+            return self.run(queue.list(TaskState.QUEUED, limit=1)[0].id)
+
     buffer = io.StringIO()
     with (
         mock.patch("herald.cli.main.build_queue", return_value=queue),

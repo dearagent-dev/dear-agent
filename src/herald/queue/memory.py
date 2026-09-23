@@ -53,6 +53,15 @@ class MemoryQueue:
         stored.lease_until = now + lease
         return True
 
+    def claim_next(self, *, lease: timedelta) -> Task | None:
+        queued = [task for task in self._tasks.values() if task.state == TaskState.QUEUED]
+        if not queued:
+            return None
+        stored = min(queued, key=lambda task: (task.created_at, task.id))
+        stored.state = TaskState.RUNNING
+        stored.lease_until = self._clock() + lease
+        return copy.deepcopy(stored)
+
     def transition(self, task: Task, to_state: TaskState) -> Task:
         stored = self._tasks.get(task.id)
         if stored is None:
