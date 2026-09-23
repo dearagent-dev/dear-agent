@@ -83,7 +83,7 @@ unchecked slice** of the earliest milestone. One slice = one branch = one draft 
 - [x] **M6.4** Prompt-injection hardening pass: an advisory `InjectionScanner` (audit and
   escalation, explicitly not a boundary) wired into the control plane as a `suspicious`
   report.
-- [x] **M6.5** Packaging (`Dockerfile`, `.dockerignore`) + OpenShift manifests (Kustomize
+- [x] **M6.5** Packaging (`Containerfile`, `.dockerignore`) + OpenShift manifests (Kustomize
   base/overlays, runner `JobTemplate`), a per-role credential strategy (ADR 0003), and
   manifest tests asserting the hardening invariants. Verified live on OpenShift.
 

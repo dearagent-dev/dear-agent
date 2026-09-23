@@ -70,10 +70,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Build the real UBI 9 image so Dockerfile/dependency regressions are caught in CI
+      # Build the real UBI 9 image so Containerfile/dependency regressions are caught in CI
       # (the deployable artifact must install psycopg[bin] and run the CLI).
       - name: Build the container image
-        run: docker build -t herald:ci .
+        run: docker build -f Containerfile -t herald:ci .
 
       - name: Smoke-check the image
         run: docker run --rm herald:ci herald --help
