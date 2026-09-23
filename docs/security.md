@@ -82,9 +82,10 @@ Owner: normalizer + runner prompt construction.
 - Mount the repo read-only outside the disposable worktree.
 - Give the harness an **allowlist** of tools, not arbitrary shell.
 - Reject attachments and any message that carries source code or patches.
-- A message-supplied `verify` command runs only when its argv matches the operator's
-  allowlist (`DEAR_AGENT_VERIFY_ALLOW`) and is executed as an argv, never through a shell — a
-  message-derived command is never run blindly (golden rule 7).
+- A message-supplied `verify` command runs only when its full argv matches an operator
+  allowlist entry **exactly** (`DEAR_AGENT_VERIFY_ALLOW`), under the same sandbox and
+  restricted environment as the harness, and is executed as an argv, never through a shell —
+  a message-derived command is never run blindly (golden rule 7).
 
 Owner: runner + Kubernetes manifests.
 

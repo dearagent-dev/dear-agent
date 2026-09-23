@@ -257,7 +257,8 @@ def test_worker_applies_the_project_verify_allowlist() -> None:
 
     assert executor.verifier is not None
     assert executor.verifier.allows("make test") is True  # type: ignore[attr-defined]
-    assert executor.verifier.allows("pytest -q") is True  # type: ignore[attr-defined]
+    assert executor.verifier.allows("pytest") is True  # type: ignore[attr-defined]
+    assert executor.verifier.allows("pytest -q") is False  # type: ignore[attr-defined]
 
 
 def test_worker_applies_the_project_base_branch_default() -> None:

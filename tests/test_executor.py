@@ -197,12 +197,14 @@ def test_verify_must_pass_before_the_pr(repo: Path) -> None:
 
     queue = MemoryQueue()
     task = make_task(queue)
-    verifier = CommandVerifier.from_env({"DEAR_AGENT_VERIFY_ALLOW": "python"})
+    verifier = CommandVerifier.from_env(
+        {"DEAR_AGENT_VERIFY_ALLOW": 'python -c "raise SystemExit(0)"'}
+    )
     executor = make_executor(
         queue, repo, RecordingForge(), FakeRunner(ok=True), MemoryTransport(), verifier
     )
     spec = make_spec()
-    spec.verify = 'python -c "import sys; sys.exit(0)"'
+    spec.verify = 'python -c "raise SystemExit(0)"'
 
     evidence = executor.execute(task, spec, recipient="dev@example.com")
 
@@ -217,10 +219,12 @@ def test_verify_failure_fails_the_task_and_opens_no_pr(repo: Path) -> None:
     task = make_task(queue)
     transport = MemoryTransport()
     forge = RecordingForge()
-    verifier = CommandVerifier.from_env({"DEAR_AGENT_VERIFY_ALLOW": "python"})
+    verifier = CommandVerifier.from_env(
+        {"DEAR_AGENT_VERIFY_ALLOW": 'python -c "raise SystemExit(1)"'}
+    )
     executor = make_executor(queue, repo, forge, FakeRunner(ok=True), transport, verifier)
     spec = make_spec()
-    spec.verify = 'python -c "import sys; sys.exit(1)"'
+    spec.verify = 'python -c "raise SystemExit(1)"'
 
     evidence = executor.execute(task, spec, recipient="dev@example.com")
 
