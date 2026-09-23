@@ -47,8 +47,9 @@ Defense in depth, ordered from highest leverage. Each layer maps to a component.
   gate for high-risk work. Handled messages are filed into `Dear-Agent-Done` so they are not
   reprocessed.
 - Rate-limit per sender (`dear_agent.auth.RateLimiter`, sliding window): a burst of mail must
-  not become a burst of agent runs.
-- `InboundGate` composes authorization and rate limiting, and runs before the Normalizer.
+  not become a burst of agent runs. `InboundGate` (webhook) and `RateLimitedGate` (email)
+  compose authorization and rate limiting (`DEAR_AGENT_RATE_LIMIT`, default 60/minute), and run
+  before the Normalizer.
 
 Owner: transport adapter + normalizer.
 
