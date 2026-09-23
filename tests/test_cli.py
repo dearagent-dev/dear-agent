@@ -263,6 +263,23 @@ def test_enqueue_creates_a_queued_task_with_a_spec() -> None:
     assert tasks[0].spec.instructions == "fix the typo in the CLI help"
 
 
+def test_requeue_returns_a_failed_task_to_queued() -> None:
+    queue = MemoryQueue()
+    seed(queue, "e1")
+    task = queue.get("e1")
+    assert task is not None
+    queue.claim(task, lease=timedelta(seconds=60))
+    running = queue.get("e1")
+    assert running is not None
+    queue.transition(running, TaskState.FAILED)
+
+    code, output = run(["task", "requeue", "e1"], queue)
+
+    assert code == 0
+    assert "e1 -> queued" in output
+    assert queue.get("e1").state is TaskState.QUEUED
+
+
 def test_idle_proposes_a_task_from_a_todo(tmp_path) -> None:
     import subprocess
 
