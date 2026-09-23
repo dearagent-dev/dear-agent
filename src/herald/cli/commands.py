@@ -231,6 +231,8 @@ def add_listen_commands(
 def _handle_listen(args: argparse.Namespace, context: CliContext) -> int:
     import os
 
+    from herald.approvals import build_approval_store
+    from herald.approvals_service import ApprovalService
     from herald.control_plane import ControlPlane
     from herald.jmap.client import DEFAULT_SESSION_URL, JmapClient
     from herald.jmap.eventsource import EventSourceListener
@@ -247,9 +249,12 @@ def _handle_listen(args: argparse.Namespace, context: CliContext) -> int:
     )
     client.connect()
 
+    queue = context.require_queue()
     transport = build_transport("jmap")
+    # Wire approvals here too, so a reply ingested on the push path decides the task.
+    approvals = ApprovalService(build_approval_store(), queue)
     callback = IngestOnChange(
-        control_plane=ControlPlane(transport=transport, queue=context.require_queue()),
+        control_plane=ControlPlane(transport=transport, queue=queue, approvals=approvals),
         transport=transport,
         recipient=os.environ.get("HERALD_RECIPIENT"),
     )
