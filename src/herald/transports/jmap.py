@@ -112,6 +112,6 @@ class JmapTransport:
             subject=record.subject,
             body=record.body,
             attachments=attachments,
-            headers={},
+            headers=dict(record.headers),
             received_at=record.received_at,
         )

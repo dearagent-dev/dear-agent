@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-from collections.abc import Callable
+import re
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Protocol, runtime_checkable
 
 SIGNATURE_HEADER = "X-Herald-Signature"
+
+# The MTA whose Authentication-Results we trust (Fastmail's is *.messagingengine.com).
+DEFAULT_AUTH_SERV_ID = "messagingengine.com"
 
 
 @runtime_checkable
@@ -39,6 +43,10 @@ class BadSignatureError(AuthError):
 
 class RateLimitedError(AuthError):
     """The sender exceeded the allowed message rate."""
+
+
+class EmailAuthError(AuthError):
+    """The receiving MTA's SPF/DKIM/DMARC verdict did not pass."""
 
 
 def sign(body: str, secret: str, *, sender: str | None = None) -> str:
@@ -154,9 +162,114 @@ class SenderAllowlist:
         raise UnauthorizedSenderError(sender)
 
 
+_AUTH_MECHANISMS = ("dmarc", "dkim", "spf", "arc")
+
+
+def _domain(address: str | None) -> str:
+    return (address or "").rsplit("@", 1)[-1].strip().lower()
+
+
+def _authentication_results(headers: Mapping[str, str] | None) -> str | None:
+    values = [
+        value
+        for name, value in (headers or {}).items()
+        if name.lower() == "authentication-results" and value
+    ]
+    return "\n".join(values) if values else None
+
+
+def parse_authentication_results(raw: str) -> dict[str, str]:
+    """Extract the verdicts and authenticated domains from ``Authentication-Results``.
+
+    RFC 8601 allows several headers and folded values, so we scan every clause for the
+    mechanisms and for the ``header.from``/``header.d``/``smtp.mailfrom`` properties. A
+    mechanism counts as ``pass`` if any of its clauses passed.
+    """
+    verdicts: dict[str, str] = {}
+    for clause in re.split(r"[;\n]", raw):
+        clause = clause.strip()
+        match = re.match(r"([A-Za-z0-9-]+)\s*=\s*([A-Za-z0-9-]+)", clause)
+        if match:
+            mechanism, verdict = match.group(1).lower(), match.group(2).lower()
+            if mechanism in _AUTH_MECHANISMS and (verdict == "pass" or mechanism not in verdicts):
+                verdicts[mechanism] = verdict
+        for prop in re.finditer(
+            r"(header\.from|header\.d|smtp\.mailfrom)\s*=\s*([^\s;)]+)", clause, re.IGNORECASE
+        ):
+            key, value = prop.group(1).lower(), prop.group(2).strip("<>").lower()
+            if key == "header.from":
+                verdicts["dmarc_from"] = _domain(value)
+            elif key == "header.d":
+                verdicts["dkim_domain"] = value.lstrip("@")
+            else:
+                verdicts.setdefault("spf_domain", _domain(value))
+    return verdicts
+
+
+@dataclass(slots=True)
+class EmailAuthGate:
+    """Admits email only when the receiving MTA authenticated it (SPF/DKIM/DMARC).
+
+    ``Authentication-Results`` is written by the receiving MTA (Fastmail's
+    ``*.messagingengine.com``). We trust the configured ``auth_serv_id`` and require the
+    configured mechanisms to pass; the DMARC-aligned domain must be in ``allowed_domains``
+    and must match the ``From`` domain, which defeats a spoofed ``From``. An optional
+    :class:`SenderAllowlist` narrows it to specific addresses. It fails closed: no trusted
+    verdict means no task.
+    """
+
+    required: frozenset[str] = frozenset({"dmarc"})
+    allowed_domains: frozenset[str] = frozenset()
+    senders: SenderAllowlist | None = None
+    auth_serv_id: str = DEFAULT_AUTH_SERV_ID
+
+    @classmethod
+    def from_env(cls, env: Mapping[str, str]) -> EmailAuthGate | None:
+        domains = _split_env(env.get("HERALD_AUTH_DOMAINS"))
+        if not domains:
+            return None
+        required = _split_env(env.get("HERALD_AUTH_MECHANISMS")) or frozenset({"dmarc"})
+        return cls(
+            required=required,
+            allowed_domains=domains,
+            senders=SenderAllowlist.from_env(env.get("HERALD_ALLOWED_SENDERS")),
+            auth_serv_id=env.get("HERALD_AUTH_SERV_ID", DEFAULT_AUTH_SERV_ID),
+        )
+
+    def admit(self, *, body: str, headers: dict[str, str], sender: str | None) -> None:
+        if self.senders is not None:
+            self.senders.admit(body=body, headers=headers, sender=sender)
+
+        raw = _authentication_results(headers)
+        if raw is None:
+            raise EmailAuthError("no Authentication-Results header")
+        if self.auth_serv_id and self.auth_serv_id.lower() not in raw.lower():
+            raise EmailAuthError(f"Authentication-Results is not from {self.auth_serv_id}")
+
+        verdicts = parse_authentication_results(raw)
+        for mechanism in self.required:
+            if verdicts.get(mechanism) != "pass":
+                raise EmailAuthError(f"{mechanism} did not pass")
+        domain = verdicts.get("dmarc_from") or verdicts.get("dkim_domain")
+        if not domain:
+            raise EmailAuthError("no authenticated domain in Authentication-Results")
+        if self.allowed_domains and domain not in self.allowed_domains:
+            raise UnauthorizedSenderError(sender)
+        if sender and _domain(sender) != domain:
+            raise EmailAuthError("From domain does not match the authenticated domain")
+
+
+def _split_env(value: str | None) -> frozenset[str]:
+    return frozenset(
+        part.strip().lower() for part in (value or "").replace(";", ",").split(",") if part.strip()
+    )
+
+
 __all__ = [
     "AuthError",
     "BadSignatureError",
+    "EmailAuthError",
+    "EmailAuthGate",
     "Gate",
     "InboundAuthorizer",
     "InboundGate",
@@ -166,5 +279,6 @@ __all__ = [
     "SIGNATURE_HEADER",
     "SenderAllowlist",
     "UnauthorizedSenderError",
+    "parse_authentication_results",
     "sign",
 ]
