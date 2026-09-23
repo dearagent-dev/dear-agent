@@ -171,6 +171,62 @@ def test_container_sandbox_selinux_from_env() -> None:
     assert sandbox.selinux == "Z"
 
 
+def test_container_drops_capabilities() -> None:
+    wrapped = container_argv(["true"])
+
+    assert "--cap-drop" in wrapped
+    assert "ALL" in wrapped
+
+
+def test_container_can_keep_capabilities() -> None:
+    wrapped = container_argv(["true"], cap_drop=False)
+
+    assert "--cap-drop" not in wrapped
+
+
+def test_container_sets_a_pids_limit() -> None:
+    wrapped = container_argv(["true"])
+    assert wrapped[wrapped.index("--pids-limit") + 1] == "512"
+
+    custom = container_argv(["true"], pids_limit=128)
+    assert custom[custom.index("--pids-limit") + 1] == "128"
+
+
+def test_container_can_omit_the_pids_limit() -> None:
+    assert "--pids-limit" not in container_argv(["true"], pids_limit=None)
+
+
+def test_container_can_use_a_read_only_rootfs() -> None:
+    wrapped = container_argv(["true"], read_only=True)
+
+    assert "--read-only" in wrapped
+    assert "/tmp" in wrapped
+
+
+def test_container_rejects_a_non_positive_pids_limit() -> None:
+    with pytest.raises(SandboxError):
+        ContainerSandbox(image="img", pids_limit=0)
+
+
+def test_container_sandbox_hardening_from_env() -> None:
+    info = select_harness(EnvHarnessCatalog(env={}), "opencode")
+
+    sandbox = container_sandbox(
+        info,
+        {
+            "DEAR_AGENT_HARNESS_CONTAINER_READONLY": "true",
+            "DEAR_AGENT_HARNESS_CONTAINER_PIDS": "256",
+            "DEAR_AGENT_HARNESS_CONTAINER_CAP_DROP": "false",
+        },
+    )
+
+    assert sandbox.read_only is True
+    assert sandbox.pids_limit == 256
+    assert sandbox.cap_drop is False
+
+    assert container_sandbox(info, {"DEAR_AGENT_HARNESS_CONTAINER_PIDS": "none"}).pids_limit is None
+
+
 def test_container_sandbox_uses_the_harness_image_and_mounts() -> None:
     info = select_harness(EnvHarnessCatalog(env={}), "opencode")
 
