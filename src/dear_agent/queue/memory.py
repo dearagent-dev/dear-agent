@@ -19,7 +19,7 @@ class MemoryQueue:
         self._tasks: dict[str, Task] = {}
         self._by_transport: dict[str, str] = {}
 
-    def enqueue(self, task: Task) -> Task | None:
+    def enqueue(self, task: Task, *, state: TaskState = TaskState.QUEUED) -> Task | None:
         # Dedupe on either key, so a task whose id and transport_id diverge cannot clobber
         # an existing record or leave the transport index stale.
         if task.transport_id in self._by_transport or task.id in self._tasks:
@@ -27,7 +27,7 @@ class MemoryQueue:
 
         now = self._clock()
         stored = copy.deepcopy(task)
-        stored.state = TaskState.QUEUED
+        stored.state = state
         stored.attempts = 0
         stored.lease_until = None
         stored.created_at = now

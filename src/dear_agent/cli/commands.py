@@ -447,13 +447,14 @@ def _handle_idle(args: argparse.Namespace, context: CliContext) -> int:
                 instructions=proposal.instructions,
             ),
         )
-        stored = queue.enqueue(task)
+        gated = not args.no_gate
+        # Store a gated proposal straight in Action so it is never claimable before parking.
+        stored = queue.enqueue(task, state=TaskState.ACTION if gated else TaskState.QUEUED)
         if stored is None:
             return None
-        if not args.no_gate:
-            # Proposals are approval-gated by construction: park in Action and issue a
-            # single-use token; 'dear-agent approval approve <token>' releases it to run.
-            queue.transition(stored, TaskState.ACTION)
+        if gated:
+            # Proposals are approval-gated by construction: issued a single-use token;
+            # 'dear-agent approval approve <token>' releases it to run.
             if notifier is not None and recipient:
                 notifier.request_approval(
                     stored, recipient=recipient, action="run", summary=proposal.title

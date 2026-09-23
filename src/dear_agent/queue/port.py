@@ -38,11 +38,13 @@ class Queue(Protocol):
     backend.
     """
 
-    def enqueue(self, task: Task) -> Task | None:
-        """Store ``task`` in ``Queued``.
+    def enqueue(self, task: Task, *, state: TaskState = TaskState.QUEUED) -> Task | None:
+        """Store ``task``, defaulting to ``Queued``.
 
-        Return ``None`` when a task with the same ``transport_id`` already exists, so a
-        redelivered message is a no-op.
+        ``state`` lets a caller store a task that must not be claimed yet — for example a
+        gated task stored directly in ``Action`` so there is no window where a sweep could
+        claim it before it is parked. Return ``None`` when a task with the same
+        ``transport_id`` already exists, so a redelivered message is a no-op.
         """
         ...
 

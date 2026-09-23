@@ -467,3 +467,27 @@ def test_the_human_gate_fails_open_without_a_decider() -> None:
     assert report.gated == []
     assert report.needs_human == []
     assert queue.get("<m1@x>").state is TaskState.QUEUED
+
+
+def test_a_gated_task_is_never_left_queued() -> None:
+    # Stored straight in Action, so there is no window where a sweep could claim it.
+    from dear_agent.control_plane import ControlPlane
+    from dear_agent.decision.port import Answer, Decision, DecisionKind
+    from dear_agent.decision.router import HumanGate
+
+    class _Model:
+        def decide(self, state, questions):
+            return Decision(answers={"needs_human": Answer(kind=DecisionKind.NOUL, noul=0.9)})
+
+    queue = MemoryQueue()
+    plane = ControlPlane(
+        transport=MemoryTransport(),
+        queue=queue,
+        approvals=ApprovalService(MemoryApprovalStore(), queue),
+        human_gate=HumanGate(decider=_Model()),
+    )
+
+    plane.ingest([make_message(headers={})])
+
+    assert queue.list(TaskState.QUEUED) == []
+    assert queue.get("<m1@x>").state is TaskState.ACTION
