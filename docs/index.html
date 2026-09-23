@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dear Agent — email in, pull requests out</title>
+  <meta name="description" content="Dear Agent is an async, email-first inbox that turns messages into Git pull requests produced by coding agents. Git is the artifact plane; the mailbox is ingress.">
+  <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Dear Agent">
+  <meta property="og:description" content="Email in. Pull requests out.">
+  <meta property="og:url" content="https://dearagent.dev/">
+  <meta property="og:image" content="https://dearagent.dev/assets/og.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <style>
+    :root {
+      --ink: #1F2A44;
+      --amber: #F2A93B;
+      --paper: #FFFFFF;
+      --bg: #F5F7FA;
+      --muted: #5A6B85;
+      --line: #D8DEE9;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --ink: #E7ECF4; --paper: #141A28; --bg: #0D1117; --muted: #9FB0C8; --line: #263042; }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 16px/1.6 Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    main { max-width: 880px; margin: 0 auto; padding: 64px 24px 80px; }
+    header { text-align: center; }
+    header img.mark { width: 104px; height: 104px; }
+    h1 { font-size: 44px; letter-spacing: -1px; margin: 16px 0 8px; }
+    .tagline { font-family: "JetBrains Mono", ui-monospace, Consolas, monospace; color: var(--amber); font-size: 18px; margin: 0; }
+    .lead { text-align: center; color: var(--muted); max-width: 620px; margin: 24px auto 0; }
+    .hero { display: block; width: 100%; max-width: 720px; margin: 40px auto 0; }
+    .actions { display: flex; gap: 12px; justify-content: center; margin: 40px 0 0; flex-wrap: wrap; }
+    .btn {
+      display: inline-block; padding: 12px 22px; border-radius: 10px; text-decoration: none;
+      font-weight: 600; border: 1px solid var(--line); color: var(--ink); background: var(--paper);
+    }
+    .btn.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+    @media (prefers-color-scheme: dark) { .btn.primary { background: var(--amber); color: #141A28; border-color: var(--amber); } }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin: 56px 0 0; }
+    .card { background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 20px; }
+    .card h3 { margin: 0 0 6px; font-size: 16px; }
+    .card p { margin: 0; color: var(--muted); font-size: 14px; }
+    footer { text-align: center; color: var(--muted); font-size: 14px; margin-top: 64px; }
+    footer code { font-family: "JetBrains Mono", ui-monospace, Consolas, monospace; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <img class="mark" src="assets/logo.svg" alt="Dear Agent">
+      <h1>Dear Agent</h1>
+      <p class="tagline">Dear Agent, here&#8217;s your task.</p>
+    </header>
+
+    <img class="hero" src="assets/hero.svg" alt="A handwritten letter whose text is a git log">
+
+    <p class="lead">
+      An async, email-first inbox that turns messages into Git pull requests produced by
+      coding agents. Send an email; an agent works in its own worktree; the result comes back
+      as a <strong>pull request you review</strong>. No source code travels over the transport.
+    </p>
+
+    <div class="actions">
+      <a class="btn primary" href="https://github.com/rarguello/dear-agent">View on GitHub</a>
+      <a class="btn" href="https://github.com/rarguello/dear-agent/blob/main/docs/getting-started.md">Getting started</a>
+    </div>
+
+    <div class="grid">
+      <div class="card"><h3>Async by design</h3><p>Send a task and disconnect. Work survives restarts and results wait in an inbox.</p></div>
+      <div class="card"><h3>No code over the wire</h3><p>Only metadata and links travel; every result is a reviewable draft PR.</p></div>
+      <div class="card"><h3>Pluggable</h3><p>OpenCode, Claude Code, Codex, or a custom runner; hosted or local models.</p></div>
+      <div class="card"><h3>Human-gated</h3><p>Approvals land in an action queue; <code>main</code> is never written by an agent.</p></div>
+    </div>
+
+    <footer>
+      Git is the artifact plane. The mailbox is ingress. PostgreSQL is the durable queue.
+    </footer>
+  </main>
+</body>
+</html>
