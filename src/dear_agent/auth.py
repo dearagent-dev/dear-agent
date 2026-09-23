@@ -130,6 +130,24 @@ class InboundGate:
 
 
 @dataclass(slots=True)
+class RateLimitedGate:
+    """Compose any gate with a per-sender rate limiter.
+
+    The email path authenticates with ``EmailAuthGate`` (SPF/DKIM/DMARC) or a sender
+    allowlist, neither of which limits rate; this wraps them so a mail burst cannot become a
+    burst of agent runs. The optional inner ``gate`` is admitted first.
+    """
+
+    rate_limiter: RateLimiter
+    gate: Gate | None = None
+
+    def admit(self, *, body: str, headers: dict[str, str], sender: str | None) -> None:
+        if self.gate is not None:
+            self.gate.admit(body=body, headers=headers, sender=sender)
+        self.rate_limiter.check(sender)
+
+
+@dataclass(slots=True)
 class SenderAllowlist:
     """Admits inbound mail only from allowed senders, with no signature.
 
@@ -331,6 +349,7 @@ __all__ = [
     "InboundGate",
     "MissingSignatureError",
     "RateLimitedError",
+    "RateLimitedGate",
     "RateLimiter",
     "SIGNATURE_HEADER",
     "SenderAllowlist",

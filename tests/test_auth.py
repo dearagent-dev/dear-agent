@@ -340,3 +340,26 @@ def test_gate_runs_auth_before_rate_limit() -> None:
     gate.admit(body=BODY, headers=headers_for(), sender=SENDER)
     with pytest.raises(RateLimitedError):
         gate.admit(body=BODY, headers=headers_for(), sender=SENDER)
+
+
+def test_rate_limited_gate_admits_then_limits() -> None:
+    from dear_agent.auth import RateLimitedGate
+
+    gate = RateLimitedGate(
+        rate_limiter=RateLimiter(limit=1, window=timedelta(hours=1)),
+        gate=SenderAllowlist(frozenset({SENDER})),
+    )
+
+    gate.admit(body=BODY, headers={}, sender=SENDER)
+    with pytest.raises(RateLimitedError):
+        gate.admit(body=BODY, headers={}, sender=SENDER)
+
+
+def test_rate_limited_gate_without_an_inner_gate() -> None:
+    from dear_agent.auth import RateLimitedGate
+
+    gate = RateLimitedGate(rate_limiter=RateLimiter(limit=1, window=timedelta(hours=1)))
+
+    gate.admit(body=BODY, headers={}, sender=SENDER)
+    with pytest.raises(RateLimitedError):
+        gate.admit(body=BODY, headers={}, sender=SENDER)
