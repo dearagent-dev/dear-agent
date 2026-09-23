@@ -5,8 +5,16 @@ import hmac
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from typing import Protocol, runtime_checkable
 
 SIGNATURE_HEADER = "X-Herald-Signature"
+
+
+@runtime_checkable
+class Gate(Protocol):
+    """Anything that can admit or reject an inbound message before normalization."""
+
+    def admit(self, *, body: str, headers: dict[str, str], sender: str | None) -> None: ...
 
 
 def utcnow() -> datetime:
@@ -113,15 +121,50 @@ class InboundGate:
         self.rate_limiter.check(sender)
 
 
+@dataclass(slots=True)
+class SenderAllowlist:
+    """Admits inbound mail only from allowed senders, with no signature.
+
+    The email transport cannot carry Herald's HMAC header, so this is the first line of
+    defence: entries are exact addresses (``me@example.com``) or domains (``@example.com``).
+    ``From`` is spoofable, so this is not a boundary — pair it with a shared secret or a
+    DMARC check later (see ``docs/security.md``). An empty list rejects everyone, so a
+    misconfigured deployment fails closed rather than open.
+    """
+
+    senders: frozenset[str]
+
+    @classmethod
+    def from_env(cls, value: str | None) -> SenderAllowlist | None:
+        if not value:
+            return None
+        entries = frozenset(
+            part.strip().lower() for part in value.replace(";", ",").split(",") if part.strip()
+        )
+        return cls(senders=entries) if entries else None
+
+    def admit(self, *, body: str, headers: dict[str, str], sender: str | None) -> None:
+        candidate = (sender or "").strip().lower()
+        if candidate:
+            for allowed in self.senders:
+                if candidate == allowed or (
+                    allowed.startswith("@") and candidate.endswith(allowed)
+                ):
+                    return
+        raise UnauthorizedSenderError(sender)
+
+
 __all__ = [
     "AuthError",
     "BadSignatureError",
+    "Gate",
     "InboundAuthorizer",
     "InboundGate",
     "MissingSignatureError",
     "RateLimitedError",
     "RateLimiter",
     "SIGNATURE_HEADER",
+    "SenderAllowlist",
     "UnauthorizedSenderError",
     "sign",
 ]

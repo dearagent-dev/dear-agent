@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 
 from herald.approvals import ApprovalError
 from herald.approvals_service import ApprovalReply, ApprovalService, parse_reply
-from herald.auth import AuthError, InboundGate
+from herald.auth import AuthError, Gate
 from herald.decision.security import SecurityDecider
 from herald.normalizer import NormalizedTask, Rejected, RejectReason, normalize
 from herald.notify.notifier import Notifier
@@ -59,7 +59,7 @@ class ControlPlane:
         transport: Transport,
         queue: Queue,
         notifier: Notifier | None = None,
-        gate: InboundGate | None = None,
+        gate: Gate | None = None,
         approvals: ApprovalService | None = None,
         scanner: InjectionScanner | None = None,
         security: SecurityDecider | None = None,
@@ -104,7 +104,22 @@ class ControlPlane:
                 # Idempotent: a redelivery is a no-op, not an error.
                 continue
             report.accepted.append(result.task.id)
+        self._ack(messages)
         return report
+
+    def _ack(self, messages: list[RawMessage]) -> None:
+        """Tell the transport these messages were handled, so they are not redelivered.
+
+        Acknowledging is best effort: a failure here must never break ingestion, and the
+        queue's dedupe already makes a redelivery safe.
+        """
+        ack = getattr(self._transport, "ack", None)
+        if ack is None:
+            return
+        try:
+            ack(messages)
+        except Exception:  # noqa: BLE001 - acknowledging is best effort
+            return
 
     def _apply_decision(
         self, message: RawMessage, decision: ApprovalReply, recipient: str | None

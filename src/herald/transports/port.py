@@ -26,3 +26,7 @@ class Transport(Protocol):
     def send(self, message: OutboundMessage) -> None:
         """Send ``message`` in-thread; must not carry source or attachments."""
         ...
+
+    def ack(self, messages: list[RawMessage]) -> None:
+        """Mark handled messages so they are not delivered again (best effort)."""
+        ...
