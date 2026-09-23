@@ -283,6 +283,54 @@ def test_approval_pending_lists_issued_tokens(tmp_path, monkeypatch) -> None:
     assert payload[0]["action"] == "land"
 
 
+def test_approval_approve_redeems_the_token(tmp_path, monkeypatch) -> None:
+    from herald.approvals import FileApprovalStore
+    from herald.approvals_service import ApprovalService
+
+    path = tmp_path / "approvals.json"
+    monkeypatch.setenv("HERALD_APPROVALS_FILE", str(path))
+    monkeypatch.delenv("HERALD_QUEUE", raising=False)
+    queue = MemoryQueue()
+    seed(queue, "e1")
+    task = queue.get("e1")
+    assert task is not None
+    queue.claim(task, lease=timedelta(hours=1))
+    running = queue.get("e1")
+    assert running is not None
+    queue.transition(running, TaskState.ACTION)
+    token = ApprovalService(FileApprovalStore(path), queue).request("e1", "land")
+
+    code, output = run(["approval", "approve", token], queue)
+
+    assert code == 0
+    assert "e1 -> approved" in output
+    assert queue.get("e1").state is TaskState.APPROVED
+
+
+def test_approval_redeeming_twice_fails_cleanly(tmp_path, monkeypatch) -> None:
+    from herald.approvals import FileApprovalStore
+    from herald.approvals_service import ApprovalService
+
+    path = tmp_path / "approvals.json"
+    monkeypatch.setenv("HERALD_APPROVALS_FILE", str(path))
+    monkeypatch.delenv("HERALD_QUEUE", raising=False)
+    queue = MemoryQueue()
+    seed(queue, "e1")
+    task = queue.get("e1")
+    assert task is not None
+    queue.claim(task, lease=timedelta(hours=1))
+    running = queue.get("e1")
+    assert running is not None
+    queue.transition(running, TaskState.ACTION)
+    token = ApprovalService(FileApprovalStore(path), queue).request("e1", "land")
+    run(["approval", "reject", token], queue)
+
+    code, output = run(["approval", "reject", token], queue)
+
+    assert code == 1
+    assert queue.get("e1").state is TaskState.REJECTED
+
+
 def test_health_reports_queue_counts() -> None:
     queue = MemoryQueue()
     seed(queue, "e1")

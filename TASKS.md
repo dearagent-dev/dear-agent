@@ -25,6 +25,15 @@ log). See [ADR 0005](docs/decisions/0005-state-store.md).
 - [x] **MVP local path**: `herald task enqueue`, persisted specs, and
   [docs/getting-started.md](docs/getting-started.md).
 
+### Reliability + ops (same branch)
+
+- [x] Publish failures (`git`/forge) fail the task cleanly (`PUBLISH_FAILED`) instead of
+  leaving it `running`; `HERALD_MAX_ATTEMPTS` stops crash loops.
+- [x] `Queue.claim_next` with `FOR UPDATE SKIP LOCKED`; `herald run` (no id) claims atomically.
+- [x] `herald health`, `herald task requeue`, `herald approval pending`.
+- [x] Idle proposals are idempotent across ticks (deterministic transport id).
+- [x] Database `NetworkPolicy`; CI builds the UBI 9 image and smoke-checks the CLI.
+
 ## Next
 
 - **M8.5 — wire the `action` gate for real.** `TaskExecutor` goes `running -> done/failed`

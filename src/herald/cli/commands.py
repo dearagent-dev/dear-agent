@@ -427,6 +427,29 @@ def add_approval_commands(
     approval_sub = approval.add_subparsers(dest="approval_command", required=True)
     _add_parse_reply(approval_sub)
     _add_pending_approvals(approval_sub)
+    _add_redeem(approval_sub, "approve", "approved", "redeem a token as an approval")
+    _add_redeem(approval_sub, "reject", "rejected", "redeem a token as a rejection")
+
+
+def _add_redeem(
+    subparsers: argparse._SubParsersAction, name: str, decision: str, help_text: str
+) -> None:
+    parser = subparsers.add_parser(name, help=help_text)
+    parser.add_argument("token")
+    parser.set_defaults(handler=_handle_redeem, decision=decision)
+
+
+def _handle_redeem(args: argparse.Namespace, context: CliContext) -> int:
+    from herald.approvals import ApprovalError, build_approval_store
+    from herald.approvals_service import ApprovalReply, ApprovalService
+
+    service = ApprovalService(build_approval_store(), context.require_queue())
+    try:
+        task_id = service.apply(ApprovalReply(token=args.token, decision=args.decision))
+    except ApprovalError as exc:
+        raise RuntimeError(str(exc)) from exc
+    context.emit(f"{task_id} -> {args.decision}")
+    return 0
 
 
 def _add_pending_approvals(subparsers: argparse._SubParsersAction) -> None:
