@@ -1,0 +1,40 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticPrefixFixDepsChoreOthers",
+    "helpers:pinGitHubActionDigests"
+  ],
+  "timezone": "UTC",
+  "schedule": ["before 6am on monday"],
+  "labels": ["dependencies"],
+  "minimumReleaseAge": "3 days",
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 2,
+  "packageRules": [
+    {
+      "description": "Group GitHub Actions updates",
+      "matchManagers": ["github-actions"],
+      "groupName": "github-actions",
+      "addLabels": ["ci"]
+    },
+    {
+      "description": "Group Python (PEP 621) dependency updates",
+      "matchManagers": ["pep621"],
+      "groupName": "python-dependencies"
+    },
+    {
+      "description": "Red Hat registry images track :latest on purpose; do not query them",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["registry.redhat.io/**", "registry.access.redhat.com/**"],
+      "enabled": false
+    },
+    {
+      "description": "The app image tag is a deploy placeholder, not a real package",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["ghcr.io/OWNER/herald"],
+      "enabled": false
+    }
+  ]
+}
