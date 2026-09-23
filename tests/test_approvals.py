@@ -131,6 +131,24 @@ def test_service_moves_task_to_rejected(clock) -> None:
     assert queue.get("e1").state is TaskState.REJECTED
 
 
+def test_apply_rejects_a_task_that_is_not_awaiting_a_decision(clock) -> None:
+    from herald.approvals import ApprovalNotApplicableError
+
+    queue = MemoryQueue(clock=clock)
+    task = queue.enqueue(Task(id="e1", transport_id="<m1@x>"))
+    queue.claim(task, lease=timedelta(hours=1))
+    running = queue.get("e1")
+    queue.transition(running, TaskState.ACTION)
+    store = MemoryApprovalStore(clock=clock)
+    service = ApprovalService(store, queue)
+    token = service.request("e1", "land")
+    # The task finishes before the reply arrives.
+    queue.transition(queue.get("e1"), TaskState.DONE)
+
+    with pytest.raises(ApprovalNotApplicableError):
+        service.apply(parse_reply(f"approve {token}"))
+
+
 def test_run_gate_releases_the_task_to_queued(clock) -> None:
     queue = MemoryQueue(clock=clock)
     task = queue.enqueue(Task(id="e1", transport_id="<m1@x>"))

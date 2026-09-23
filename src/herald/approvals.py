@@ -53,6 +53,15 @@ class TokenAlreadyUsedError(ApprovalError):
     """The token was already consumed; single-use is enforced."""
 
 
+class ApprovalNotApplicableError(ApprovalError):
+    """The token is valid but its task is not awaiting a decision."""
+
+    def __init__(self, task_id: str, state: object) -> None:
+        super().__init__(f"task {task_id!r} is {state} and does not need a decision")
+        self.task_id = task_id
+        self.state = state
+
+
 @dataclass(slots=True)
 class Approval:
     """A pending human decision for one task."""
@@ -324,6 +333,7 @@ __all__ = [
     "APPROVAL_SCHEMA_STATEMENTS",
     "Approval",
     "ApprovalError",
+    "ApprovalNotApplicableError",
     "ApprovalStore",
     "ExpiredTokenError",
     "FileApprovalStore",

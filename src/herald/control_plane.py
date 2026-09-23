@@ -8,7 +8,7 @@ from herald.auth import AuthError, InboundGate
 from herald.decision.security import SecurityDecider
 from herald.normalizer import NormalizedTask, Rejected, RejectReason, normalize
 from herald.notify.notifier import Notifier
-from herald.queue.port import Queue
+from herald.queue.port import Queue, QueueError
 from herald.security import InjectionScanner
 from herald.transports.base import OutboundMessage, RawMessage
 from herald.transports.port import Transport
@@ -112,7 +112,9 @@ class ControlPlane:
         assert self._approvals is not None
         try:
             self._approvals.apply(decision)
-        except ApprovalError as exc:
+        except (ApprovalError, QueueError) as exc:
+            # An unknown/used/expired token, or a task that already moved on: explain and
+            # keep the loop alive rather than failing the whole ingest.
             self._reply_rejection_message(message, str(exc), recipient)
             return False
         return True

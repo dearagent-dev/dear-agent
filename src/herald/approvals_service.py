@@ -4,6 +4,7 @@ import re
 from dataclasses import dataclass
 
 from herald.approvals import (
+    ApprovalNotApplicableError,
     ApprovalStore,
     ExpiredTokenError,
     TokenAlreadyUsedError,
@@ -55,6 +56,17 @@ class ApprovalService:
         :class:`~herald.approvals.ApprovalError` when the token is unknown, already used or
         expired, so the caller can send a new request instead of failing silently.
         """
+        # Check applicability before consuming the token, so a token for a task that moved
+        # on is not burned.
+        approval = self._store.get(reply.token)
+        if approval is None:
+            raise UnknownTokenError(reply.token)
+        task = self._queue.get(approval.task_id)
+        if task is None:
+            raise UnknownTokenError(reply.token)
+        if task.state is not TaskState.ACTION:
+            raise ApprovalNotApplicableError(approval.task_id, task.state)
+
         approval = self._store.redeem(reply.token)
         # The approval's action decides what "approved" means: a ``run`` gate releases the
         # task to be executed (ACTION -> QUEUED); a ``land`` gate records the decision
@@ -65,14 +77,11 @@ class ApprovalService:
             target = TaskState.QUEUED
         else:
             target = TaskState.APPROVED
-
-        task = self._queue.get(approval.task_id)
-        if task is None:
-            raise UnknownTokenError(reply.token)
         return self._queue.transition(task, target)
 
 
 __all__ = [
+    "ApprovalNotApplicableError",
     "ApprovalService",
     "ApprovalReply",
     "parse_reply",
