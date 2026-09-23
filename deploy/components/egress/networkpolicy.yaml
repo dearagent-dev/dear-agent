@@ -1,0 +1,41 @@
+# Opt-in egress allowlist for runner Jobs (the only pods that run a harness).
+#
+# NetworkPolicy cannot match hostnames, so pin the model endpoint and the Git host to CIDRs
+# (or route them through an in-cluster proxy and allow only that proxy). With the external
+# rule below left commented out, a runner has DNS + same-namespace (Postgres) only: a
+# harness cannot reach the model or Git — fail closed, but runs will not complete until you
+# add your CIDRs. This is the deploy-side half of "authentication is not trust in content".
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: herald-runner-egress
+  labels:
+    app.kubernetes.io/name: herald
+    app.kubernetes.io/component: runner
+    app.kubernetes.io/part-of: herald
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: runner
+  policyTypes:
+    - Egress
+  egress:
+    # DNS resolution.
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # PostgreSQL and anything else in this namespace.
+    - to:
+        - podSelector: {}
+    # Model endpoint and Git host. Replace with your CIDRs (e.g. your provider's ranges and
+    # github.com) or the ClusterIP of an in-cluster egress proxy.
+    # - to:
+    #     - ipBlock:
+    #         cidr: 198.51.100.0/24   # model endpoint
+    #     - ipBlock:
+    #         cidr: 140.82.112.0/20    # github.com
+    #   ports:
+    #     - protocol: TCP
+    #       port: 443

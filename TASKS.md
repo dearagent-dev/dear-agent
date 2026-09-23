@@ -53,6 +53,9 @@ log). See [ADR 0005](docs/decisions/0005-state-store.md).
   `HERALD_ALLOWED_SENDERS` (addresses/`@domain`; unset = accept any sender).
 - Reliability: `HERALD_ERROR_BUDGET_FAILURES` (0 = off), `HERALD_ERROR_BUDGET_WINDOW`
   (seconds, default 3600). Events are in `herald_event`; `herald task events <id>`.
+- Sandbox: `HERALD_SANDBOX=bwrap|none`, `HERALD_SANDBOX_NETWORK` (default false),
+  `HERALD_SANDBOX_READABLE`, `HERALD_SANDBOX_WRITABLE`, `HERALD_SANDBOX_ENV`. `$HOME` is
+  never mounted (credentials stay invisible).
 - Harness: `HERALD_HARNESS=opencode|claude|codex|auto|command`, `HERALD_HARNESS_BINARY`,
   `HERALD_HARNESS_COMMAND`, `HERALD_HARNESSES`, `HERALD_HARNESS_DEFAULT`, `HERALD_SANDBOX`,
   `HERALD_MAX_ATTEMPTS` (default 3), `HERALD_VERIFY_ALLOW` (allowlisted `verify:` commands).
