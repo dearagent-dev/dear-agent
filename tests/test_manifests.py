@@ -118,6 +118,18 @@ def test_sweep_invokes_the_dispatcher() -> None:
         assert container["args"][:1] == ["sweep"]
 
 
+def test_config_selects_the_postgres_queue_and_jmap_transport() -> None:
+    docs = build("dev")
+    config = next(
+        doc
+        for doc in docs
+        if doc.get("kind") == "ConfigMap" and doc["metadata"]["name"] == "herald-config"
+    )
+
+    assert config["data"]["HERALD_QUEUE"] == "postgres"
+    assert config["data"]["HERALD_BACKEND"] == "jmap"
+
+
 def postgres_statefulset(docs: list[dict]) -> dict:
     return next(
         doc
