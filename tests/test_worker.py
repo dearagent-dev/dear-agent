@@ -201,6 +201,30 @@ def test_build_routing_runner_maps_classes(monkeypatch) -> None:
     assert runner.default == "hosted"
 
 
+def test_worker_stops_when_the_error_budget_is_exhausted() -> None:
+    from herald.events import ErrorBudget, MemoryEventLog
+    from herald.queue.models import TaskState
+
+    log = MemoryEventLog()
+    log.record("f1", "task.failed")
+    log.record("f2", "task.failed")
+    queue = MemoryQueue()
+    queue.enqueue(Task(id="e1", transport_id="<m1@x>"))
+    worker = TaskWorker(
+        queue=queue,
+        executor=CapturingExecutor(),  # type: ignore[arg-type]
+        resolve_spec=lambda task, repo: TaskSpec(repo_url="x"),
+        repo_path=".",
+        events=log,
+        budget=ErrorBudget(max_failures=2),
+    )
+
+    with pytest.raises(TaskWorkerError):
+        worker.run("e1")
+
+    assert queue.get("e1").state is TaskState.QUEUED  # never claimed
+
+
 def test_worker_fails_a_task_after_too_many_attempts() -> None:
     from datetime import UTC, datetime, timedelta
 

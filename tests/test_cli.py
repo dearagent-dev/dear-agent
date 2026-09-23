@@ -434,6 +434,21 @@ def test_health_reports_queue_counts() -> None:
     assert payload["counts"]["running"] == 0
 
 
+def test_task_events_prints_the_history(monkeypatch) -> None:
+    from herald.events import MemoryEventLog
+
+    log = MemoryEventLog()
+    log.record("e1", "task.claimed")
+    log.record("e1", "task.done", pr_url="https://pr/1")
+    monkeypatch.setattr("herald.events.build_event_log", lambda: log)
+
+    code, output = run(["--json", "task", "events", "e1"], MemoryQueue())
+
+    assert code == 0
+    payload = json.loads(output)
+    assert [event["kind"] for event in payload] == ["task.claimed", "task.done"]
+
+
 def test_cancel_rejects_a_queued_task() -> None:
     queue = MemoryQueue()
     seed(queue, "e1")

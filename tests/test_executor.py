@@ -248,6 +248,28 @@ def test_verify_command_not_allowlisted_is_blocked(repo: Path) -> None:
     assert queue.get("e1").state is TaskState.FAILED
 
 
+def test_executor_records_typed_events(repo: Path) -> None:
+    from herald.events import MemoryEventLog
+
+    queue = MemoryQueue()
+    task = make_task(queue)
+    log = MemoryEventLog()
+    executor = TaskExecutor(
+        queue=queue,
+        runner=FakeRunner(ok=True),
+        git=GitPlane(forge=RecordingForge()),
+        repo_path=str(repo),
+        worktrees_root=str(repo.parent / "wt"),
+        events=log,
+    )
+
+    executor.execute(task, make_spec())
+
+    kinds = [event.kind for event in log.read("e1")]
+    assert "task.claimed" in kinds
+    assert "task.done" in kinds
+
+
 def test_slug_is_branch_safe() -> None:
     task = Task(id="e1", transport_id="<m1@x>", subject="Add /healthz & metrics!!")
 

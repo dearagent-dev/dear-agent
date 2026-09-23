@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import timedelta
 
+from herald.events import EventLog
 from herald.gitplane.plane import GitError, GitPlane
 from herald.notify.escalate import Escalator, FailureKind
 from herald.notify.notifier import Notifier, TaskLinks
@@ -53,6 +54,7 @@ class TaskExecutor:
         notifier: Notifier | None = None,
         escalator: Escalator | None = None,
         verifier: CommandVerifier | None = None,
+        events: EventLog | None = None,
         lease: timedelta = DEFAULT_LEASE,
     ) -> None:
         self._queue = queue
@@ -63,7 +65,16 @@ class TaskExecutor:
         self._notifier = notifier
         self._escalator = escalator
         self._verifier = verifier
+        self._events = events
         self._lease = lease
+
+    def _emit(self, task_id: str, kind: str, **data: object) -> None:
+        if self._events is None:
+            return
+        try:
+            self._events.record(task_id, kind, **data)
+        except Exception:  # noqa: BLE001 - events are best effort
+            return
 
     def execute(
         self,
@@ -82,6 +93,7 @@ class TaskExecutor:
             raise RuntimeError(f"task {task.id} is not claimable")
         running = self._queue.get(task.id)
         assert running is not None
+        self._emit(task.id, "task.claimed")
 
         try:
             worktree = Worktree.create(
@@ -112,7 +124,7 @@ class TaskExecutor:
                 # The harness succeeded. Run the task's verify gate first (only if the
                 # command is allowlisted), then publish. A git/forge error must fail the task
                 # cleanly, never leave it `running` until the lease expires.
-                failure = self._verify(spec, worktree)
+                failure = self._verify(task, spec, worktree)
                 if failure is None:
                     try:
                         commit = self._git.commit_all(worktree, message=_commit_message(task, spec))
@@ -130,6 +142,7 @@ class TaskExecutor:
                     except GitError:
                         failure = FailureKind.PUBLISH_FAILED
                         pr_url = None
+                        self._emit(task.id, "publish.failed")
             else:
                 failure = (
                     FailureKind.HARNESS_MISSING
@@ -158,22 +171,32 @@ class TaskExecutor:
                 ),
             )
             evidence.task_id = final.id
+            self._emit(
+                final.id,
+                "task.done" if evidence.ok else "task.failed",
+                failure=evidence.failure.value if evidence.failure else None,
+                pr_url=evidence.pr_url,
+            )
             self._report(evidence, recipient=recipient)
             return evidence
         finally:
             worktree.remove()
 
-    def _verify(self, spec: TaskSpec, worktree: Worktree) -> FailureKind | None:
+    def _verify(self, task: Task, spec: TaskSpec, worktree: Worktree) -> FailureKind | None:
         """Run the task's verify gate, if any. Returns a failure kind, or ``None`` to pass."""
         if not spec.verify:
             return None
         if self._verifier is None:
+            self._emit(task.id, "verify.blocked", command=spec.verify)
             return FailureKind.VERIFY_BLOCKED
         result = self._verifier.run(spec.verify, str(worktree.path))
         if result.blocked:
+            self._emit(task.id, "verify.blocked", command=spec.verify)
             return FailureKind.VERIFY_BLOCKED
         if not result.ok:
+            self._emit(task.id, "verify.failed", command=spec.verify, exit_code=result.exit_code)
             return FailureKind.VERIFY_FAILED
+        self._emit(task.id, "verify.passed", command=spec.verify)
         return None
 
     def _report(self, evidence: ExecutedTask, *, recipient: str | None) -> None:

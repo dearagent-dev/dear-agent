@@ -18,11 +18,13 @@ def init_schema(conn: Any) -> None:
     """
     from herald.approvals import apply_schema as apply_approvals
     from herald.decision.log import apply_schema as apply_decisions
+    from herald.events import apply_schema as apply_events
     from herald.queue.postgres import apply_schema as apply_queue
 
     apply_queue(conn)
     apply_approvals(conn)
     apply_decisions(conn)
+    apply_events(conn)
 
 
 __all__ = ["connect", "init_schema"]

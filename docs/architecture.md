@@ -125,6 +125,13 @@ travels over the transport.
   **resumable** (a sweep returns a stale `running` task to `queued`), never a lost task.
 - Worktrees are disposable (`emptyDir` inside a Job); the branch/PR is durable.
 - Serial execution is the default and is not a bug.
+- Every task emits an append-only **event log** (`herald_event`): claimed, verify
+  passed/failed, publish failed, done/failed, plus ingest accept/reject/deny. It is the
+  history a state column cannot express; `herald task events <id>` reads it.
+- An **error budget** (circuit breaker) stops starting new runs when too many tasks failed
+  recently (`HERALD_ERROR_BUDGET_*`), so a systemic failure does not grind on.
+- `herald health` reports a `stalled` count (running tasks whose lease is about to expire)
+  as a soft watchdog; the sweep is the hard one.
 
 ## Deployment
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from herald.queue.models import TaskState
 from herald.queue.port import Queue
@@ -71,17 +71,26 @@ class Health:
     its limit. A non-empty queue is **not** unhealthy: work is asynchronous by design.
     """
 
-    def __init__(self, *, max_running: int = 1) -> None:
+    def __init__(self, *, max_running: int = 1, stall_margin_seconds: int = 300) -> None:
         self._max_running = max_running
+        self._stall_margin = timedelta(seconds=stall_margin_seconds)
 
     def check(self, queue: Queue, *, now: datetime | None = None) -> HealthStatus:
+        moment = now or datetime.now(UTC)
         counts = {state.value: len(queue.list(state, limit=1000)) for state in COUNTED_STATES}
         running = counts[TaskState.RUNNING.value]
+        # A soft stall watchdog: a running task whose lease is about to expire (or already
+        # has) may be wedged. The sweep requeues it; this surfaces it before it goes silent.
+        stalled = sum(
+            1
+            for task in queue.list(TaskState.RUNNING, limit=1000)
+            if task.lease_until is not None and task.lease_until <= moment + self._stall_margin
+        )
         return HealthStatus(
             ok=running <= self._max_running,
-            checked_at=now or datetime.now(UTC),
+            checked_at=moment,
             counts=counts,
-            details={"max_running": self._max_running},
+            details={"max_running": self._max_running, "stalled": stalled},
         )
 
 
