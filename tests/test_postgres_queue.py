@@ -90,6 +90,19 @@ def test_get_unknown_id_returns_none(queue) -> None:
     assert queue.get("missing") is None
 
 
+def test_enqueue_persists_the_parsed_spec(queue) -> None:
+    from herald.queue.models import TaskSpec
+
+    spec = TaskSpec(repo_url="git@github.com:o/r.git", instructions="do it", model_request="x/y")
+    stored = queue.enqueue(make_task(spec=spec))
+
+    assert stored is not None
+    assert stored.spec == spec
+    fetched = queue.get("e1")
+    assert fetched is not None
+    assert fetched.spec == spec
+
+
 def test_list_filters_by_state(queue) -> None:
     queue.enqueue(make_task(id="e1"))
     second = queue.enqueue(make_task(id="e2", transport_id="<msg-2@example.com>"))

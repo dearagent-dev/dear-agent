@@ -30,6 +30,14 @@ class WorktreeSpecResolver:
         self._preparer = preparer or RepoPreparer()
 
     def __call__(self, task: Task, repo_path: str) -> TaskSpec:
+        # The spec is persisted with the task (ADR 0005), so a runner needs no mailbox. Fall
+        # back to re-parsing the message only for tasks enqueued before that.
+        spec = task.spec or self._from_transport(task)
+        if spec.repo_url:
+            self._preparer.ensure(repo_path, spec.repo_url)
+        return spec
+
+    def _from_transport(self, task: Task) -> TaskSpec:
         from herald.normalizer import NormalizedTask, normalize
 
         message = next(
@@ -41,8 +49,6 @@ class WorktreeSpecResolver:
         result = normalize(message)
         if not isinstance(result, NormalizedTask):
             raise ValueError(f"message {task.transport_id!r} does not normalize: {result.reason}")
-        if result.spec.repo_url:
-            self._preparer.ensure(repo_path, result.spec.repo_url)
         return result.spec
 
 

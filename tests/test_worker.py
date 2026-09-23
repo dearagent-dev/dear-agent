@@ -145,3 +145,26 @@ def test_build_routing_runner_maps_classes(monkeypatch) -> None:
     assert isinstance(runner, RoutingRunner)
     assert set(runner.runners) == {"local", "hosted"}
     assert runner.default == "hosted"
+
+
+def test_spec_resolver_prefers_the_persisted_spec() -> None:
+    from herald.worker_factory import WorktreeSpecResolver
+
+    class ExplodingTransport:
+        def poll(self):
+            raise AssertionError("must not poll the transport when the spec is persisted")
+
+    class RecordingPreparer:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, str]] = []
+
+        def ensure(self, path: str, url: str) -> None:
+            self.calls.append((path, url))
+
+    preparer = RecordingPreparer()
+    resolver = WorktreeSpecResolver(ExplodingTransport(), preparer=preparer)
+    spec = TaskSpec(repo_url="git@github.com:o/r.git", instructions="do it")
+    task = Task(id="e1", transport_id="<m1@x>", spec=spec)
+
+    assert resolver(task, "/work/source") == spec
+    assert preparer.calls == [("/work/source", "git@github.com:o/r.git")]

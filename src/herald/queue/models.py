@@ -45,6 +45,9 @@ class Task:
     attempts: int = 0
     lease_until: datetime | None = None
     created_at: datetime = field(default_factory=utcnow)
+    # Parsed content, persisted with the task so a runner never needs the mailbox to run
+    # (ADR 0005). ``None`` for a task enqueued before the normalizer attached a spec.
+    spec: TaskSpec | None = None
 
 
 @dataclass(slots=True)

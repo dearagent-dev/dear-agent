@@ -6,7 +6,7 @@ from datetime import timedelta
 from typing import Any
 
 from herald.cli.context import CliContext
-from herald.queue.models import Task, TaskState
+from herald.queue.models import Task, TaskSpec, TaskState
 
 LEASE_SECONDS_DEFAULT = 3600
 
@@ -73,6 +73,45 @@ def _handle_show(args: argparse.Namespace, context: CliContext) -> int:
     return 0
 
 
+def _add_enqueue(subparsers: argparse._SubParsersAction) -> None:
+    parser = subparsers.add_parser(
+        "enqueue", help="enqueue a task directly (local/testing; the email path is separate)"
+    )
+    parser.add_argument("instructions", help="what the harness should do")
+    parser.add_argument("--repo", required=True, help="repository URL (or owner/repo)")
+    parser.add_argument("--base", default="main", help="base branch (default: main)")
+    parser.add_argument("--subject", default=None, help="task subject (default: from instructions)")
+    parser.add_argument("--model", default=None, help="provider:model hint for the harness")
+    parser.add_argument("--transport-id", default=None, help="dedupe key (default: generated)")
+    parser.set_defaults(handler=_handle_enqueue)
+
+
+def _handle_enqueue(args: argparse.Namespace, context: CliContext) -> int:
+    import uuid
+
+    transport_id = args.transport_id or f"<manual-{uuid.uuid4().hex}@herald.local>"
+    task = Task(
+        id=transport_id,
+        transport_id=transport_id,
+        subject=args.subject or args.instructions.splitlines()[0][:80],
+        spec=TaskSpec(
+            repo_url=args.repo,
+            base_branch=args.base,
+            instructions=args.instructions,
+            model_request=args.model,
+        ),
+    )
+    stored = context.require_queue().enqueue(task)
+    if stored is None:
+        context.emit(f"task already exists for {transport_id}")
+        return 1
+    if context.as_json:
+        context.emit_json(_task_payload(stored))
+    else:
+        context.emit(f"enqueued {stored.id}")
+    return 0
+
+
 def _add_claim(subparsers: argparse._SubParsersAction) -> None:
     parser = subparsers.add_parser("claim", help="claim a queued task (queued -> running)")
     parser.add_argument("task_id")
@@ -119,6 +158,7 @@ def add_task_commands(
 
     _add_list(task_sub, task)
     _add_show(task_sub)
+    _add_enqueue(task_sub)
     _add_claim(task_sub)
     _add_terminal(task_sub, "complete", TaskState.DONE, "mark a running task done")
     _add_terminal(task_sub, "fail", TaskState.FAILED, "mark a running task failed")

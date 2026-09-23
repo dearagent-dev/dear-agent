@@ -4,7 +4,7 @@ from collections.abc import Callable, Sequence
 from datetime import datetime, timedelta
 from typing import Any
 
-from herald.queue.models import Task, TaskState, utcnow
+from herald.queue.models import Task, TaskSpec, TaskState, utcnow
 from herald.queue.port import StateConflictError, TaskNotFoundError
 
 # The durable queue (ADR 0005): one table, state as a column. Kept as a list of statements so
@@ -22,19 +22,30 @@ SCHEMA_STATEMENTS: tuple[str, ...] = (
         lease_until  timestamptz,
         created_at   timestamptz NOT NULL DEFAULT now(),
         updated_at   timestamptz NOT NULL DEFAULT now(),
+        spec_repo_url      text,
+        spec_base_branch   text,
+        spec_instructions  text,
+        spec_model_request text,
         CONSTRAINT herald_task_state_valid CHECK (
             state IN ('received', 'queued', 'running', 'action',
                       'done', 'failed', 'rejected', 'approved')
         )
     )
     """,
+    "ALTER TABLE herald_task ADD COLUMN IF NOT EXISTS spec_repo_url text",
+    "ALTER TABLE herald_task ADD COLUMN IF NOT EXISTS spec_base_branch text",
+    "ALTER TABLE herald_task ADD COLUMN IF NOT EXISTS spec_instructions text",
+    "ALTER TABLE herald_task ADD COLUMN IF NOT EXISTS spec_model_request text",
     """
     CREATE INDEX IF NOT EXISTS herald_task_state_created_idx
         ON herald_task (state, created_at)
     """,
 )
 
-_COLUMNS = "id, transport_id, thread_id, sender, subject, state, attempts, lease_until, created_at"
+_COLUMNS = (
+    "id, transport_id, thread_id, sender, subject, state, attempts, lease_until, created_at, "
+    "spec_repo_url, spec_base_branch, spec_instructions, spec_model_request"
+)
 
 
 def connect(dsn: str) -> Any:
@@ -76,11 +87,12 @@ class PostgresQueue:
 
     def enqueue(self, task: Task) -> Task | None:
         now = self._clock()
+        spec = task.spec
         with self._conn.cursor() as cur:
             cur.execute(
                 f"""
                 INSERT INTO herald_task ({_COLUMNS})
-                VALUES (%s, %s, %s, %s, %s, %s, 0, NULL, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, 0, NULL, %s, %s, %s, %s, %s)
                 ON CONFLICT (transport_id) DO NOTHING
                 RETURNING {_COLUMNS}
                 """,
@@ -92,6 +104,10 @@ class PostgresQueue:
                     task.subject,
                     TaskState.QUEUED.value,
                     now,
+                    spec.repo_url if spec else None,
+                    spec.base_branch if spec else None,
+                    spec.instructions if spec else None,
+                    spec.model_request if spec else None,
                 ),
             )
             row = cur.fetchone()
@@ -181,7 +197,29 @@ class PostgresQueue:
 
 
 def _task_from_row(row: Sequence[Any]) -> Task:
-    id_, transport_id, thread_id, sender, subject, state, attempts, lease_until, created_at = row
+    (
+        id_,
+        transport_id,
+        thread_id,
+        sender,
+        subject,
+        state,
+        attempts,
+        lease_until,
+        created_at,
+        spec_repo_url,
+        spec_base_branch,
+        spec_instructions,
+        spec_model_request,
+    ) = row
+    spec = None
+    if spec_repo_url is not None:
+        spec = TaskSpec(
+            repo_url=spec_repo_url,
+            base_branch=spec_base_branch or "main",
+            instructions=spec_instructions or "",
+            model_request=spec_model_request,
+        )
     return Task(
         id=id_,
         transport_id=transport_id,
@@ -192,6 +230,7 @@ def _task_from_row(row: Sequence[Any]) -> Task:
         attempts=attempts,
         lease_until=lease_until,
         created_at=created_at,
+        spec=spec,
     )
 
 

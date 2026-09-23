@@ -206,3 +206,41 @@ def test_decide_can_be_disabled(monkeypatch) -> None:
 
     assert code == 1
     assert "no decider" in buffer.getvalue()
+
+
+def test_enqueue_creates_a_queued_task_with_a_spec() -> None:
+    queue = MemoryQueue()
+
+    code, output = run(
+        ["task", "enqueue", "fix the typo in the CLI help", "--repo", "git@github.com:o/r.git"],
+        queue,
+    )
+
+    assert code == 0
+    assert "enqueued" in output
+    tasks = queue.list(TaskState.QUEUED)
+    assert len(tasks) == 1
+    assert tasks[0].spec is not None
+    assert tasks[0].spec.repo_url == "git@github.com:o/r.git"
+    assert tasks[0].spec.instructions == "fix the typo in the CLI help"
+
+
+def test_enqueue_is_idempotent_on_transport_id() -> None:
+    queue = MemoryQueue()
+    argv = [
+        "task",
+        "enqueue",
+        "fix it",
+        "--repo",
+        "o/r",
+        "--transport-id",
+        "<manual-1@herald.local>",
+    ]
+
+    first, _ = run(argv, queue)
+    second, output = run(argv, queue)
+
+    assert first == 0
+    assert second == 1
+    assert "already exists" in output
+    assert len(queue.list(TaskState.QUEUED)) == 1
