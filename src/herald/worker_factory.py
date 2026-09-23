@@ -65,15 +65,28 @@ def build_runner(provider_model: str | None, sandbox: Sandbox) -> Runner:
     harness via ``HERALD_HARNESS_COMMAND`` (a space-separated argv), which is how an operator
     plugs in a custom runner without forking Herald. A model is passed only to harnesses that
     accept one (OpenCode), never to a subscription harness (Claude Code, Codex).
+
+    ``HERALD_ISOLATION`` selects the jail: ``bwrap`` (default) or ``podman``. Under podman the
+    harness runs in its per-harness image with the worktree bind-mounted; under bwrap only
+    OpenCode is jailed (the default policy denies egress, which a subscription harness needs).
     """
     from dataclasses import replace
 
-    from herald.runners.catalog import EnvHarnessCatalog, build_runner_for, select_harness
+    from herald.runners.catalog import (
+        EnvHarnessCatalog,
+        build_runner_for,
+        container_sandbox,
+        select_harness,
+    )
 
     info = select_harness(EnvHarnessCatalog(), os.environ.get("HERALD_HARNESS"))
     override = os.environ.get("HERALD_HARNESS_BINARY")
     if override and info.id != "command":
         info = replace(info, binary=override)
+    if os.environ.get("HERALD_ISOLATION", "bwrap").strip().lower() == "podman":
+        sandbox = container_sandbox(info, os.environ)
+    elif info.id != "opencode":
+        sandbox = NoSandbox()
     return build_runner_for(info, provider_model, sandbox)
 
 

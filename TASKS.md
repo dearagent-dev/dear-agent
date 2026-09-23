@@ -56,6 +56,13 @@ log). See [ADR 0005](docs/decisions/0005-state-store.md).
 - Sandbox: `HERALD_SANDBOX=bwrap|none`, `HERALD_SANDBOX_NETWORK` (default false),
   `HERALD_SANDBOX_READABLE`, `HERALD_SANDBOX_WRITABLE`, `HERALD_SANDBOX_ENV`. `$HOME` is
   never mounted (credentials stay invisible).
+- Isolation: `HERALD_ISOLATION=bwrap|podman` (default `bwrap`). Podman runs each harness in
+  its per-harness image: `HERALD_HARNESS_IMAGE` (required for a harness without a default
+  image, e.g. Codex), `HERALD_HARNESS_MOUNTS` (`host:container[:ro|rw]`, `~` = host/image
+  home), `HERALD_HARNESS_CONTAINER_ENV`, `HERALD_HARNESS_CONTAINER_NETWORK` (default `host`),
+  `HERALD_HARNESS_CONTAINER_HOME` (default `/root`), `HERALD_HARNESS_CONTAINER_WORKDIR`
+  (default `/work`), `HERALD_HARNESS_CONTAINER_USERNS=keep-id`, `HERALD_HARNESS_CONTAINER_ARGS`,
+  `HERALD_CONTAINER_BINARY` (default `podman`).
 - Harness: `HERALD_HARNESS=opencode|claude|codex|auto|command`, `HERALD_HARNESS_BINARY`,
   `HERALD_HARNESS_COMMAND`, `HERALD_HARNESSES`, `HERALD_HARNESS_DEFAULT`, `HERALD_SANDBOX`,
   `HERALD_MAX_ATTEMPTS` (default 3), `HERALD_VERIFY_ALLOW` (allowlisted `verify:` commands).
