@@ -78,12 +78,18 @@ class TaskExecutor:
         running = self._queue.get(task.id)
         assert running is not None
 
-        worktree = Worktree.create(
-            repo_path=self._repo_path,
-            worktrees_root=self._worktrees_root,
-            slug=_slug(task),
-            base_branch=spec.base_branch,
-        )
+        try:
+            worktree = Worktree.create(
+                repo_path=self._repo_path,
+                worktrees_root=self._worktrees_root,
+                slug=_slug(task),
+                base_branch=spec.base_branch,
+            )
+        except Exception:
+            # A worktree that cannot be created (bad worktrees root, unwritable dir) must
+            # fail the task, not leave it running until the lease expires.
+            self._queue.transition(running, TaskState.FAILED)
+            raise
         try:
             run = self._runner.run(task, spec, worktree)
             failure: FailureKind | None = None

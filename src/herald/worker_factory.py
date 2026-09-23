@@ -72,6 +72,20 @@ def build_runner(provider_model: str | None, sandbox: Sandbox) -> Runner:
     return build_runner_for(info, provider_model, sandbox)
 
 
+def default_worktrees_root() -> str:
+    """Where disposable worktrees live.
+
+    ``HERALD_WORKTREES_ROOT`` wins (the cluster sets ``/work``); otherwise a writable temp
+    directory, so a local run works without configuration.
+    """
+    import tempfile
+    from pathlib import Path
+
+    return os.environ.get(
+        "HERALD_WORKTREES_ROOT", str(Path(tempfile.gettempdir()) / "herald-worktrees")
+    )
+
+
 def default_sandbox() -> Sandbox:
     """Use bubblewrap when available, otherwise run unsandboxed (explicitly)."""
     if os.environ.get("HERALD_SANDBOX", "bwrap") == "bwrap":
@@ -173,7 +187,7 @@ def build_worker(
         runner=runner,
         git=GitPlane(forge=GhForge()),
         repo_path=repo_path,
-        worktrees_root=os.environ.get("HERALD_WORKTREES_ROOT", "/work"),
+        worktrees_root=default_worktrees_root(),
         notifier=Notifier(transport, approvals=approvals),
         escalator=Escalator(transport),
     )
@@ -187,4 +201,10 @@ def build_worker(
     )
 
 
-__all__ = ["WorktreeSpecResolver", "build_runner", "build_worker", "default_sandbox"]
+__all__ = [
+    "WorktreeSpecResolver",
+    "build_runner",
+    "build_worker",
+    "default_sandbox",
+    "default_worktrees_root",
+]

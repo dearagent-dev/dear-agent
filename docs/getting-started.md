@@ -67,8 +67,10 @@ herald run --repo /tmp/herald-source
 ```
 
 `--repo` is a local directory Herald clones/uses read-only; the harness runs in an isolated
-worktree. On success Herald commits, pushes an `herald/<slug>` branch and opens a **draft
-PR**, then marks the task `done`. Agents never write `main`; a human lands the PR.
+worktree under `HERALD_WORKTREES_ROOT` (default: a temp directory locally, `/work` in the
+cluster). On success Herald commits, pushes an `herald/<slug>` branch and opens a **draft
+PR**, then marks the task `done`. Agents never write `main`; a human lands the PR. `herald
+run` exits non-zero when the task fails, so a runner Job reflects the outcome.
 
 Add `--recipient you@example.com` (with a JMAP transport) to get status by email.
 

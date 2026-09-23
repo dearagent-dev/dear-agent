@@ -158,6 +158,22 @@ def test_execute_rejects_a_task_that_is_not_queued(repo: Path) -> None:
         executor.execute(task, make_spec())
 
 
+def test_worktree_creation_failure_fails_the_task(repo: Path, monkeypatch) -> None:
+    from unittest import mock
+
+    queue = MemoryQueue()
+    task = make_task(queue)
+    executor = make_executor(queue, repo, RecordingForge(), FakeRunner(), MemoryTransport())
+
+    with (
+        mock.patch("herald.executor.Worktree.create", side_effect=OSError("read-only")),
+        pytest.raises(OSError),
+    ):
+        executor.execute(task, make_spec())
+
+    assert queue.get("e1").state is TaskState.FAILED
+
+
 def test_slug_is_branch_safe() -> None:
     task = Task(id="e1", transport_id="<m1@x>", subject="Add /healthz & metrics!!")
 

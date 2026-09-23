@@ -180,6 +180,40 @@ def test_run_executes_a_task_via_the_worker(monkeypatch) -> None:
     assert payload["pr_url"] == "https://example.com/pr/1"
 
 
+def test_run_returns_nonzero_when_the_task_fails() -> None:
+    import contextlib
+    import io
+    from unittest import mock
+
+    from herald.executor import ExecutedTask
+    from herald.notify.escalate import FailureKind
+    from herald.runners.worktree import RunResult
+
+    queue = MemoryQueue()
+    seed(queue, "e1")
+
+    class FakeWorker:
+        def run(self, task_id: str) -> ExecutedTask:
+            return ExecutedTask(
+                task_id=task_id,
+                branch="herald/e1",
+                commit=None,
+                pr_url=None,
+                run=RunResult(exit_code=1, branch="herald/e1"),
+                failure=FailureKind.HARNESS_FAILED,
+            )
+
+    with (
+        mock.patch("herald.cli.main.build_queue", return_value=queue),
+        mock.patch("herald.worker_factory.build_transport", return_value=object()),
+        mock.patch("herald.worker_factory.build_worker", return_value=FakeWorker()),
+        contextlib.redirect_stdout(io.StringIO()),
+    ):
+        code = main(["run", "e1", "--repo", "/repos/source"])
+
+    assert code == 1
+
+
 def test_run_uses_the_task_model_hint() -> None:
     import contextlib
     import io

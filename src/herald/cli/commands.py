@@ -470,7 +470,8 @@ def _handle_run(args: argparse.Namespace, context: CliContext) -> int:
         context.emit_json(payload)
     else:
         context.emit(f"{evidence.task_id} {evidence.branch} {evidence.pr_url}")
-    return 0
+    # Mirror the task outcome in the exit code so a runner Job reflects success/failure.
+    return 0 if evidence.ok else 1
 
 
 def add_approval_commands(
