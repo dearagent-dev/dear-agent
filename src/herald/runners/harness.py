@@ -14,15 +14,45 @@ DEFAULT_TIMEOUT_SECONDS = 3600
 SubprocessRunner = Callable[[list[str], str, int], subprocess.CompletedProcess[str]]
 
 
+# The harness is untrusted, so it must not inherit Herald's environment. Only the variables
+# a coding agent needs to run are passed through; anything else (mail token, database DSN,
+# git credentials) stays out. Extend the list by name with ``HERALD_HARNESS_ENV``.
+HARNESS_ENV_ALLOWLIST = (
+    "PATH",
+    "HOME",
+    "LANG",
+    "LC_ALL",
+    "TZ",
+    "TERM",
+    "USER",
+    "LOGNAME",
+    "SHELL",
+    "TMPDIR",
+)
+
+
 def harness_env(cwd: str) -> dict[str, str]:
     """The environment for a harness run.
+
+    The harness is untrusted (golden rule 7), so it does **not** inherit Herald's
+    environment: only :data:`HARNESS_ENV_ALLOWLIST` plus the names in ``HERALD_HARNESS_ENV``
+    (comma-separated) are passed. A secret listed there becomes visible to the run, so keep
+    it to a model key if a harness needs one.
 
     ``subprocess.run(cwd=...)`` changes the child's real working directory but leaves the
     ``PWD`` environment variable pointing at Herald's own process directory. Tools such as
     OpenCode resolve the project from ``PWD``, so without this override a run would edit
     Herald's checkout instead of the isolated worktree.
     """
-    return {**os.environ, "PWD": cwd}
+    names = dict.fromkeys([*HARNESS_ENV_ALLOWLIST, *_harness_env_names()])
+    env = {name: os.environ[name] for name in names if name in os.environ}
+    env["PWD"] = cwd
+    return env
+
+
+def _harness_env_names() -> list[str]:
+    value = os.environ.get("HERALD_HARNESS_ENV", "")
+    return [part.strip() for part in value.replace(";", ",").split(",") if part.strip()]
 
 
 def default_execute(argv: list[str], cwd: str, timeout: int) -> subprocess.CompletedProcess[str]:

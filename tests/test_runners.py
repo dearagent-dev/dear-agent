@@ -154,6 +154,37 @@ def test_harness_env_points_pwd_at_the_worktree(tmp_path: Path) -> None:
     assert harness_env(str(tmp_path))["PWD"] == str(tmp_path)
 
 
+def test_harness_env_does_not_leak_herald_secrets(monkeypatch, tmp_path: Path) -> None:
+    from herald.runners.harness import harness_env
+
+    monkeypatch.setenv("FASTMAIL_API_TOKEN", "mail-secret")
+    monkeypatch.setenv("HERALD_DATABASE_URL", "postgres://secret")
+    monkeypatch.setenv("GIT_SSH_COMMAND", "ssh -i /run/secrets/git/key")
+
+    env = harness_env(str(tmp_path))
+
+    assert "FASTMAIL_API_TOKEN" not in env
+    assert "HERALD_DATABASE_URL" not in env
+    assert "GIT_SSH_COMMAND" not in env
+    assert env["PATH"] == __import__("os").environ["PATH"]
+    assert env["PWD"] == str(tmp_path)
+
+
+def test_harness_env_can_pass_named_variables(monkeypatch, tmp_path: Path) -> None:
+    from herald.runners.harness import harness_env
+
+    monkeypatch.setenv("HERALD_HARNESS_ENV", "OPENAI_API_KEY, ANTHROPIC_API_KEY")
+    monkeypatch.setenv("OPENAI_API_KEY", "model-key")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "other-key")
+    monkeypatch.setenv("SECRET_TOKEN", "nope")
+
+    env = harness_env(str(tmp_path))
+
+    assert env["OPENAI_API_KEY"] == "model-key"
+    assert env["ANTHROPIC_API_KEY"] == "other-key"
+    assert "SECRET_TOKEN" not in env
+
+
 def test_default_execute_passes_pwd_to_the_child(tmp_path: Path) -> None:
     from herald.runners.harness import default_execute
 
