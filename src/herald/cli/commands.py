@@ -278,6 +278,11 @@ def add_idle_commands(
         default=1,
         help="only propose when fewer than N tasks are queued (default: 1)",
     )
+    parser.add_argument(
+        "--no-gate",
+        action="store_true",
+        help="enqueue proposals as runnable tasks instead of parking them for approval",
+    )
     parser.set_defaults(handler=_handle_idle)
 
 
@@ -285,10 +290,13 @@ def _handle_idle(args: argparse.Namespace, context: CliContext) -> int:
     import hashlib
     from pathlib import Path
 
+    from herald.approvals import build_approval_store
+    from herald.approvals_service import ApprovalService
     from herald.idle.loop import IdleBudget, IdleLoop
 
     queue = context.require_queue()
     repo_path = Path(args.repo)
+    approvals = ApprovalService(build_approval_store(), queue)
 
     def submit(proposal) -> str | None:
         # Deterministic id: the same proposal must not be enqueued twice across ticks.
@@ -306,7 +314,14 @@ def _handle_idle(args: argparse.Namespace, context: CliContext) -> int:
             ),
         )
         stored = queue.enqueue(task)
-        return stored.id if stored else None
+        if stored is None:
+            return None
+        if not args.no_gate:
+            # Proposals are approval-gated by construction: park in Action and issue a
+            # single-use token; 'herald approval approve <token>' releases it to run.
+            queue.transition(stored, TaskState.ACTION)
+            approvals.request(stored.id, "run")
+        return stored.id
 
     loop = IdleLoop(
         queue=queue,
@@ -445,10 +460,10 @@ def _handle_redeem(args: argparse.Namespace, context: CliContext) -> int:
 
     service = ApprovalService(build_approval_store(), context.require_queue())
     try:
-        task_id = service.apply(ApprovalReply(token=args.token, decision=args.decision))
+        task = service.apply(ApprovalReply(token=args.token, decision=args.decision))
     except ApprovalError as exc:
         raise RuntimeError(str(exc)) from exc
-    context.emit(f"{task_id} -> {args.decision}")
+    context.emit(f"{task.id} -> {task.state.value}")
     return 0
 
 

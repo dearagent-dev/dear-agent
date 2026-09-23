@@ -131,6 +131,22 @@ def test_service_moves_task_to_rejected(clock) -> None:
     assert queue.get("e1").state is TaskState.REJECTED
 
 
+def test_run_gate_releases_the_task_to_queued(clock) -> None:
+    queue = MemoryQueue(clock=clock)
+    task = queue.enqueue(Task(id="e1", transport_id="<m1@x>"))
+    queue.claim(task, lease=timedelta(hours=1))
+    running = queue.get("e1")
+    queue.transition(running, TaskState.ACTION)
+
+    store = MemoryApprovalStore(clock=clock)
+    service = ApprovalService(store, queue)
+    token = service.request("e1", "run")
+
+    service.apply(parse_reply(f"approve {token}"))
+
+    assert queue.get("e1").state is TaskState.QUEUED
+
+
 def test_build_approval_store_defaults_to_memory(monkeypatch) -> None:
     from herald.approvals import build_approval_store
 

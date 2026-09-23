@@ -378,7 +378,9 @@ def _todo_repo(tmp_path):
     return repo
 
 
-def test_idle_proposes_a_task_from_a_todo(tmp_path) -> None:
+def test_idle_parks_proposals_for_approval(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HERALD_APPROVALS_FILE", str(tmp_path / "approvals.json"))
+    monkeypatch.delenv("HERALD_QUEUE", raising=False)
     repo = _todo_repo(tmp_path)
     queue = MemoryQueue()
 
@@ -386,24 +388,52 @@ def test_idle_proposes_a_task_from_a_todo(tmp_path) -> None:
 
     assert code == 0
     assert "proposed 1" in output
-    tasks = queue.list(TaskState.QUEUED)
+    tasks = queue.list(TaskState.ACTION)
     assert len(tasks) == 1
     assert tasks[0].spec is not None
     assert "app.py" in tasks[0].spec.instructions
+    assert queue.list(TaskState.QUEUED) == []
 
 
-def test_idle_does_not_re_propose_the_same_work(tmp_path) -> None:
+def test_idle_no_gate_enqueues_a_runnable_task(tmp_path) -> None:
+    repo = _todo_repo(tmp_path)
+    queue = MemoryQueue()
+
+    code, _ = run(["idle", "--repo", str(repo), "--no-gate"], queue)
+
+    assert code == 0
+    assert len(queue.list(TaskState.QUEUED)) == 1
+
+
+def test_idle_gate_round_trip_releases_to_queued(tmp_path, monkeypatch) -> None:
+    from herald.approvals import build_approval_store
+
+    monkeypatch.setenv("HERALD_APPROVALS_FILE", str(tmp_path / "approvals.json"))
+    monkeypatch.delenv("HERALD_QUEUE", raising=False)
     repo = _todo_repo(tmp_path)
     queue = MemoryQueue()
     run(["idle", "--repo", str(repo)], queue)
-    # Free the queue so a second tick would propose again if the id were random.
-    queue.claim(queue.list(TaskState.QUEUED)[0], lease=timedelta(hours=1))
+    token = build_approval_store().pending()[0].token
+
+    code, output = run(["approval", "approve", token], queue)
+
+    assert code == 0
+    assert "-> queued" in output
+    assert len(queue.list(TaskState.QUEUED)) == 1
+
+
+def test_idle_does_not_re_propose_the_same_work(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HERALD_APPROVALS_FILE", str(tmp_path / "approvals.json"))
+    monkeypatch.delenv("HERALD_QUEUE", raising=False)
+    repo = _todo_repo(tmp_path)
+    queue = MemoryQueue()
+    run(["idle", "--repo", str(repo)], queue)
 
     code, output = run(["idle", "--repo", str(repo)], queue)
 
     assert code == 0
     assert "proposed 0" in output
-    assert len(queue.list(TaskState.RUNNING)) == 1
+    assert len(queue.list(TaskState.ACTION)) == 1
 
 
 def test_enqueue_is_idempotent_on_transport_id() -> None:
