@@ -1,6 +1,19 @@
-# Dear Agent
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-lockup-dark.svg">
+    <img alt="Dear Agent" src="docs/assets/logo-lockup.svg" width="380">
+  </picture>
+</p>
 
-**An async, email-first inbox that turns messages into Git pull requests produced by coding agents.**
+<h1 align="center">Dear Agent</h1>
+
+<p align="center"><strong>An async, email-first inbox that turns messages into Git pull requests produced by coding agents.</strong></p>
+
+<p align="center">
+  <a href="https://github.com/rarguello/dear-agent/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/rarguello/dear-agent/actions/workflows/ci.yml/badge.svg"></a>
+  <img alt="Python 3.12+" src="https://img.shields.io/badge/python-3.12%2B-blue">
+  <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green">
+</p>
 
 Dear Agent is the **control plane** for background coding work. You send an email (or any
 async message), an agent works in its own Git worktree, and the result comes back as a
@@ -14,6 +27,10 @@ New here? See [docs/getting-started.md](docs/getting-started.md) for a local run
 > running a task, but the *enqueue* side is unsolved for unattended, offline-first work.
 > Chat transports (Telegram/OpenClaw/Hermes) are synchronous and carry code badly.
 > Dear Agent makes the inbox the entry point and the PR the deliverable.
+
+<p align="center">
+  <img alt="A handwritten letter whose text is a git log" src="docs/assets/hero.svg" width="720">
+</p>
 
 ## Why Dear Agent
 

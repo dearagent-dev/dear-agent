@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="Dear Agent">
+  <title>Dear Agent</title>
+  <rect width="128" height="128" rx="28" fill="#1F2A44"/>
+  <path d="M110 22 L22 70 L60 76 L68 110 Z" fill="#FFFFFF"/>
+  <path d="M110 22 L60 76" fill="none" stroke="#1F2A44" stroke-width="5" stroke-linejoin="round"/>
+</svg>
