@@ -7,7 +7,7 @@
 <p align="center"><strong>An async, email-first inbox that turns messages into Git pull requests produced by coding agents.</strong></p>
 
 <p align="center">
-  <a href="https://github.com/rarguello/dear-agent/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/rarguello/dear-agent/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/dearagent-dev/dear-agent/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/dearagent-dev/dear-agent/actions/workflows/ci.yml/badge.svg"></a>
   <img alt="Python 3.12+" src="https://img.shields.io/badge/python-3.12%2B-blue">
   <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green">
 </p>
