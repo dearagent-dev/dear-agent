@@ -31,9 +31,9 @@
       "enabled": false
     },
     {
-      "description": "The app image tag is a deploy placeholder, not a real package",
+      "description": "The app image tag is set by the deploy overlay (dev/stable), not a version",
       "matchDatasources": ["docker"],
-      "matchPackageNames": ["ghcr.io/OWNER/herald"],
+      "matchPackageNames": ["quay.io/rarguello/herald"],
       "enabled": false
     }
   ]

@@ -6,5 +6,5 @@ resources:
 components:
   - ../../components/postgresql
 images:
-  - name: ghcr.io/OWNER/herald
+  - name: quay.io/rarguello/herald
     newTag: dev
