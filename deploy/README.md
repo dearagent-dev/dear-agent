@@ -122,6 +122,9 @@ selected repositories.
 - Approvals and the decision log live in Postgres (`herald_approval`, `herald_decision`);
   the file stores are a single-process fallback only. The parsed `TaskSpec` is persisted on
   the task row, so a runner needs no mailbox access to run.
+- **The base image ships no harness.** Build a derived runner image that installs OpenCode
+  (or Claude Code / Codex), or set `HERALD_HARNESS=command` with `HERALD_HARNESS_COMMAND`.
+  Without one, runs fail as `HARNESS_MISSING` and escalate to a human.
 
 ## Verified on a live OpenShift cluster
 
