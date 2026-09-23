@@ -356,3 +356,83 @@ def _handle_decide(args: argparse.Namespace, context: CliContext) -> int:
             f"needs_human={payload['needs_human']}"
         )
     return 0
+
+
+def add_decision_commands(
+    subparsers: argparse._SubParsersAction, parent: argparse.ArgumentParser
+) -> None:
+    parser = subparsers.add_parser("decision", help="inspect and tune the decision log")
+    parser.add_argument(
+        "--log",
+        default=os.environ.get("HERALD_DECIDER_LOG"),
+        help="path to the decision log (default: HERALD_DECIDER_LOG)",
+    )
+    parser.set_defaults(handler=None)
+    sub = parser.add_subparsers(dest="decision_command", required=True)
+    _add_calibrate(sub, parser)
+    _add_label(sub, parser)
+
+
+def _add_calibrate(subparsers: argparse._SubParsersAction, parent: argparse.ArgumentParser) -> None:
+    parser = subparsers.add_parser(
+        "calibrate", help="accuracy by confidence band and a recommended threshold"
+    )
+    parser.add_argument("--question", default="model")
+    parser.add_argument("--target", type=float, default=0.95)
+    parser.set_defaults(handler=_handle_calibrate, needs_queue=False)
+
+
+def _log_path(args: argparse.Namespace) -> str:
+    if not args.log:
+        raise RuntimeError("a decision log is required (--log or HERALD_DECIDER_LOG)")
+    return args.log
+
+
+def _handle_calibrate(args: argparse.Namespace, context: CliContext) -> int:
+    from pathlib import Path
+
+    from herald.decision.log import DecisionLog
+
+    report = DecisionLog(path=Path(_log_path(args))).calibrate(
+        question_id=args.question, target=args.target
+    )
+    payload = {
+        "question": report.question_id,
+        "total": report.total,
+        "labeled": report.labeled,
+        "accuracy": report.accuracy,
+        "recommended_threshold": report.recommended_threshold,
+        "bands": [
+            {"band": b.label, "count": b.count, "accuracy": b.accuracy} for b in report.bands
+        ],
+    }
+    if context.as_json:
+        context.emit_json(payload)
+    else:
+        context.emit(
+            f"{report.question_id}: {report.labeled}/{report.total} labeled, "
+            f"accuracy={report.accuracy}"
+        )
+        for band in report.bands:
+            context.emit(f"  {band.label}: n={band.count} accuracy={band.accuracy}")
+        context.emit(f"recommended threshold: {report.recommended_threshold}")
+    return 0
+
+
+def _add_label(subparsers: argparse._SubParsersAction, parent: argparse.ArgumentParser) -> None:
+    parser = subparsers.add_parser("label", help="attach ground truth to a logged decision")
+    parser.add_argument("index", type=int, help="0-based record index")
+    parser.add_argument("label", help="the correct answer (e.g. local|hosted)")
+    parser.set_defaults(handler=_handle_label, needs_queue=False)
+
+
+def _handle_label(args: argparse.Namespace, context: CliContext) -> int:
+    from pathlib import Path
+
+    from herald.decision.log import DecisionLog
+
+    updated = DecisionLog(path=Path(_log_path(args))).label(args.index, args.label)
+    if not updated:
+        raise RuntimeError(f"no decision at index {args.index}")
+    context.emit(f"labeled decision {args.index} as {args.label}")
+    return 0
