@@ -52,6 +52,15 @@ def test_enqueue_puts_the_task_in_queued(queue: MemoryQueue) -> None:
     assert queue.get("e1") is not None
 
 
+def test_enqueue_can_store_directly_in_another_state(queue: MemoryQueue) -> None:
+    # A gated task is stored in Action so a sweep can never claim it in a window.
+    stored = queue.enqueue(make_task(), state=TaskState.ACTION)
+
+    assert stored is not None
+    assert stored.state is TaskState.ACTION
+    assert queue.claim_next(lease=LEASE) is None
+
+
 def test_enqueue_is_idempotent_on_transport_id(queue: MemoryQueue) -> None:
     queue.enqueue(make_task())
     duplicate = queue.enqueue(make_task(id="e2", transport_id="<msg-1@example.com>"))

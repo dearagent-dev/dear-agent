@@ -97,7 +97,7 @@ class PostgresQueue:
         self._conn = conn
         self._clock = clock
 
-    def enqueue(self, task: Task) -> Task | None:
+    def enqueue(self, task: Task, *, state: TaskState = TaskState.QUEUED) -> Task | None:
         now = self._clock()
         spec = task.spec
         with self._conn.cursor() as cur:
@@ -115,7 +115,7 @@ class PostgresQueue:
                     task.thread_id,
                     task.sender,
                     task.subject,
-                    TaskState.QUEUED.value,
+                    state.value,
                     now,
                     spec.repo_url if spec else None,
                     spec.base_branch if spec else None,

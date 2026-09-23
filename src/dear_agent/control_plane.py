@@ -143,19 +143,21 @@ class ControlPlane:
                 continue
 
             suspicious = self._flag_suspicious(message, report)
-            stored = self._queue.enqueue(result.task)
+            # Decide the gate before storing, and store a gated task straight in ``action``:
+            # there is then no window where a sweep could claim it before it is parked.
+            reason = self._gate_reason(suspicious, result) if self._approvals is not None else None
+            state = TaskState.ACTION if reason is not None else TaskState.QUEUED
+            stored = self._queue.enqueue(result.task, state=state)
             if stored is None:
                 # Idempotent: a redelivery is a no-op, not an error.
                 continue
             report.accepted.append(result.task.id)
             self._emit(result.task.id, "task.accepted", repo=result.spec.repo_url)
-            if self._approvals is not None:
-                reason = self._gate_reason(suspicious, result)
-                if reason is not None:
-                    self._gate_for_approval(stored, recipient, reason=reason)
-                    report.gated.append(result.task.id)
-                    if reason == "needs-human":
-                        report.needs_human.append(result.task.id)
+            if reason is not None:
+                self._request_approval(stored, recipient, reason=reason)
+                report.gated.append(result.task.id)
+                if reason == "needs-human":
+                    report.needs_human.append(result.task.id)
         self._ack(messages)
         return report
 
@@ -194,11 +196,15 @@ class ControlPlane:
                 suspicious = True
         return suspicious
 
-    def _gate_for_approval(
+    def _request_approval(
         self, task: Task, recipient: str | None, *, reason: str = "suspicious"
     ) -> None:
-        """Park a task in ``action`` until a human releases it with a ``run`` approval."""
-        self._queue.transition(task, TaskState.ACTION)
+        """Issue a ``run`` approval for a task already stored in ``action``.
+
+        The task was enqueued in ``action`` (see :meth:`ingest`), so this only records the
+        request and sends the token; a failure here leaves the task parked and never
+        runnable, so the gate fails closed.
+        """
         self._emit(task.id, "approval.requested", reason=reason)
         summary = _GATE_SUMMARIES.get(reason, "approval requested; approve to run it")
         if self._notifier is not None and recipient:
