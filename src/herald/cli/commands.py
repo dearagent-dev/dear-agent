@@ -231,14 +231,9 @@ def add_listen_commands(
 def _handle_listen(args: argparse.Namespace, context: CliContext) -> int:
     import os
 
-    from herald.approvals import build_approval_store
-    from herald.approvals_service import ApprovalService
-    from herald.auth import EmailAuthGate, SenderAllowlist
-    from herald.control_plane import ControlPlane
     from herald.jmap.client import DEFAULT_SESSION_URL, JmapClient
     from herald.jmap.eventsource import EventSourceListener
     from herald.jmap.trigger import EventSourceLoop, IngestOnChange
-    from herald.notify.notifier import Notifier
     from herald.worker_factory import build_transport
 
     token = os.environ.get("FASTMAIL_API_TOKEN")
@@ -253,26 +248,11 @@ def _handle_listen(args: argparse.Namespace, context: CliContext) -> int:
 
     queue = context.require_queue()
     transport = build_transport("jmap")
-    # Wire the notifier and approvals here too, so rejections are explained and an approval
-    # reply ingested on the push path decides the task.
-    approvals = ApprovalService(build_approval_store(), queue)
-    # Email cannot carry Herald's HMAC header. Prefer the MTA's SPF/DKIM/DMARC verdict
-    # (HERALD_AUTH_DOMAINS); a sender allowlist (HERALD_ALLOWED_SENDERS) restricts further,
-    # or is the weaker fallback when DMARC is not configured. Without either, any sender is
-    # accepted.
-    gate = EmailAuthGate.from_env(os.environ)
-    if gate is None:
-        gate = SenderAllowlist.from_env(os.environ.get("HERALD_ALLOWED_SENDERS"))
+    recipient = os.environ.get("HERALD_RECIPIENT")
     callback = IngestOnChange(
-        control_plane=ControlPlane(
-            transport=transport,
-            queue=queue,
-            notifier=Notifier(transport),
-            gate=gate,
-            approvals=approvals,
-        ),
+        control_plane=_inbound_plane(queue, transport),
         transport=transport,
-        recipient=os.environ.get("HERALD_RECIPIENT"),
+        recipient=recipient,
     )
     loop = EventSourceLoop(
         listener=EventSourceListener(
@@ -283,6 +263,68 @@ def _handle_listen(args: argparse.Namespace, context: CliContext) -> int:
         callback=callback,
     )
     loop.run()
+    return 0
+
+
+def _inbound_plane(queue, transport):
+    """Build the ControlPlane for an inbound path (webhook/poll/listen).
+
+    Wires the notifier, the SPF/DKIM/DMARC gate (or a sender allowlist as a weaker
+    fallback), and approvals, so rejections are explained and approval replies are applied.
+    Email cannot carry Herald's HMAC header, so the transport-level gate is what
+    authenticates it.
+    """
+    from herald.approvals import build_approval_store
+    from herald.approvals_service import ApprovalService
+    from herald.auth import EmailAuthGate, SenderAllowlist
+    from herald.control_plane import ControlPlane
+    from herald.notify.notifier import Notifier
+
+    gate = EmailAuthGate.from_env(os.environ)
+    if gate is None:
+        gate = SenderAllowlist.from_env(os.environ.get("HERALD_ALLOWED_SENDERS"))
+    return ControlPlane(
+        transport=transport,
+        queue=queue,
+        notifier=Notifier(transport),
+        gate=gate,
+        approvals=ApprovalService(build_approval_store(), queue),
+    )
+
+
+def add_poll_commands(
+    subparsers: argparse._SubParsersAction, parent: argparse.ArgumentParser
+) -> None:
+    parser = subparsers.add_parser(
+        "poll", help="run one inbound ingest pass over the configured pull transport"
+    )
+    parser.add_argument(
+        "--recipient", default=None, help="reply recipient (default: HERALD_RECIPIENT)"
+    )
+    parser.set_defaults(handler=_handle_poll)
+
+
+def _handle_poll(args: argparse.Namespace, context: CliContext) -> int:
+    from herald.worker_factory import build_transport
+
+    queue = context.require_queue()
+    transport = build_transport()
+    recipient = args.recipient or os.environ.get("HERALD_RECIPIENT")
+    report = _inbound_plane(queue, transport).ingest(transport.poll(), recipient=recipient)
+    payload = {
+        "accepted": report.accepted,
+        "rejected": report.rejected,
+        "denied": report.denied,
+        "decided": report.decided,
+        "suspicious": report.suspicious,
+    }
+    if context.as_json:
+        context.emit_json(payload)
+    else:
+        context.emit(
+            f"accepted={len(report.accepted)} rejected={len(report.rejected)} "
+            f"denied={len(report.denied)}"
+        )
     return 0
 
 

@@ -161,6 +161,38 @@ def build_transport(backend: str | None = None) -> Transport:
         )
         client.connect()
         return JmapTransport(client, mailbox_name=os.environ.get("HERALD_MAILBOX", "Herald"))
+    if backend == "imap":
+        from herald.imap.client import ImapClient
+        from herald.smtp.client import SmtpClient
+        from herald.transports.imap import ImapSmtpTransport
+
+        host = os.environ.get("HERALD_IMAP_HOST")
+        if not host:
+            raise RuntimeError("HERALD_IMAP_HOST is required for the imap backend")
+        user = os.environ.get("HERALD_IMAP_USER", "")
+        password = os.environ.get("HERALD_IMAP_PASSWORD", "")
+        imap = ImapClient(
+            host=host,
+            user=user,
+            password=password,
+            port=int(os.environ.get("HERALD_IMAP_PORT", "993")),
+            ssl=os.environ.get("HERALD_IMAP_SSL", "true").lower() != "false",
+        )
+        smtp = SmtpClient(
+            host=os.environ.get("HERALD_SMTP_HOST", host),
+            port=int(os.environ.get("HERALD_SMTP_PORT", "587")),
+            user=os.environ.get("HERALD_SMTP_USER", user),
+            password=os.environ.get("HERALD_SMTP_PASSWORD", password),
+            starttls=os.environ.get("HERALD_SMTP_STARTTLS", "true").lower() != "false",
+            ssl=os.environ.get("HERALD_SMTP_SSL", "false").lower() == "true",
+        )
+        return ImapSmtpTransport(
+            imap=imap,
+            smtp=smtp,
+            mailbox=os.environ.get("HERALD_IMAP_MAILBOX", "INBOX"),
+            done_mailbox=os.environ.get("HERALD_IMAP_DONE_MAILBOX", "Herald-Done"),
+            sender=os.environ.get("HERALD_SMTP_FROM", user),
+        )
     raise RuntimeError(f"unknown backend {backend!r}")
 
 

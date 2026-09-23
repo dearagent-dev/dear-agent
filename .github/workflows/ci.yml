@@ -29,8 +29,25 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      greenmail:
+        image: greenmail/standalone:latest
+        env:
+          GREENMAIL_OPTS: >-
+            -Dgreenmail.setup.test.smtp -Dgreenmail.setup.test.imap
+            -Dgreenmail.hostname=0.0.0.0 -Dgreenmail.auth.disabled
+            -Dgreenmail.users=green:pwd@example.com
+        ports:
+          - 3025:3025
+          - 3143:3143
     env:
       HERALD_TEST_DATABASE_URL: postgresql://herald:herald@localhost:5432/herald
+      HERALD_TEST_IMAP_HOST: 127.0.0.1
+      HERALD_TEST_IMAP_PORT: "3143"
+      HERALD_TEST_SMTP_PORT: "3025"
+      HERALD_TEST_IMAP_USER: green
+      HERALD_TEST_IMAP_PASSWORD: pwd
+      HERALD_TEST_IMAP_TO: green@example.com
+      HERALD_TEST_IMAP_SSL: "0"
     steps:
       - uses: actions/checkout@v4
 

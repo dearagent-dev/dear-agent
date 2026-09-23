@@ -11,6 +11,7 @@ from herald.cli.commands import (
     add_health_commands,
     add_idle_commands,
     add_listen_commands,
+    add_poll_commands,
     add_run_commands,
     add_sweep_commands,
     add_task_commands,
@@ -30,6 +31,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_run_commands(subparsers, parser)
     add_sweep_commands(subparsers, parser)
     add_listen_commands(subparsers, parser)
+    add_poll_commands(subparsers, parser)
     add_decide_commands(subparsers, parser)
     add_decision_commands(subparsers, parser)
     add_approval_commands(subparsers, parser)
