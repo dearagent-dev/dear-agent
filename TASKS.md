@@ -34,7 +34,10 @@ repository moved to the **`dearagent-dev`** org; every reference to the old name
    the `verify` gate saw it. Python (`add`/`is_even` + `multiply`, `make test`), Terraform
    (`var.region`/`.logs` + `bucket_name`, `terraform fmt -check`), Ansible ("Instal"→"Install"
    + `git`, `ansible-playbook --syntax-check`) each opened a draft PR #3. Recipe below.
-4. **PITR**: continuous WAL archiving to object storage (logical backups are done).
+4. **Execution environment + forge** — done and merged (ADR 0008/0009): one session per task,
+   injectable harness, repository-declared environment, draft PR through the forge REST API.
+   Open gaps in [Known gaps](#known-gaps-for-review).
+5. **PITR** — deferred (see Later); not needed at this scale.
 
 ### End-to-end test recipe (local, ADR 0008 session)
 - Launch a Postgres: `scripts/dev-postgres.sh up` (creds `dear-agent`/`dear-agent`); the
@@ -61,7 +64,7 @@ points at the old `.../herald` path; restart opencode from `~/Documents/Projects
 
 ## In progress
 
-### Execution environments (ADR 0008) — branch `dear-agent-execution-environment`
+### Execution environments (ADR 0008) — done
 
 The harness and the `verify` gate now share **one environment session** (one container per
 task), and the harness can be **injected** into an environment image that lacks it.
@@ -81,8 +84,9 @@ task), and the harness can be **injected** into an environment image that lacks 
   declared **image** for the session and injects the harness automatically (OpenCode); an
   explicit `DEAR_AGENT_HARNESS_IMAGE` still wins.
 - [x] Tests + a live proof (session persistence; bundle injection into a UBI image).
-- [ ] Next: the Dev Container **Feature/prebuild** path (compose `devcontainer.json` + a harness
-  Feature into an image) and turning a `build`/`Containerfile` descriptor into an image.
+- [ ] **Next**: the Dev Container **Feature/prebuild** path (compose `devcontainer.json` + a
+  harness Feature into an image) and turning a `build`/`Containerfile` descriptor into an image;
+  see [Known gaps](#known-gaps-for-review).
 
 _None — M8 is complete on branch `dear-agent-m8-postgres-deploy` (PR #55)._
 
@@ -120,29 +124,30 @@ log). See [ADR 0005](docs/decisions/0005-state-store.md).
   (`HumanGate`/`decision_needs_human`, `DEAR_AGENT_DECIDER`, default `rules`). Fail-open: no
   decider means no gate. The draft PR remains the landing gate.
 
-## Next
+## Known gaps (for review)
 
-- **Forge by API (no CLI), multi-forge.** Today `build_worker` hardcodes
-  `GitPlane(forge=GhForge())`, and `GhForge` shells out to `gh pr create --draft`
-  (`gitplane/gh.py`). That needs `gh` on `PATH` and a token, and only speaks GitHub. Decision:
-  open the PR/MR through the forge **REST API** with a token, behind the existing `Forge`
-  protocol ([ADR 0009](docs/decisions/0009-forge-api.md)). Tasks:
-  - [x] **API forge**: `gitplane/forge.py` opens the PR/MR via `urllib` (GitHub, GitLab, Gitea),
-    no `gh` dependency. `GhForge` is kept behind `DEAR_AGENT_FORGE=gh`.
-  - [x] **Forge selection**: `DEAR_AGENT_FORGE=auto|github|gitlab|gitea|gh`; `auto` (default)
-    picks the API forge from the repository remote host.
-  - [x] **GitLab/Gitea forges**: `GitlabApiForge` (`Draft:` prefix, `PRIVATE-TOKEN`) and
-    `GiteaApiForge`; tokens `GITLAB_TOKEN` / `GITEA_TOKEN`.
-  - [x] Verified live: a GitHub task opened a draft PR through the API with `GH_TOKEN` and no
-    `gh` invocation.
-  - [x] **Credential wiring**: the runner templates mount `git-read` (clone) + `git-push`
-    (write) and expose a `dear-agent-forge` secret via `envFrom`; `GitPlane.push` pins the write
-    key through `DEAR_AGENT_GIT_PUSH_KEY`. The sidecar `control` container carries them and the
-    `harness` container does not (credential isolation); the single-container runner shares them
-    with the harness (ADR 0007 residual).
-- **PITR**: continuous WAL archiving to object storage. (Logical backups landed
-  (`deploy/components/backup/`, a daily `pg_dump` keeping the last seven); connection
-  resilience landed; the Postgres component is verified live on OpenShift.)
+The execution environment ([ADR 0008](docs/decisions/0008-execution-environment.md)) and forge
+([ADR 0009](docs/decisions/0009-forge-api.md)) slices are on `main`; these are the deliberate,
+still-open gaps:
+
+- **Routing**: with `DEAR_AGENT_HARNESSES`, each class builds its own sandbox, so the verifier
+  does not share the harness session (it falls back to the outer sandbox). ADR 0008.
+- **Environment build**: a descriptor's `build`/`Containerfile`/devcontainer-`build` is detected
+  but not built into an image; the Dev Container **Feature/prebuild** path is not implemented.
+- **Bundle**: OpenCode only and an explicit recipe (no `ldd` auto-discovery); needs
+  `DEAR_AGENT_HARNESS_CONTAINER_SELINUX=Z` and a writable `HOME`.
+- **Forge**: GitLab uses the `Draft:` title prefix (assumption); no Bitbucket; in the
+  single-container runner the write key and forge token are visible to the harness (ADR 0007
+  residual — use the sidecar for credential isolation).
+- **`command` harness** (`CommandRunner`) ignores the sandbox/session (pre-existing).
+- **Ops**: the sidecar harness image (`quay.io/dear-agent/harness:latest`) is a placeholder and
+  the in-cluster PR path is not live-tested (needs provisioned secrets).
+
+## Later
+
+- **PITR** (continuous WAL archiving to object storage): not needed yet. The daily `pg_dump`
+  (`deploy/components/backup/`, retention 7) plus connection resilience is enough at this scale;
+  revisit before the data becomes irreplaceable.
 
 ## Configuration (see .env, never committed)
 

@@ -53,9 +53,13 @@ If a change does not serve one of those goals (or a milestone in
 
 ## 3. Status and where to start
 
-**Current status: M8 (durable state in PostgreSQL) implemented** (PR #55). M0–M7 are done;
-M0–M6 were verified live on OpenShift + Fastmail. The mailbox is **ingress**: durable tasks,
-state, approvals and the decision log live in PostgreSQL — see
+**Current status: M8 (durable state in PostgreSQL) implemented** (PR #55), plus the execution
+environment and forge slices ([ADR 0008](docs/decisions/0008-execution-environment.md),
+[ADR 0009](docs/decisions/0009-forge-api.md)): a run is one **environment session**
+(harness + verify share one container), the harness is injected into a repository-declared
+environment, and the draft PR is opened through the forge **REST API** (no `gh`). M0–M7 are
+done; M0–M6 were verified live on OpenShift + Fastmail. The mailbox is **ingress**: durable
+tasks, state, approvals and the decision log live in PostgreSQL — see
 [`docs/decisions/0005-state-store.md`](docs/decisions/0005-state-store.md), which supersedes
 [ADR 0002](docs/decisions/0002-deployment-topology.md) in part. The local MVP path is in
 [`docs/getting-started.md`](docs/getting-started.md). The decision layer uses System One models
