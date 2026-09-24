@@ -38,7 +38,7 @@
     {
       "description": "The app image tag is set by the deploy overlay (dev/stable), not a version",
       "matchDatasources": ["docker"],
-      "matchPackageNames": ["quay.io/rarguello/dear-agent"],
+      "matchPackageNames": ["quay.io/dear-agent/dear-agent"],
       "enabled": false
     }
   ]

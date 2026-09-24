@@ -7,5 +7,5 @@ components:
   - ../../components/postgresql
   - ../../components/egress
 images:
-  - name: quay.io/rarguello/dear-agent
+  - name: quay.io/dear-agent/dear-agent
     newTag: dev

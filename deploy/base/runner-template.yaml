@@ -33,7 +33,7 @@ data:
               type: RuntimeDefault
           containers:
             - name: runner
-              image: quay.io/rarguello/dear-agent:latest
+              image: quay.io/dear-agent/dear-agent:latest
               command: ["dear-agent"]
               # The runner claims a persisted task and runs the harness; it needs no mailbox
               # (the spec lives on the task row) and sends no mail without --recipient, so it

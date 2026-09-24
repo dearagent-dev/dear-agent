@@ -3,7 +3,7 @@ name: Publish
 # Publish the image to Quay with the Red Hat actions (buildah). A tag ``v*`` publishes the
 # version plus ``stable`` and ``latest``; a push to ``main`` publishes ``dev`` and the short
 # sha. Needs the ``QUAY_USERNAME`` / ``QUAY_PASSWORD`` repository secrets (a Quay robot with
-# write access to ``quay.io/rarguello/dear-agent``); without them the job is skipped, not red.
+# write access to ``quay.io/dear-agent/dear-agent``); without them the job is skipped, not red.
 on:
   push:
     branches: [main]
@@ -62,6 +62,6 @@ jobs:
         with:
           image: ${{ steps.build.outputs.image }}
           tags: ${{ steps.build.outputs.tags }}
-          registry: quay.io/rarguello
+          registry: quay.io/dear-agent
           username: ${{ secrets.QUAY_USERNAME }}
           password: ${{ secrets.QUAY_PASSWORD }}
