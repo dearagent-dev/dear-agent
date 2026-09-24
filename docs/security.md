@@ -105,7 +105,8 @@ Owner: gitplane + repository settings.
 
 - Any action outside the allowlist (installing dependencies, pushing, network calls,
   opening issues) goes to the **Action queue** and requires a reply carrying a valid
-  **single-use token**.
+  **single-use token**. An approval is only recognized on an **in-thread reply**; a fresh
+  message is always a task, even if its body happens to contain an `approve <token>`.
 - Commands derived from a message are never executed without an allowlist or human
   approval.
 - A message flagged **suspicious** (by `InjectionScanner` or the `SecurityDecider`, which

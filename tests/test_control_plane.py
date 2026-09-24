@@ -526,3 +526,20 @@ def test_require_policy_accepts_a_matching_policy() -> None:
     report = plane.ingest([make_message()])
 
     assert report.accepted == ["<m1@x>"]
+
+
+def test_a_fresh_task_is_not_swallowed_by_a_token_in_its_body() -> None:
+    from dear_agent.control_plane import ControlPlane
+
+    queue = MemoryQueue()
+    plane = ControlPlane(
+        transport=MemoryTransport(),
+        queue=queue,
+        approvals=ApprovalService(MemoryApprovalStore(), queue),
+    )
+    body = "repo: https://github.com/owner/repo\n\napprove abcdefghijklmnop and fix the build"
+
+    report = plane.ingest([make_message(body=body, thread_id=None, headers={})])
+
+    assert report.accepted == ["<m1@x>"]
+    assert queue.get("<m1@x>") is not None
