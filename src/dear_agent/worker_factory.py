@@ -254,10 +254,21 @@ def build_worker(
     from dear_agent.policy import build_policy_store
     from dear_agent.verify import CommandVerifier
 
-    sandbox = sandbox or default_sandbox()
-    runner = build_routing_runner(sandbox)
-    if runner is None:
-        runner = build_runner(provider_model, sandbox)
+    harness_dir = os.environ.get("DEAR_AGENT_HARNESS_DIR")
+    if harness_dir:
+        # Two-container runner: the harness runs in a sibling container (no credentials), so
+        # the control container delegates to it over the shared worktree volume.
+        from dear_agent.runners.shared import DelegatingRunner
+
+        runner: Runner = DelegatingRunner(
+            harness_dir,
+            timeout=float(os.environ.get("DEAR_AGENT_HARNESS_TIMEOUT", "3600")),
+        )
+    else:
+        sandbox = sandbox or default_sandbox()
+        runner = build_routing_runner(sandbox)
+        if runner is None:
+            runner = build_runner(provider_model, sandbox)
     approvals = ApprovalService(build_approval_store(), queue)
     events = build_event_log()
     verifier = CommandVerifier.from_env(os.environ, sandbox=sandbox)

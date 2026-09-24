@@ -77,6 +77,32 @@ def test_runner_template_carries_no_mail_credential() -> None:
     assert "jmap" not in container.get("args", [])
 
 
+def sidecar_template(docs: list[dict]) -> dict:
+    template = next(
+        doc
+        for doc in docs
+        if doc.get("metadata", {}).get("name") == "dear-agent-runner-sidecar-template"
+    )
+    return yaml.safe_load(template["data"]["job.yaml"])
+
+
+def test_sidecar_runner_isolates_the_harness_container() -> None:
+    pod = sidecar_template(build("dev"))["spec"]["template"]["spec"]
+    containers = {container["name"]: container for container in pod["containers"]}
+
+    assert set(containers) == {"control", "harness"}
+    harness = containers["harness"]
+    env_names = {entry["name"] for entry in harness.get("env", [])}
+    mount_names = {mount["name"] for mount in harness.get("volumeMounts", [])}
+
+    # The harness holds no credential and cannot see the git key.
+    assert "DEAR_AGENT_DATABASE_URL" not in env_names
+    assert "git-read" not in mount_names
+    assert "harness-serve" in harness["args"]
+    # Both containers share the worktree.
+    assert "work" in {mount["name"] for mount in containers["control"]["volumeMounts"]}
+
+
 @pytest.mark.parametrize("overlay", ["dev", "prod"])
 def test_runner_egress_policy_is_included(overlay: str) -> None:
     policies = [doc for doc in build(overlay) if doc.get("kind") == "NetworkPolicy"]

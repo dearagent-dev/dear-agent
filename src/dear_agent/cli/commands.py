@@ -581,6 +581,37 @@ def _handle_policy_match(args: argparse.Namespace, context: CliContext) -> int:
     return 0
 
 
+def add_harness_commands(
+    subparsers: argparse._SubParsersAction, parent: argparse.ArgumentParser
+) -> None:
+    parser = subparsers.add_parser(
+        "harness-serve",
+        help="run the harness side of a two-container runner (DEAR_AGENT_HARNESS_DIR)",
+    )
+    parser.add_argument(
+        "--dir", default=None, help="shared directory (default: DEAR_AGENT_HARNESS_DIR)"
+    )
+    parser.add_argument(
+        "--once", action="store_true", help="serve one request then exit (one task per pod)"
+    )
+    parser.set_defaults(handler=_handle_harness_serve, needs_queue=False)
+
+
+def _handle_harness_serve(args: argparse.Namespace, context: CliContext) -> int:
+    from dear_agent.runners.shared import serve
+    from dear_agent.sandbox import NoSandbox
+    from dear_agent.worker_factory import build_runner
+
+    shared = args.dir or os.environ.get("DEAR_AGENT_HARNESS_DIR")
+    if not shared:
+        raise RuntimeError("harness-serve needs --dir or DEAR_AGENT_HARNESS_DIR")
+    # The harness container is itself the jail and holds no credential, so no sandbox.
+    runner = build_runner(os.environ.get("DEAR_AGENT_MODEL"), NoSandbox())
+    context.emit(f"harness-serve: {shared}")
+    serve(shared, runner=runner, once=bool(getattr(args, "once", False)))
+    return 0
+
+
 def add_health_commands(
     subparsers: argparse._SubParsersAction, parent: argparse.ArgumentParser
 ) -> None:

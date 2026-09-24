@@ -9,6 +9,7 @@ resources:
   - rbac.yaml
   - control-plane.yaml
   - runner-template.yaml
+  - runner-sidecar-template.yaml
   - sweep-cronjob.yaml
 labels:
   - includeSelectors: true
