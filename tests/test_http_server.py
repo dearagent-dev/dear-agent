@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import socket
+import time
 import urllib.error
 import urllib.request
 from datetime import UTC, datetime
@@ -127,3 +129,36 @@ def test_oversized_body_is_413_and_not_read() -> None:
     assert status == 413
     assert payload["error"] == "request body too large"
     assert called is False
+
+
+def test_malformed_content_length_is_400() -> None:
+    instance = HealthServer(
+        queue=MemoryQueue(), host="127.0.0.1", port=0, inbound=lambda body, headers: (202, {})
+    )
+    instance.start()
+    try:
+        with socket.create_connection(("127.0.0.1", instance.bound_port), timeout=5) as sock:
+            sock.sendall(b"POST /inbound HTTP/1.1\r\nHost: x\r\nContent-Length: abc\r\n\r\n")
+            response = sock.recv(4096)
+    finally:
+        instance.stop()
+
+    assert b" 400 " in response.split(b"\r\n", 1)[0]
+
+
+def test_an_idle_connection_times_out() -> None:
+    instance = HealthServer(queue=MemoryQueue(), host="127.0.0.1", port=0, timeout_seconds=0.4)
+    instance.start()
+    try:
+        with socket.create_connection(("127.0.0.1", instance.bound_port), timeout=5) as sock:
+            # A request with no terminating blank line: the server must time it out.
+            sock.sendall(b"GET /health HTTP/1.1\r\nHost: x\r\n")
+            sock.settimeout(5)
+            start = time.monotonic()
+            data = sock.recv(1)
+            elapsed = time.monotonic() - start
+    finally:
+        instance.stop()
+
+    assert data == b""
+    assert elapsed < 3
