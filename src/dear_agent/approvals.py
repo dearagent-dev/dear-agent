@@ -61,6 +61,15 @@ class ApprovalNotApplicableError(ApprovalError):
         self.state = state
 
 
+class ApprovalMismatchError(ApprovalError):
+    """The redeeming reply is not from the requester or not on the task's thread."""
+
+    def __init__(self, task_id: str, field: str) -> None:
+        super().__init__(f"approval for {task_id!r} does not match the {field}")
+        self.task_id = task_id
+        self.field = field
+
+
 @dataclass(slots=True)
 class Approval:
     """A pending human decision for one task."""
@@ -328,6 +337,7 @@ __all__ = [
     "APPROVAL_SCHEMA_STATEMENTS",
     "Approval",
     "ApprovalError",
+    "ApprovalMismatchError",
     "ApprovalNotApplicableError",
     "ApprovalStore",
     "ExpiredTokenError",
