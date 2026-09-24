@@ -26,25 +26,32 @@ repository moved to the **`dearagent-dev`** org; every reference to the old name
 - **AgentMail backend** (`DEAR_AGENT_BACKEND=agentmail`) implemented and smoke-tested live.
 
 ### Pending
-1. **Example-repo READMEs** still say "Herald practice repo" in
-   `dear-agent-lab-{terraform,ansible,python}` → change to "Dear Agent" (and any other
-   occurrence in those repos).
-2. **Historical PR titles** containing "herald": #102, #96, #60, #50, #47, #33, #32, #25
-   (optional; they are historical records).
-3. **End-to-end test with complex tasks** on the example repos (the point of this). Not run
-   yet beyond enqueue. Suggested below.
+1. **Example-repo READMEs** — done: PRs in `dear-agent-lab-{terraform,ansible,python}` #2.
+2. **Historical PR titles** containing "herald" — done (#96, #60, #50, #47, #33, #32, #25;
+   #102 is the rename PR itself and keeps its title).
+3. **End-to-end test with complex tasks** — done, now with the ADR 0008 session
+   (`DEAR_AGENT_ISOLATION=podman`): the harness installed its toolchain inside the session and
+   the `verify` gate saw it. Python (`add`/`is_even` + `multiply`, `make test`), Terraform
+   (`var.region`/`.logs` + `bucket_name`, `terraform fmt -check`), Ansible ("Instal"→"Install"
+   + `git`, `ansible-playbook --syntax-check`) each opened a draft PR #3. Recipe below.
 4. **PITR**: continuous WAL archiving to object storage (logical backups are done).
 
-### End-to-end test recipe (local)
+### End-to-end test recipe (local, ADR 0008 session)
 - Launch a Postgres: `scripts/dev-postgres.sh up` (creds `dear-agent`/`dear-agent`); the
   `memory` queue cannot be shared across `task enqueue` and `run` (separate processes).
 - Env: `DEAR_AGENT_QUEUE=postgres`, `DEAR_AGENT_DATABASE_URL=...`,
-  `DEAR_AGENT_HARNESS=opencode`, `DEAR_AGENT_SANDBOX=none` (local, trusted repos; bwrap would
-  hide `$HOME` and opencode's auth), `DEAR_AGENT_VERIFY_ALLOW='make test'`.
+  `DEAR_AGENT_HARNESS=opencode`, `DEAR_AGENT_ISOLATION=podman`,
+  `DEAR_AGENT_HARNESS_MOUNTS='~/.local/share/opencode/auth.json:~/.local/share/opencode/auth.json:ro'`,
+  `DEAR_AGENT_HARNESS_CONTAINER_SELINUX=disable` (read the auth mount on an SELinux host),
+  `DEAR_AGENT_VERIFY_ALLOW=<the exact verify command>`.
+- The harness runs in a minimal Alpine image and **installs its own toolchain** (e.g.
+  `apk add --no-cache python3 make`); because harness and verify share one session, the
+  `verify` gate runs in the same container. Tools not in Alpine (Terraform) are downloaded into
+  `/usr/local/bin`; the next slice (environment descriptor) removes that guesswork.
 - Example tasks (intentional bugs to fix): Python (`add` subtracts, `is_even` inverted; add
-  `multiply` + tests); Terraform (`var.aws_region` should be `var.region`, `aws_s3_bucket.log`
-  should be `.logs`); Ansible (task name typo "Instal", missing `git` package).
-- `dear-agent task enqueue "<instructions>" --repo git@github.com:dearagent-dev/dear-agent-lab-<x>.git --verify "make test"`,
+  `multiply` + tests); Terraform (`var.aws_region` → `var.region`, `aws_s3_bucket.log` →
+  `.logs`); Ansible (task name typo "Instal", missing `git` package).
+- `dear-agent task enqueue "<instructions>" --repo git@github.com:dearagent-dev/dear-agent-lab-<x>.git --verify "<cmd>"`,
   then `dear-agent run --repo /tmp/<x> <task-id>`; it pushes an `dear-agent/<slug>` branch and
   opens a draft PR.
 
