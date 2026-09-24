@@ -127,8 +127,10 @@ See [ADR 0005](decisions/0005-state-store.md).
 - [x] **Gate high-risk inbound runs behind approval.** Inbound tasks whose decider verdict
   says a human should look are parked in `action` and released by a `run` approval, like
   suspicious messages (`HumanGate`, `DEAR_AGENT_DECIDER`).
-- **Connection resilience**: pool Postgres connections and reconnect on failure for the
-  long-lived control plane; back the store with PITR.
+- [x] **Connection resilience**: `db.ResilientConnection` reconnects on failure (lazily and once
+  per statement) and sets TCP keepalives, so a dropped Postgres connection does not break the
+  long-lived control plane.
+- **PITR**: back the Postgres store with automated backups and point-in-time recovery.
 - Idle: persist the budget/metrics and dedupe proposals on the database.
 - Live OpenShift verification of the Postgres component (as M6 was verified).
 

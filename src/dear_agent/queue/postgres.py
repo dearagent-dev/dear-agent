@@ -60,13 +60,6 @@ _COLUMNS = (
 )
 
 
-def connect(dsn: str) -> Any:
-    """Open a connection to the database at ``dsn``. The caller owns its lifecycle."""
-    import psycopg
-
-    return psycopg.connect(dsn)
-
-
 def apply_schema(conn: Any) -> None:
     """Create the queue table if it does not exist. Idempotent; safe to call at startup."""
     with conn.cursor() as cur:
@@ -77,7 +70,7 @@ def apply_schema(conn: Any) -> None:
 
 def open_queue(dsn: str, *, clock: Callable[[], datetime] = utcnow) -> PostgresQueue:
     """Connect, apply the full schema and return a ready :class:`PostgresQueue`."""
-    from dear_agent.db import init_schema
+    from dear_agent.db import connect, init_schema
 
     conn = connect(dsn)
     init_schema(conn)
@@ -300,4 +293,4 @@ def _task_from_row(row: Sequence[Any]) -> Task:
     )
 
 
-__all__ = ["PostgresQueue", "SCHEMA_STATEMENTS", "apply_schema", "connect", "open_queue"]
+__all__ = ["PostgresQueue", "SCHEMA_STATEMENTS", "apply_schema", "open_queue"]
