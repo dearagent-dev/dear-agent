@@ -4,7 +4,7 @@ import os
 from typing import TYPE_CHECKING
 
 from dear_agent.executor import TaskExecutor
-from dear_agent.gitplane.gh import GhForge
+from dear_agent.gitplane.forge import build_forge
 from dear_agent.gitplane.plane import GitPlane
 from dear_agent.notify.escalate import Escalator
 from dear_agent.notify.notifier import Notifier
@@ -348,7 +348,7 @@ def build_worker(
     executor = TaskExecutor(
         queue=queue,
         runner=runner,
-        git=GitPlane(forge=GhForge()),
+        git=GitPlane(forge=build_forge()),
         repo_path=repo_path,
         worktrees_root=default_worktrees_root(),
         notifier=Notifier(transport, approvals=approvals),
