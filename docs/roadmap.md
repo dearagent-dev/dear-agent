@@ -130,9 +130,12 @@ See [ADR 0005](decisions/0005-state-store.md).
 - [x] **Connection resilience**: `db.ResilientConnection` reconnects on failure (lazily and once
   per statement) and sets TCP keepalives, so a dropped Postgres connection does not break the
   long-lived control plane.
-- **PITR**: back the Postgres store with automated backups and point-in-time recovery.
-- Idle: persist the budget/metrics and dedupe proposals on the database.
-- Live OpenShift verification of the Postgres component (as M6 was verified).
+- [x] **Automated backups**: a daily `pg_dump` to a dedicated PVC keeping the last seven
+  (`deploy/components/backup/`). **PITR** (continuous WAL archiving to object storage) remains.
+- [x] Idle proposals dedupe on the database (the deterministic transport id + the queue's
+  unique index) and the budget is the DB queue depth; no further persistence is needed.
+- [x] Live OpenShift verification of the Postgres component (StatefulSet/PVC up, schema
+  created, control-plane `/health` green).
 
 - [x] HTTP entrypoint hardening: inbound webhook endpoint (`POST /inbound`, HMAC auth,
   fail-closed without a secret), request-body cap and timeouts.

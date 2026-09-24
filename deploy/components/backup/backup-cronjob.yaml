@@ -1,0 +1,91 @@
+# Automated logical backups of the durable queue (ADR 0005). A daily pg_dump to a dedicated
+# PVC, keeping the last seven. This satisfies "automated backups"; true PITR additionally needs
+# continuous WAL archiving (archive_mode=on + archive_command to your object store), which is a
+# storage-dependent follow-up documented in deploy/README.md.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dear-agent-postgres-backup
+  labels:
+    app.kubernetes.io/name: dear-agent-postgres
+    app.kubernetes.io/component: backup
+    app.kubernetes.io/part-of: dear-agent
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: dear-agent-postgres-backup
+  labels:
+    app.kubernetes.io/name: dear-agent-postgres
+    app.kubernetes.io/component: backup
+    app.kubernetes.io/part-of: dear-agent
+spec:
+  schedule: "0 3 * * *" # daily, 03:00 UTC
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: dear-agent-postgres
+            app.kubernetes.io/component: backup
+            app.kubernetes.io/part-of: dear-agent
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: backup
+              image: registry.redhat.io/rhel9/postgresql-18:latest
+              command: ["/bin/bash", "-lc"]
+              args:
+                - |
+                  set -euo pipefail
+                  stamp=$(date -u +%Y%m%dT%H%M%SZ)
+                  export PGPASSWORD="$POSTGRESQL_PASSWORD"
+                  pg_dump -h dear-agent-postgres -U "$POSTGRESQL_USER" -d "$POSTGRESQL_DATABASE" \
+                    -Fc -f "/backups/${POSTGRESQL_DATABASE}-${stamp}.dump"
+                  # Keep the last seven dumps.
+                  ls -1t /backups/*.dump | tail -n +8 | xargs -r rm -f
+              env:
+                - name: POSTGRESQL_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: dear-agent-postgres
+                      key: POSTGRESQL_USER
+                      optional: true
+                - name: POSTGRESQL_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: dear-agent-postgres
+                      key: POSTGRESQL_PASSWORD
+                      optional: true
+                - name: POSTGRESQL_DATABASE
+                  valueFrom:
+                    secretKeyRef:
+                      name: dear-agent-postgres
+                      key: POSTGRESQL_DATABASE
+                      optional: true
+              volumeMounts:
+                - name: backups
+                  mountPath: /backups
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+          volumes:
+            - name: backups
+              persistentVolumeClaim:
+                claimName: dear-agent-postgres-backup
