@@ -1,0 +1,67 @@
+name: Publish
+
+# Publish the image to Quay with the Red Hat actions (buildah). A tag ``v*`` publishes the
+# version plus ``stable`` and ``latest``; a push to ``main`` publishes ``dev`` and the short
+# sha. Needs the ``QUAY_USERNAME`` / ``QUAY_PASSWORD`` repository secrets (a Quay robot with
+# write access to ``quay.io/rarguello/dear-agent``); without them the job is skipped, not red.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check the registry secrets
+        id: guard
+        run: |
+          if [ -n "${{ secrets.QUAY_USERNAME }}" ] && [ -n "${{ secrets.QUAY_PASSWORD }}" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::QUAY_USERNAME/QUAY_PASSWORD are not set; skipping the publish."
+          fi
+
+      - name: Compute the tags
+        id: meta
+        if: steps.guard.outputs.ready == 'true'
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            echo "tags=${GITHUB_REF_NAME} stable latest" >> "$GITHUB_OUTPUT"
+          else
+            echo "tags=dev sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Log in to Quay
+        if: steps.guard.outputs.ready == 'true'
+        uses: redhat-actions/podman-login@v2
+        with:
+          registry: quay.io
+          username: ${{ secrets.QUAY_USERNAME }}
+          password: ${{ secrets.QUAY_PASSWORD }}
+
+      - name: Build the image
+        id: build
+        if: steps.guard.outputs.ready == 'true'
+        uses: redhat-actions/buildah-build@v3
+        with:
+          image: dear-agent
+          tags: ${{ steps.meta.outputs.tags }}
+          containerfiles: ./Containerfile
+
+      - name: Push to Quay
+        if: steps.guard.outputs.ready == 'true'
+        uses: redhat-actions/push-to-registry@v3
+        with:
+          image: ${{ steps.build.outputs.image }}
+          tags: ${{ steps.build.outputs.tags }}
+          registry: quay.io/rarguello
+          username: ${{ secrets.QUAY_USERNAME }}
+          password: ${{ secrets.QUAY_PASSWORD }}
