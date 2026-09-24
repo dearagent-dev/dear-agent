@@ -31,21 +31,20 @@ Defense in depth, ordered from highest leverage. Each layer maps to a component.
 
 ### 1. Authorize before normalizing
 
-- Authenticate the **sender**, not the content: SPF/DKIM/DMARC alignment plus a signed
-  header (HMAC) or a signed reply token. `dear_agent.auth.InboundAuthorizer` verifies an
-  `X-Dear-Agent-Signature` HMAC over the body **and the sender**, in constant time, so a valid
-  signature cannot be replayed under another `From`.
-- Allowlist authorized senders (`InboundAuthorizer.allowlist`). The routing address alone
-  never authorizes.
-- Unsigned or unauthorized mail is **quarantined and never normalized** into a task, and
-  denied mail is dropped without a reply (no backscatter).
-- The **email path** (`dear-agent listen`) cannot carry the HMAC header, so it uses
-  `dear_agent.auth.SenderAllowlist` (`DEAR_AGENT_ALLOWED_SENDERS`, exact addresses or `@domain`).
-  An empty list rejects everyone (fail closed). Note that `From` is spoofable, so this is a
-  first line, not a boundary: harden it with DMARC/SPF/DKIM verification of the
-  `Authentication-Results` header or a shared secret in the body, and rely on the approval
-  gate for high-risk work. Handled messages are filed into `Dear-Agent-Done` so they are not
-  reprocessed.
+- Authenticate the **sender**, not the content. The **webhook** (`POST /inbound`) uses an
+  HMAC: `dear_agent.auth.InboundAuthorizer` verifies an `X-Dear-Agent-Signature` over the body
+  **and the sender**, in constant time, so a valid signature cannot be replayed under another
+  `From`. `InboundAuthorizer.allowlist` narrows it further; the routing address alone never
+  authorizes.
+- The **email path** (`dear-agent listen`/`poll`) cannot carry the HMAC header, so it verifies
+  the receiving MTA's verdict: `EmailAuthGate` trusts only `Authentication-Results` fields
+  whose authserv-id is the configured MTA (a domain-boundary match) and takes the **first**
+  verdict per mechanism, so an injected header cannot upgrade a `fail` to a `pass`. With no
+  `DEAR_AGENT_AUTH_DOMAINS` it falls back to `SenderAllowlist`
+  (`DEAR_AGENT_ALLOWED_SENDERS`), which is spoofable and a first line only.
+- Unsigned or unauthorized mail is **quarantined and never normalized** into a task, and denied
+  mail is dropped without a reply (no backscatter). An empty allowlist rejects everyone (fail
+  closed). Handled messages are filed into `Dear-Agent-Done` so they are not reprocessed.
 - Rate-limit per sender (`dear_agent.auth.RateLimiter`, sliding window): a burst of mail must
   not become a burst of agent runs. `InboundGate` (webhook) and `RateLimitedGate` (email)
   compose authorization and rate limiting (`DEAR_AGENT_RATE_LIMIT`, default 60/minute), and run
@@ -57,8 +56,9 @@ Owner: transport adapter + normalizer.
 
 - A **fixed system prompt** defines the task contract; message text is injected as a
   clearly delimited, labeled untrusted-data block.
-- The message selects an action from a **closed set** (`implement`, `review`, `fix-tests`),
-  which maps to a fixed prompt template. It cannot supply commands, flags or paths.
+- The message supplies free-text **instructions** that become the harness prompt; there is no
+  closed action set (containment lives in the surrounding system, not in constraining the
+  prompt). Message text never becomes a shell command, a path, or a tool flag.
 - Never interpolate message text into a shell, a path, or a tool argument.
 - Apply the same rule to **everything the agent reads**: repo files, commit messages,
   issues, dependency docs are untrusted too (indirect injection).
@@ -75,11 +75,18 @@ Owner: normalizer + runner prompt construction.
   configured credential paths mounted (read-only by default). The container is the jail, so
   no harness runtime has to be trusted on the host. See
   [ADR 0006](decisions/0006-container-isolation.md).
-- **Default-deny egress**, allowlisting only the Git remote and the model endpoint. No
-  network means no exfiltration and no tool download. `SandboxPolicy(allow_network=False)`
-  is the default and adds `--unshare-net`.
+- **Egress**: `BubblewrapSandbox` denies it by default (`SandboxPolicy(allow_network=False)`,
+  `--unshare-net`). `ContainerSandbox` defaults to `--network host` because the harness must
+  reach the model; constrain it at the pod level with the (opt-in) runner egress
+  `NetworkPolicy` or `DEAR_AGENT_HARNESS_CONTAINER_NETWORK`.
+- The container drops all capabilities (`--cap-drop ALL`), caps processes (`--pids-limit`) and
+  can run a read-only rootfs with a `/tmp` tmpfs; credential mounts are read-only by default.
 - Do **not** mount a service account token (`automountServiceAccountToken: false`).
-- No long-lived secrets in the run environment; only a scoped model key where required.
+- The runner Job carries only what it needs (the database DSN and a **read-only** git key); the
+  **harness environment** withholds them (`runners.harness.harness_env` is an allowlist). Within
+  the container the harness still shares a PID namespace and could read the parent's environment
+  via `/proc`, so full separation — the harness in its own container — is tracked in
+  [#94](https://github.com/dearagent-dev/dear-agent/issues/94).
 - Mount the repo read-only outside the disposable worktree.
 - Give the harness an **allowlist** of tools, not arbitrary shell.
 - Reject attachments and any message that carries source code or patches.
@@ -92,8 +99,11 @@ Owner: runner + Kubernetes manifests.
 
 ### 4. Git is the containment boundary
 
-- Agents never commit or push to `main`; every result is an `dear-agent/<slug>` branch and a
-  **draft PR**.
+- `GitPlane` refuses to commit or push a protected branch, and every result is an
+  `dear-agent/<slug>` branch + a **draft PR**. The guard covers everything that goes through
+  `GitPlane`; a shell-capable harness could call `git` directly, so the **real** boundary is
+  remote branch protection plus a push credential scoped to `dear-agent/*` (the runner mounts
+  only the **read** key).
 - `main` is protected with required human review.
 - The agent's commit identity is distinguishable from a human's.
 - Worst case, a fully hijacked agent produces a malicious **pull request a human rejects**.
@@ -127,8 +137,9 @@ Owner: queue + notifier + runner.
 - **Audit**: retain the raw inbound message, the exact prompt, the tool calls and the diff.
 - **Budgets**: cap tokens, wall-clock time and runs per sender.
 - **No recursion**: an agent cannot enqueue further tasks without approval.
-- **Outbound screening**: responses are checked for secret patterns; outbound carries only
-  state, summary and links, never source.
+- **Outbound shape**: `OutboundMessage` has no attachment field, so the transport cannot
+  carry source; the notifier sends only state, summary and links. (There is no secret-pattern
+  scanner on outbound content yet.)
 
 Owner: control plane + notifier.
 

@@ -110,10 +110,11 @@ received ─▶ queued ─▶ running ─▶ (draft PR) ─▶ action? ─▶ do
 
 Dear Agent never lands a change. The pipeline stops at a **draft PR**: opening, approving or
 merging it is a human action. The approval token authorises a *decision about a task*
-(e.g. proceed, or land a plan), never a write to `main`. `GitPlane` refuses any commit,
-push or PR whose branch is protected, so even a compromised run cannot land itself. This is
-the load-bearing guarantee of the whole design: the worst case of a hijacked agent is a
-malicious pull request a human rejects.
+(e.g. proceed, or land a plan), never a write to `main`. `GitPlane` refuses any commit, push
+or PR whose branch is protected; the **real** boundary against a shell-capable harness is
+remote branch protection plus a push credential scoped to `dear-agent/*` (the runner mounts
+only the read key). The worst case of a hijacked agent is a malicious pull request a human
+rejects.
 
 When a run cannot finish — harness missing, timeout, error, or no changes — the task is
 `failed` and an **escalation** message asks a human to look. Raw harness output never
