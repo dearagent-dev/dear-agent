@@ -8,6 +8,7 @@ from dear_agent.cli.commands import (
     add_approval_commands,
     add_decide_commands,
     add_decision_commands,
+    add_harness_commands,
     add_health_commands,
     add_idle_commands,
     add_listen_commands,
@@ -39,6 +40,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_approval_commands(subparsers, parser)
     add_idle_commands(subparsers, parser)
     add_health_commands(subparsers, parser)
+    add_harness_commands(subparsers, parser)
     return parser
 
 

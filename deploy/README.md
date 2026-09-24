@@ -108,6 +108,10 @@ selected repositories.
 - `GIT_SSH_COMMAND` pins the mounted key and `StrictHostKeyChecking=yes`, so a run cannot
   be redirected to another host.
 - A dedicated read-only secret is mounted into the runner; the write key stays out of it.
+- An **opt-in two-container runner** (`runner-sidecar-template.yaml`, ADR 0007): the untrusted
+  harness runs in its own container with no credential and only the shared worktree. Enable it
+  with `DEAR_AGENT_RUNNER_TEMPLATE_CONFIGMAP=dear-agent-runner-sidecar-template` and a harness
+  image that bundles the harness.
 - An **egress allowlist** for runner Jobs (`deploy/components/egress/`), included by default:
   DNS, same-namespace (Postgres) and everything except link-local/metadata, so the model and
   Git work out of the box. Tighten it to the model/Git CIDRs or an egress proxy. It is the

@@ -1,6 +1,6 @@
 # 0007 — Isolate the harness from the runner's credentials
 
-- **Status:** accepted (implementation pending)
+- **Status:** accepted (mechanism implemented; opt-in manifest)
 - **Date:** 2026-09-24
 - **Related:** [0006](0006-container-isolation.md), [../security.md](../security.md),
   [#94](https://github.com/dearagent-dev/dear-agent/issues/94)
@@ -50,6 +50,16 @@ separation.
 
 The prompt/evidence handshake is files in the shared volume (with a readiness/`done` marker),
 so no source leaves Git and no credential crosses into the harness container.
+
+## Implementation
+
+The control/harness handshake is `runners/shared.py`: `DelegatingRunner` (control side)
+writes a credential-free request to the shared directory and waits for the result;
+`dear-agent harness-serve --dir <dir> --once` (harness side) runs the harness in the shared
+worktree and writes the result back. `build_worker` uses `DelegatingRunner` when
+`DEAR_AGENT_HARNESS_DIR` is set. The opt-in Job is
+`deploy/base/runner-sidecar-template.yaml` (enable it with
+`DEAR_AGENT_RUNNER_TEMPLATE_CONFIGMAP=dear-agent-runner-sidecar-template`).
 
 ## Consequences
 
