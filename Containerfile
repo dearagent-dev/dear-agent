@@ -2,7 +2,7 @@
 # Base is UBI 9 (Red Hat Universal Base Image) with the distro Python 3.12, so the image
 # matches the OpenShift platform it runs on. OpenShift runs containers with an arbitrary
 # UID, so the image must be group-writable where it writes and must not assume root.
-FROM registry.access.redhat.com/ubi9/python-312:latest
+FROM registry.access.redhat.com/ubi9/python-312@sha256:8b1b36418501692d863a68f7f31ae47f1f169b83f7cdcc84831ac002304af693
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -21,9 +21,12 @@ RUN dnf install -y --setopt=install_weak_deps=False \
 
 WORKDIR /app
 
-COPY pyproject.toml README.md LICENSE ./
+COPY pyproject.toml README.md LICENSE requirements.lock ./
 COPY src ./src
-RUN pip install --upgrade pip && pip install .
+# Install the locked, hash-verified dependencies, then the package itself without deps.
+RUN pip install --upgrade pip \
+    && pip install --require-hashes -r requirements.lock \
+    && pip install --no-deps .
 
 # The git worktree lives in an emptyDir; make /work group-writable for the arbitrary UID.
 RUN mkdir -p /work && chgrp -R 0 /work && chmod -R g+rwX /work

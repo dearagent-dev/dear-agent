@@ -25,6 +25,11 @@
       "groupName": "python-dependencies"
     },
     {
+      "description": "Pin image digests so a mutable tag cannot be swapped under us",
+      "matchDatasources": ["docker"],
+      "pinDigests": true
+    },
+    {
       "description": "Red Hat registry images track :latest on purpose; do not query them",
       "matchDatasources": ["docker"],
       "matchPackageNames": ["registry.redhat.io/**", "registry.access.redhat.com/**"],
