@@ -104,6 +104,16 @@ def test_sidecar_runner_isolates_the_harness_container() -> None:
 
 
 @pytest.mark.parametrize("overlay", ["dev", "prod"])
+def test_postgres_backup_is_included(overlay: str) -> None:
+    docs = build(overlay)
+    cronjobs = {doc["metadata"]["name"] for doc in docs if doc.get("kind") == "CronJob"}
+    pvcs = {doc["metadata"]["name"] for doc in docs if doc.get("kind") == "PersistentVolumeClaim"}
+
+    assert "dear-agent-postgres-backup" in cronjobs
+    assert "dear-agent-postgres-backup" in pvcs
+
+
+@pytest.mark.parametrize("overlay", ["dev", "prod"])
 def test_runner_egress_policy_is_included(overlay: str) -> None:
     policies = [doc for doc in build(overlay) if doc.get("kind") == "NetworkPolicy"]
     names = {policy["metadata"]["name"] for policy in policies}
@@ -157,7 +167,11 @@ def test_dispatcher_can_create_jobs_but_not_read_secrets() -> None:
 
 def test_sweep_invokes_the_dispatcher() -> None:
     for overlay in ("dev", "prod"):
-        cron = next(doc for doc in build(overlay) if doc.get("kind") == "CronJob")
+        cron = next(
+            doc
+            for doc in build(overlay)
+            if doc.get("kind") == "CronJob" and doc["metadata"]["name"] == "dear-agent-sweep"
+        )
         container = cron["spec"]["jobTemplate"]["spec"]["template"]["spec"]["containers"][0]
         assert container["command"] == ["dear-agent"]
         assert container["args"][:1] == ["sweep"]

@@ -5,6 +5,7 @@ resources:
   - ../../base
 components:
   - ../../components/postgresql
+  - ../../components/backup
   - ../../components/egress
 images:
   - name: quay.io/dear-agent/dear-agent

@@ -1,0 +1,7 @@
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+# Automated logical backups of the durable queue (see backup-cronjob.yaml). Included by the
+# overlays. True PITR needs continuous WAL archiving to object storage; see the file header
+# and deploy/README.md.
+resources:
+  - backup-cronjob.yaml

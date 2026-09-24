@@ -116,6 +116,10 @@ selected repositories.
   DNS, same-namespace (Postgres) and everything except link-local/metadata, so the model and
   Git work out of the box. Tighten it to the model/Git CIDRs or an egress proxy. It is the
   deploy-side half of "authenticating the sender is not trusting the content".
+- **Automated backups**: `deploy/components/backup/` runs a daily `pg_dump` (`-Fc`) to a
+  dedicated PVC, keeping the last seven. Restore with `pg_restore`. For **point-in-time
+  recovery**, add continuous WAL archiving to your object store (`archive_mode=on` +
+  `archive_command` on the Postgres `StatefulSet`) — a storage-dependent follow-up.
 
 ## Not yet wired
 
