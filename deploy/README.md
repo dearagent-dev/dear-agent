@@ -24,7 +24,7 @@ oc apply -k deploy/overlays/dev
 
 ## Prerequisites
 
-1. Set the image in the overlay (`quay.io/rarguello/dear-agent`). The image is built from
+1. Set the image in the overlay (`quay.io/dear-agent/dear-agent`). The image is built from
    `registry.access.redhat.com/ubi9/python-312`, so it matches the OpenShift platform; it
    runs as an arbitrary UID with group 0 for OpenShift's SCC.
 2. Create the Secrets out of band (never commit values). They are **not** part of the

@@ -27,7 +27,7 @@ spec:
               type: RuntimeDefault
           containers:
             - name: sweep
-              image: quay.io/rarguello/dear-agent:latest
+              image: quay.io/dear-agent/dear-agent:latest
               command: ["dear-agent"]
               args: ["sweep"]
               envFrom:

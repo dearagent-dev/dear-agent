@@ -27,7 +27,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: control-plane
-          image: quay.io/rarguello/dear-agent:latest
+          image: quay.io/dear-agent/dear-agent:latest
           imagePullPolicy: IfNotPresent
           command: ["dear-agent-http"]
           args: []
