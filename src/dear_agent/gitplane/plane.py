@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -50,6 +51,9 @@ class GitPlane:
 
     forge: Forge
     protected_branches: frozenset[str] = frozenset({"main", "master"})
+    # A write deploy key used only for the push, so the clone can stay on the read key
+    # (ADR 0003). Unset locally: the ambient git credential is used.
+    push_key: str | None = None
 
     def commit_all(self, worktree: Worktree, *, message: str) -> str:
         self._assert_not_protected(worktree.branch)
@@ -61,7 +65,21 @@ class GitPlane:
 
     def push(self, worktree: Worktree, *, remote: str = "origin") -> None:
         self._assert_not_protected(worktree.branch)
-        _git(worktree.path, "push", "--set-upstream", remote, worktree.branch)
+        _git(
+            worktree.path,
+            "push",
+            "--set-upstream",
+            remote,
+            worktree.branch,
+            env=self._push_env(),
+        )
+
+    def _push_env(self) -> dict[str, str] | None:
+        """The environment for the push, pinned to the write key when one is configured."""
+        if not self.push_key:
+            return None
+        command = f"ssh -i {self.push_key} -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes"
+        return {**os.environ, "GIT_SSH_COMMAND": command}
 
     def has_changes_since(self, worktree: Worktree, base_branch: str) -> bool:
         """True when the worktree branch differs from ``base_branch``."""
@@ -97,13 +115,16 @@ class GitPlane:
             raise ProtectedBranchError(f"{branch!r} is a protected branch")
 
 
-def _git(path: Path, *args: str) -> subprocess.CompletedProcess[str]:
+def _git(
+    path: Path, *args: str, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(
         ["git", *args],
         cwd=path,
         capture_output=True,
         text=True,
         check=False,
+        env=env,
     )
     if result.returncode != 0:
         raise GitError(result.stderr.strip() or f"git {' '.join(args)} failed")

@@ -49,6 +49,10 @@ data:
               envFrom:
                 - configMapRef:
                     name: dear-agent-config
+                # The forge token (GH_TOKEN/GITLAB_TOKEN/GITEA_TOKEN) for the API PR (ADR 0009).
+                - secretRef:
+                    name: dear-agent-forge
+                    optional: true
               env:
                 - name: DEAR_AGENT_TASK_ID
                   value: ""
@@ -62,11 +66,17 @@ data:
                       optional: true
                 - name: GIT_SSH_COMMAND
                   value: "ssh -i /run/secrets/git/ssh-privatekey -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes"
+                # The clone uses the read key above; the push uses this write key (ADR 0003).
+                - name: DEAR_AGENT_GIT_PUSH_KEY
+                  value: "/run/secrets/git-push/ssh-privatekey"
               volumeMounts:
                 - name: work
                   mountPath: /work
                 - name: git-read
                   mountPath: /run/secrets/git
+                  readOnly: true
+                - name: git-push
+                  mountPath: /run/secrets/git-push
                   readOnly: true
                 - name: tmp
                   mountPath: /tmp
@@ -89,5 +99,10 @@ data:
             - name: git-read
               secret:
                 secretName: dear-agent-git-read
+                optional: true
+                defaultMode: 0400
+            - name: git-push
+              secret:
+                secretName: dear-agent-git-push
                 optional: true
                 defaultMode: 0400

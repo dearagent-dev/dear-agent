@@ -348,7 +348,10 @@ def build_worker(
     executor = TaskExecutor(
         queue=queue,
         runner=runner,
-        git=GitPlane(forge=build_forge()),
+        git=GitPlane(
+            forge=build_forge(),
+            push_key=os.environ.get("DEAR_AGENT_GIT_PUSH_KEY") or None,
+        ),
         repo_path=repo_path,
         worktrees_root=default_worktrees_root(),
         notifier=Notifier(transport, approvals=approvals),

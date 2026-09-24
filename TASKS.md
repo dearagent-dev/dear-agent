@@ -135,10 +135,11 @@ log). See [ADR 0005](docs/decisions/0005-state-store.md).
     `GiteaApiForge`; tokens `GITLAB_TOKEN` / `GITEA_TOKEN`.
   - [x] Verified live: a GitHub task opened a draft PR through the API with `GH_TOKEN` and no
     `gh` invocation.
-  - [ ] **Credential wiring**: pass the forge token to the runner Job (secret → env); note the
-    runner template currently mounts only the **read** git key (`dear-agent-git-read`) and sets
-    no forge token, so in-cluster PR creation does not work yet. Push needs a scoped **write**
-    credential (ADR 0003).
+  - [x] **Credential wiring**: the runner templates mount `git-read` (clone) + `git-push`
+    (write) and expose a `dear-agent-forge` secret via `envFrom`; `GitPlane.push` pins the write
+    key through `DEAR_AGENT_GIT_PUSH_KEY`. The sidecar `control` container carries them and the
+    `harness` container does not (credential isolation); the single-container runner shares them
+    with the harness (ADR 0007 residual).
 - **PITR**: continuous WAL archiving to object storage. (Logical backups landed
   (`deploy/components/backup/`, a daily `pg_dump` keeping the last seven); connection
   resilience landed; the Postgres component is verified live on OpenShift.)
@@ -190,6 +191,9 @@ log). See [ADR 0005](docs/decisions/0005-state-store.md).
   Tokens by provider: `GH_TOKEN`/`GITHUB_TOKEN`, `GITLAB_TOKEN`, `GITEA_TOKEN`. Environment
   descriptor (ADR 0008): a repo-declared Dev Container/EE/Containerfile image is used for the
   session; `DEAR_AGENT_HARNESS_IMAGE` overrides it.
+- Git push key: `DEAR_AGENT_GIT_PUSH_KEY` (path to a write deploy key used only for the push;
+  unset locally uses the ambient credential). The runner templates mount `dear-agent-git-read`
+  and `dear-agent-git-push` and the `dear-agent-forge` secret.
 - Decision: `DEAR_AGENT_DECIDER=rules|jev|openai-compat|none`, `DEAR_AGENT_DECIDER_MODEL`,
   `DEAR_AGENT_DECIDER_ENDPOINT`, `DEAR_AGENT_DECIDER_BASE_URL`, `DEAR_AGENT_DECIDER_THRESHOLD`,
   `DEAR_AGENT_DECIDER_LOG` (`<path>` or `postgres`), `TYPESAFE_API_KEY`, `OPENROUTER_API_KEY`.

@@ -50,9 +50,14 @@ three problems:
 
 ## Consequences
 
-- **The runner Job must receive a forge token.** The template mounts only the read git key and
-  sets no forge token today, so in-cluster PR creation still needs a secret → env (next task).
-  Push additionally needs a scoped **write** git credential (ADR 0003).
+- **The runner Job carries the forge token and the write git key.** `deploy/base/runner-template.yaml`
+  and the sidecar `control` container set `DEAR_AGENT_GIT_PUSH_KEY` (a scoped write deploy key,
+  ADR 0003) and mount a `dear-agent-forge` secret through `envFrom` (`GH_TOKEN`/`GITHUB_TOKEN`,
+  `GITLAB_TOKEN`, `GITEA_TOKEN`). The clone keeps the read key. In the **sidecar** template the
+  harness container receives neither, which is the credential-isolated path; the default
+  single-container runner shares them with the harness (ADR 0007 residual).
+- **`GitPlane.push` pins the write key** when `DEAR_AGENT_GIT_PUSH_KEY` is set, so the clone can
+  stay on the read key; locally the ambient git credential is used.
 - **Self-hosted hosts default to GitHub** unless `DEAR_AGENT_FORGE` says otherwise; the API base
   is derived from the remote host (GitHub Enterprise uses `/api/v3`, Gitea `/api/v1`, GitLab
   `/api/v4`).
