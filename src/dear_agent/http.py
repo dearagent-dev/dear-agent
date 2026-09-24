@@ -61,6 +61,7 @@ def build_inbound(queue: Queue):
         human_gate=HumanGate(decider=decider),
         events=build_event_log(),
         policies=build_policy_store(),
+        require_policy=os.environ.get("DEAR_AGENT_REQUIRE_REPO_POLICY", "true").lower() != "false",
     )
     recipient = os.environ.get("DEAR_AGENT_RECIPIENT")
     return InboundWebhook(control_plane=plane, gate=gate, recipient=recipient)

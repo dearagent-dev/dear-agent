@@ -491,3 +491,38 @@ def test_a_gated_task_is_never_left_queued() -> None:
 
     assert queue.list(TaskState.QUEUED) == []
     assert queue.get("<m1@x>").state is TaskState.ACTION
+
+
+def test_require_policy_rejects_when_no_policies_exist() -> None:
+    from dear_agent.control_plane import ControlPlane
+    from dear_agent.policy import MemoryPolicyStore
+
+    queue = MemoryQueue()
+    plane = ControlPlane(
+        transport=MemoryTransport(),
+        queue=queue,
+        policies=MemoryPolicyStore([]),
+        require_policy=True,
+    )
+
+    report = plane.ingest([make_message()])
+
+    assert report.rejected == ["<m1@x>"]
+    assert queue.list(TaskState.QUEUED) == []
+
+
+def test_require_policy_accepts_a_matching_policy() -> None:
+    from dear_agent.control_plane import ControlPlane
+    from dear_agent.policy import MemoryPolicyStore, ProjectPolicy
+
+    queue = MemoryQueue()
+    plane = ControlPlane(
+        transport=MemoryTransport(),
+        queue=queue,
+        policies=MemoryPolicyStore([ProjectPolicy(project="o", repos=("owner/repo",))]),
+        require_policy=True,
+    )
+
+    report = plane.ingest([make_message()])
+
+    assert report.accepted == ["<m1@x>"]
