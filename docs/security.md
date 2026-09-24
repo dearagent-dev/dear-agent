@@ -140,7 +140,7 @@ Owner: control plane + notifier.
 - The database is **never exposed** outside the cluster or host: a headless `Service` with no
   `Route`/`NodePort`, plus a `NetworkPolicy` that admits only Dear Agent pods on `5432`.
 - Only task metadata and links are stored; **source never enters the database** — it stays in
-  Git. Approval tokens are stored as opaque values and compared in constant time.
+  Git. Approval tokens are stored as opaque, high-entropy single-use values.
 - In production, back the store with automated backups and (ideally) PITR; scope credentials
   per environment and rotate them.
 

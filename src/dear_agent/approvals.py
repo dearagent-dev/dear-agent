@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hmac
 import json
 import os
 import secrets
@@ -325,11 +324,6 @@ def build_approval_store() -> ApprovalStore:
     return MemoryApprovalStore()
 
 
-def tokens_equal(left: str, right: str) -> bool:
-    """Constant-time comparison, used when a token travels over an untrusted channel."""
-    return hmac.compare_digest(left, right)
-
-
 __all__ = [
     "APPROVAL_SCHEMA_STATEMENTS",
     "Approval",
@@ -344,5 +338,4 @@ __all__ = [
     "UnknownTokenError",
     "apply_schema",
     "build_approval_store",
-    "tokens_equal",
 ]
