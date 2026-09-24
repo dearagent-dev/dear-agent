@@ -78,7 +78,7 @@ received ─▶ queued ─▶ running ─▶ action ─▶ done
   transport event hits the constraint and is a no-op, never a second task.
 - Reprocessing is additionally prevented by state guards: a task already `running` or in a
   terminal state is never claimed again.
-- Outbound notifications are threaded; a reply is matched by thread + single-use token.
+- Outbound notifications are threaded; a reply is matched by thread, sender and single-use token.
 
 ## Atomic claim
 
@@ -109,7 +109,7 @@ empty.
   and the task id. Tokens are generated with a CSPRNG, compared in constant time where they
   travel over the wire, and stored in the database (a table with `used_at`/`expires_at`), so
   a token survives restarts and is shared across runner Jobs.
-- A reply matching the thread and token (`approve <token>` / `reject <token>`) decides the
+- A reply matching the thread, sender and token (`approve <token>` / `reject <token>`) decides the
   task. The approval's **action** says what "approved" means: a `run` gate releases the task
   to `queued` (how approval-gated proposals start), a `land` gate records `approved`.
   Locally, `dear-agent approval approve|reject <token>` does the same without email.

@@ -240,7 +240,7 @@ class ControlPlane:
     ) -> bool:
         assert self._approvals is not None
         try:
-            self._approvals.apply(decision)
+            self._approvals.apply(decision, sender=message.sender, thread_id=message.thread_id)
         except (ApprovalError, QueueError) as exc:
             # An unknown/used/expired token, or a task that already moved on: explain and
             # keep the loop alive rather than failing the whole ingest.

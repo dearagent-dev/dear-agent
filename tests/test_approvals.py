@@ -149,6 +149,47 @@ def test_apply_rejects_a_task_that_is_not_awaiting_a_decision(clock) -> None:
         service.apply(parse_reply(f"approve {token}"))
 
 
+def _action_task(queue, clock):
+    task = queue.enqueue(
+        Task(id="e1", transport_id="<m1@x>", sender="dev@example.com", thread_id="t1")
+    )
+    queue.claim(task, lease=timedelta(hours=1))
+    queue.transition(queue.get("e1"), TaskState.ACTION)
+    return ApprovalService(MemoryApprovalStore(clock=clock), queue)
+
+
+def test_apply_rejects_a_reply_from_another_sender(clock) -> None:
+    from dear_agent.approvals import ApprovalMismatchError
+
+    service = _action_task(MemoryQueue(clock=clock), clock)
+    token = service.request("e1", "run")
+
+    with pytest.raises(ApprovalMismatchError):
+        service.apply(
+            parse_reply(f"approve {token}"), sender="stranger@example.com", thread_id="t1"
+        )
+
+
+def test_apply_rejects_a_reply_from_another_thread(clock) -> None:
+    from dear_agent.approvals import ApprovalMismatchError
+
+    service = _action_task(MemoryQueue(clock=clock), clock)
+    token = service.request("e1", "run")
+
+    with pytest.raises(ApprovalMismatchError):
+        service.apply(parse_reply(f"approve {token}"), sender="dev@example.com", thread_id="other")
+
+
+def test_apply_accepts_a_matching_sender_and_thread(clock) -> None:
+    queue = MemoryQueue(clock=clock)
+    service = _action_task(queue, clock)
+    token = service.request("e1", "run")
+
+    service.apply(parse_reply(f"approve {token}"), sender="dev@example.com", thread_id="t1")
+
+    assert queue.get("e1").state is TaskState.QUEUED
+
+
 def test_run_gate_releases_the_task_to_queued(clock) -> None:
     queue = MemoryQueue(clock=clock)
     task = queue.enqueue(Task(id="e1", transport_id="<m1@x>"))

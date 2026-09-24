@@ -4,6 +4,7 @@ import re
 from dataclasses import dataclass
 
 from dear_agent.approvals import (
+    ApprovalMismatchError,
     ApprovalNotApplicableError,
     ApprovalStore,
     ExpiredTokenError,
@@ -50,13 +51,17 @@ class ApprovalService:
         """Issue a token and return it; the notifier sends it, never stores it on the email."""
         return self._store.issue(task_id, action).token
 
-    def apply(self, reply: ApprovalReply) -> Task:
+    def apply(
+        self, reply: ApprovalReply, *, sender: str | None = None, thread_id: str | None = None
+    ) -> Task:
         """Redeem ``reply`` and move its task to the state the action implies.
 
         A ``run`` approval releases the task to ``queued``; a ``land`` approval records
         ``approved``. A rejection is always ``rejected``. Raises an
         :class:`~dear_agent.approvals.ApprovalError` when the token is unknown, already used or
-        expired, so the caller can send a new request instead of failing silently.
+        expired, so the caller can send a new request instead of failing silently. When the
+        reply's ``sender``/``thread_id`` are given, they must match the task's, so a token
+        leaked out of context cannot be redeemed from another sender or thread.
         """
         # Check applicability before consuming the token, so a token for a task that moved
         # on is not burned.
@@ -68,6 +73,10 @@ class ApprovalService:
             raise UnknownTokenError(reply.token)
         if task.state is not TaskState.ACTION:
             raise ApprovalNotApplicableError(approval.task_id, task.state)
+        if sender is not None and task.sender is not None and sender.lower() != task.sender.lower():
+            raise ApprovalMismatchError(approval.task_id, "sender")
+        if thread_id is not None and task.thread_id is not None and thread_id != task.thread_id:
+            raise ApprovalMismatchError(approval.task_id, "thread")
 
         approval = self._store.redeem(reply.token)
         # The approval's action decides what "approved" means: a ``run`` gate releases the
@@ -83,6 +92,7 @@ class ApprovalService:
 
 
 __all__ = [
+    "ApprovalMismatchError",
     "ApprovalNotApplicableError",
     "ApprovalService",
     "ApprovalReply",
