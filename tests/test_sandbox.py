@@ -36,6 +36,11 @@ def test_no_sandbox_satisfies_the_port() -> None:
     assert isinstance(NoSandbox(), Sandbox)
 
 
+def test_sandboxes_without_a_session_close_cleanly() -> None:
+    NoSandbox().close()
+    BubblewrapSandbox(binary="bwrap").close()
+
+
 def test_bubblewrap_denies_network_by_default() -> None:
     assert "--unshare-net" in bwrap_argv(["true"])
 

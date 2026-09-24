@@ -54,6 +54,24 @@ points at the old `.../herald` path; restart opencode from `~/Documents/Projects
 
 ## In progress
 
+### Execution environments (ADR 0008) — branch `dear-agent-execution-environment`
+
+The harness and the `verify` gate now share **one environment session** (one container per
+task), and the harness can be **injected** into an environment image that lacks it.
+
+- [x] `ContainerSandbox` session lifecycle: first `wrap` starts a long-lived container
+  (`podman run -d --entrypoint sleep … infinity`), later calls `podman exec` into it, `close`
+  removes it. `build_wrapped_argv` stays pure for the per-command tests.
+- [x] `TaskExecutor` owns the session (`close` in `finally`); `build_worker` resolves the
+  sandbox once and shares it between the runner and the verifier (fixes the podman mismatch
+  where the verifier silently got the bwrap sandbox).
+- [x] `environment/bundle.py`: `HarnessBundle` materializes a portable OpenCode bundle (musl
+  binary + loader + `libstdc++`/`libgcc`) and mounts it into the session, behind
+  `DEAR_AGENT_HARNESS_BUNDLE=true`.
+- [x] Tests + a live proof (session persistence; bundle injection into a UBI image).
+- [ ] Next: the `Environment` descriptor resolver (devcontainer/EE/Containerfile/mise) and the
+  Dev Container Feature/prebuild path.
+
 _None — M8 is complete on branch `dear-agent-m8-postgres-deploy` (PR #55)._
 
 ### M8 — Durable state in PostgreSQL (ADR 0005) — done
@@ -133,6 +151,11 @@ log). See [ADR 0005](docs/decisions/0005-state-store.md).
   `DEAR_AGENT_HARNESS_COMMAND`, `DEAR_AGENT_HARNESSES`, `DEAR_AGENT_HARNESS_DEFAULT`, `DEAR_AGENT_SANDBOX`,
   `DEAR_AGENT_MAX_ATTEMPTS` (default 3), `DEAR_AGENT_VERIFY_ALLOW` (comma/semicolon-separated
   `verify:` commands, matched exactly and run under the sandbox).
+- Harness bundle (ADR 0008): `DEAR_AGENT_HARNESS_BUNDLE=true` mounts a portable harness bundle
+  into the session so an environment image without the harness can run it;
+  `DEAR_AGENT_HARNESS_BUNDLE_IMAGE` (default: the harness image) and
+  `DEAR_AGENT_HARNESS_BUNDLE_CACHE` (default `~/.cache/dear-agent/harness`). Requires
+  `DEAR_AGENT_ISOLATION=podman`; on SELinux hosts set `DEAR_AGENT_HARNESS_CONTAINER_SELINUX=Z`.
 - Decision: `DEAR_AGENT_DECIDER=rules|jev|openai-compat|none`, `DEAR_AGENT_DECIDER_MODEL`,
   `DEAR_AGENT_DECIDER_ENDPOINT`, `DEAR_AGENT_DECIDER_BASE_URL`, `DEAR_AGENT_DECIDER_THRESHOLD`,
   `DEAR_AGENT_DECIDER_LOG` (`<path>` or `postgres`), `TYPESAFE_API_KEY`, `OPENROUTER_API_KEY`.

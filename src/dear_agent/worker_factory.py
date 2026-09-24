@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from typing import TYPE_CHECKING
 
 from dear_agent.executor import TaskExecutor
 from dear_agent.gitplane.gh import GhForge
@@ -13,12 +14,16 @@ from dear_agent.repo import RepoPreparer
 from dear_agent.runners.port import Runner
 from dear_agent.sandbox import (
     BubblewrapSandbox,
+    ContainerSandbox,
     NoSandbox,
     Sandbox,
     sandbox_policy_from_env,
 )
 from dear_agent.transports.port import Transport
 from dear_agent.worker import DEFAULT_MAX_ATTEMPTS, TaskWorker
+
+if TYPE_CHECKING:
+    from dear_agent.runners.catalog import HarnessInfo
 
 
 class WorktreeSpecResolver:
@@ -57,18 +62,15 @@ class WorktreeSpecResolver:
         return result.spec
 
 
-def build_runner(provider_model: str | None, sandbox: Sandbox) -> Runner:
-    """Build the harness runner selected by ``DEAR_AGENT_HARNESS`` (default: opencode).
+def build_runner_and_session(
+    provider_model: str | None, sandbox: Sandbox
+) -> tuple[Runner, Sandbox]:
+    """Build the harness runner and the environment session it runs in.
 
-    ``opencode`` (default), ``claude`` and ``codex`` are first-class adapters; ``auto`` /
-    ``local-agent`` picks the first one available on ``PATH``. ``command`` wraps an arbitrary
-    harness via ``DEAR_AGENT_HARNESS_COMMAND`` (a space-separated argv), which is how an operator
-    plugs in a custom runner without forking Dear Agent. A model is passed only to harnesses that
-    accept one (OpenCode), never to a subscription harness (Claude Code, Codex).
-
-    ``DEAR_AGENT_ISOLATION`` selects the jail: ``bwrap`` (default) or ``podman``. Under podman the
-    harness runs in its per-harness image with the worktree bind-mounted; under bwrap only
-    OpenCode is jailed (the default policy denies egress, which a subscription harness needs).
+    The returned session is the *same object* handed to the verifier and the executor
+    (ADR 0008). Under ``DEAR_AGENT_ISOLATION=podman`` it is the ``ContainerSandbox`` for the
+    selected harness, so the harness and the ``verify`` gate share one container; otherwise it
+    is the caller's sandbox (bubblewrap, or ``NoSandbox`` for a harness that is not jailed).
     """
     from dataclasses import replace
 
@@ -84,10 +86,56 @@ def build_runner(provider_model: str | None, sandbox: Sandbox) -> Runner:
     if override and info.id != "command":
         info = replace(info, binary=override)
     if os.environ.get("DEAR_AGENT_ISOLATION", "bwrap").strip().lower() == "podman":
-        sandbox = container_sandbox(info, os.environ)
+        session = container_sandbox(info, os.environ)
     elif info.id != "opencode":
-        sandbox = NoSandbox()
-    return build_runner_for(info, provider_model, sandbox)
+        session = NoSandbox()
+    else:
+        session = sandbox
+    session = _maybe_inject_bundle(session, info)
+    return build_runner_for(info, provider_model, session), session
+
+
+def _maybe_inject_bundle(session: Sandbox, info: HarnessInfo) -> Sandbox:
+    """Mount a portable harness bundle into the session (ADR 0008), when opted in.
+
+    This lets an *environment* image (a dev container, an Ansible EE) that does not contain the
+    harness still run it. It is opt-in because it is only meaningful under container isolation
+    and only implemented for OpenCode today; the Feature/prebuild path is the alternative.
+    """
+    from dataclasses import replace
+
+    from dear_agent.environment.bundle import opencode_bundle
+
+    enabled = os.environ.get("DEAR_AGENT_HARNESS_BUNDLE", "").strip().lower()
+    if enabled not in ("1", "true", "yes"):
+        return session
+    if not isinstance(session, ContainerSandbox):
+        raise RuntimeError("DEAR_AGENT_HARNESS_BUNDLE requires DEAR_AGENT_ISOLATION=podman")
+    if info.id != "opencode":
+        raise RuntimeError("the harness bundle is only implemented for opencode today")
+    bundle_image = os.environ.get("DEAR_AGENT_HARNESS_BUNDLE_IMAGE") or info.image
+    if not bundle_image:
+        raise RuntimeError("no image to build the harness bundle from")
+    bundle = opencode_bundle(bundle_image, container_binary=session.binary)
+    bundle.ensure()
+    return replace(session, mounts=session.mounts + bundle.mounts())
+
+
+def build_runner(provider_model: str | None, sandbox: Sandbox) -> Runner:
+    """Build the harness runner selected by ``DEAR_AGENT_HARNESS`` (default: opencode).
+
+    ``opencode`` (default), ``claude`` and ``codex`` are first-class adapters; ``auto`` /
+    ``local-agent`` picks the first one available on ``PATH``. ``command`` wraps an arbitrary
+    harness via ``DEAR_AGENT_HARNESS_COMMAND`` (a space-separated argv), which is how an operator
+    plugs in a custom runner without forking Dear Agent. A model is passed only to harnesses that
+    accept one (OpenCode), never to a subscription harness (Claude Code, Codex).
+
+    ``DEAR_AGENT_ISOLATION`` selects the jail: ``bwrap`` (default) or ``podman``. Under podman the
+    harness runs in its per-harness image with the worktree bind-mounted; under bwrap only
+    OpenCode is jailed (the default policy denies egress, which a subscription harness needs).
+    """
+    runner, _ = build_runner_and_session(provider_model, sandbox)
+    return runner
 
 
 def default_worktrees_root() -> str:
@@ -255,9 +303,11 @@ def build_worker(
     from dear_agent.verify import CommandVerifier
 
     harness_dir = os.environ.get("DEAR_AGENT_HARNESS_DIR")
+    session: Sandbox | None = None
     if harness_dir:
         # Two-container runner: the harness runs in a sibling container (no credentials), so
-        # the control container delegates to it over the shared worktree volume.
+        # the control container delegates to it over the shared worktree volume. The session
+        # lives in the harness container, not here (ADR 0007).
         from dear_agent.runners.shared import DelegatingRunner
 
         runner: Runner = DelegatingRunner(
@@ -266,12 +316,17 @@ def build_worker(
         )
     else:
         sandbox = sandbox or default_sandbox()
-        runner = build_routing_runner(sandbox)
-        if runner is None:
-            runner = build_runner(provider_model, sandbox)
+        routing = build_routing_runner(sandbox)
+        if routing is not None:
+            # Routing builds one sandbox per class internally, so a single session cannot yet
+            # serve both the harness and the verifier (known gap, ADR 0008).
+            runner = routing
+            session = sandbox
+        else:
+            runner, session = build_runner_and_session(provider_model, sandbox)
     approvals = ApprovalService(build_approval_store(), queue)
     events = build_event_log()
-    verifier = CommandVerifier.from_env(os.environ, sandbox=sandbox)
+    verifier = CommandVerifier.from_env(os.environ, sandbox=session)
     executor = TaskExecutor(
         queue=queue,
         runner=runner,
@@ -282,6 +337,7 @@ def build_worker(
         escalator=Escalator(transport),
         verifier=verifier,
         events=events,
+        session=session,
     )
     return TaskWorker(
         queue=queue,
@@ -300,6 +356,7 @@ def build_worker(
 __all__ = [
     "WorktreeSpecResolver",
     "build_runner",
+    "build_runner_and_session",
     "build_worker",
     "default_sandbox",
     "default_worktrees_root",

@@ -11,6 +11,7 @@ from dear_agent.queue.models import Evidence, Task, TaskSpec, TaskState
 from dear_agent.queue.port import Queue
 from dear_agent.runners.port import Runner
 from dear_agent.runners.worktree import RunResult, Worktree
+from dear_agent.sandbox import Sandbox
 from dear_agent.verify import CommandVerifier
 
 DEFAULT_LEASE = timedelta(hours=6)
@@ -56,6 +57,7 @@ class TaskExecutor:
         verifier: CommandVerifier | None = None,
         events: EventLog | None = None,
         lease: timedelta = DEFAULT_LEASE,
+        session: Sandbox | None = None,
     ) -> None:
         self._queue = queue
         self._runner = runner
@@ -67,6 +69,9 @@ class TaskExecutor:
         self._verifier = verifier
         self._events = events
         self._lease = lease
+        # The environment session the runner and the verifier share (ADR 0008). The executor
+        # owns its lifetime, so a failed run never leaks a container.
+        self._session = session
 
     def _emit(self, task_id: str, kind: str, **data: object) -> None:
         if self._events is None:
@@ -181,6 +186,10 @@ class TaskExecutor:
             self._report(evidence, recipient=recipient)
             return evidence
         finally:
+            # End the environment session before the worktree disappears, so the harness's
+            # provisioning cannot outlive the task (ADR 0008).
+            if self._session is not None:
+                self._session.close()
             worktree.remove()
 
     def _verify(
@@ -197,7 +206,11 @@ class TaskExecutor:
         if active is None:
             self._emit(task.id, "verify.blocked", command=spec.verify)
             return FailureKind.VERIFY_BLOCKED
-        result = active.run(spec.verify, str(worktree.path))
+        try:
+            result = active.run(spec.verify, str(worktree.path))
+        except Exception:  # noqa: BLE001 - a broken verifier must fail the task, not wedge it
+            self._emit(task.id, "verify.failed", command=spec.verify, error="verifier raised")
+            return FailureKind.VERIFY_FAILED
         if result.blocked:
             self._emit(task.id, "verify.blocked", command=spec.verify)
             return FailureKind.VERIFY_BLOCKED

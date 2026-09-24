@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -314,3 +315,50 @@ def test_build_runner_for_passes_the_sandbox_to_every_harness() -> None:
 
     assert claude.sandbox is sandbox
     assert opencode.sandbox is sandbox
+
+
+def _record_subprocess(calls: list[list[str]]):
+    def run(argv, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(list(argv))
+        return subprocess.CompletedProcess(args=list(argv), returncode=0, stdout="", stderr="")
+
+    return run
+
+
+def test_container_session_starts_once_and_execs_later_commands(monkeypatch) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.setattr("dear_agent.sandbox.subprocess.run", _record_subprocess(calls))
+    sandbox = ContainerSandbox(image="img:latest", selinux="none")
+
+    first = sandbox.wrap(["opencode", "run", "hi"], worktree=WORKTREE)
+    second = sandbox.wrap(["make", "test"], worktree=WORKTREE)
+
+    starts = [c for c in calls if len(c) > 1 and c[1] == "run"]
+    assert len(starts) == 1
+    assert "-d" in starts[0]
+    assert "--rm" not in starts[0]  # the session must outlive the harness run
+    name = sandbox._container
+    assert name is not None
+    assert first[:3] == ["podman", "exec", "--workdir"]
+    assert first[-4:] == [name, "opencode", "run", "hi"]
+    assert second[-2:] == ["make", "test"]
+    assert sandbox._container == name  # not restarted for the verify gate
+
+
+def test_container_session_close_removes_the_container_once(monkeypatch) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.setattr("dear_agent.sandbox.subprocess.run", _record_subprocess(calls))
+    sandbox = ContainerSandbox(image="img:latest", selinux="none")
+    sandbox.wrap(["true"], worktree=WORKTREE)
+    name = sandbox._container
+
+    sandbox.close()
+    sandbox.close()
+
+    assert calls.count(["podman", "rm", "-f", name]) == 1
+    assert sandbox._container is None
+
+
+def test_container_exec_before_the_session_starts_raises() -> None:
+    with pytest.raises(SandboxError):
+        ContainerSandbox(image="img").build_exec_argv(["true"])
