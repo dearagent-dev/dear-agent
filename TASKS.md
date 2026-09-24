@@ -57,6 +57,9 @@ log). See [ADR 0005](docs/decisions/0005-state-store.md).
   `DEAR_AGENT_ALLOWED_SENDERS` (addresses/`@domain`; unset = accept any sender).
 - Inbound rate limit: `DEAR_AGENT_RATE_LIMIT` (messages per sender per minute, default `60`),
   applied to both the webhook and the email path.
+- HTTP entrypoint: `DEAR_AGENT_HOST`, `DEAR_AGENT_PORT`, `DEAR_AGENT_MAX_BODY_BYTES`
+  (default 1 MiB), `DEAR_AGENT_HTTP_TIMEOUT` (idle socket timeout in seconds, default `15`),
+  `DEAR_AGENT_HTTP_MAX_WORKERS` (concurrency cap, default `32`).
 - Reliability: `DEAR_AGENT_ERROR_BUDGET_FAILURES` (0 = off), `DEAR_AGENT_ERROR_BUDGET_WINDOW`
   (seconds, default 3600). Events are in `dear_agent_event`; `dear-agent task events <id>`.
 - Sandbox: `DEAR_AGENT_SANDBOX=bwrap|none`, `DEAR_AGENT_SANDBOX_NETWORK` (default false),

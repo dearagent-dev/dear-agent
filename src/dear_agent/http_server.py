@@ -5,7 +5,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from threading import Thread
+from threading import BoundedSemaphore, Thread
 from typing import Any
 
 from dear_agent.observability.health import Health
@@ -14,6 +14,7 @@ from dear_agent.queue.port import Queue
 HealthPayload = Callable[[], dict[str, Any]]
 InboundHandler = Callable[[bytes, dict[str, str]], tuple[int, dict[str, Any]]]
 DEFAULT_MAX_BODY_BYTES = 1_048_576
+DEFAULT_MAX_WORKERS = 32
 
 
 class _DearAgentHTTPServer(ThreadingHTTPServer):
@@ -21,10 +22,40 @@ class _DearAgentHTTPServer(ThreadingHTTPServer):
     inbound_handler: InboundHandler | None
     max_body_bytes: int
     timeout: float
+    max_workers: int
+
+    def __init__(self, *args: Any, max_workers: int = DEFAULT_MAX_WORKERS, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.max_workers = max_workers
+        self._slots = BoundedSemaphore(max_workers)
+
+    def process_request(self, request: Any, client_address: Any) -> None:
+        # Bound concurrency so a flood cannot exhaust threads.
+        self._slots.acquire()
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            self._slots.release()
+            raise
+
+    def process_request_thread(self, request: Any, client_address: Any) -> None:
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._slots.release()
+
+    def handle_error(self, request: Any, client_address: Any) -> None:
+        # A client that disconnects or times out is normal; never print a traceback.
+        return
 
 
 class _Handler(BaseHTTPRequestHandler):
     server_version = "Dear Agent/0.0"
+
+    def setup(self) -> None:
+        # Apply the server's socket timeout so an idle/slow client cannot hold a thread open.
+        self.timeout = self.server.timeout  # type: ignore[attr-defined]
+        super().setup()
 
     def log_message(self, format: str, *args: Any) -> None:  # noqa: A002 - stdlib signature
         # Keep stdout clean; operators use metrics, not access logs.
@@ -44,7 +75,15 @@ class _Handler(BaseHTTPRequestHandler):
         if handler is None:
             self._json(503, {"error": "inbound webhook is not configured"})
             return
-        length = int(self.headers.get("Content-Length", "0") or "0")
+        raw_length = self.headers.get("Content-Length")
+        try:
+            length = int(raw_length) if raw_length else 0
+        except (TypeError, ValueError):
+            self._json(400, {"error": "invalid Content-Length"})
+            return
+        if length < 0:
+            self._json(400, {"error": "invalid Content-Length"})
+            return
         if length > self.server.max_body_bytes:  # type: ignore[attr-defined]
             self._json(413, {"error": "request body too large"})
             return
@@ -78,6 +117,7 @@ class HealthServer:
     inbound: InboundHandler | None = None
     max_body_bytes: int = DEFAULT_MAX_BODY_BYTES
     timeout_seconds: float = 15.0
+    max_workers: int = DEFAULT_MAX_WORKERS
     _httpd: _DearAgentHTTPServer | None = field(default=None, init=False, repr=False)
     _thread: Thread | None = field(default=None, init=False, repr=False)
 
@@ -88,7 +128,9 @@ class HealthServer:
     def start(self) -> None:
         if self._httpd is not None:
             raise RuntimeError("server already started")
-        self._httpd = _DearAgentHTTPServer((self.host, self.port), _Handler)
+        self._httpd = _DearAgentHTTPServer(
+            (self.host, self.port), _Handler, max_workers=self.max_workers
+        )
         self._httpd.health_payload = self.health_payload
         self._httpd.inbound_handler = self.inbound
         self._httpd.max_body_bytes = self.max_body_bytes

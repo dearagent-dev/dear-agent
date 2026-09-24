@@ -75,6 +75,7 @@ def main() -> int:
         max_running=int(os.environ.get("DEAR_AGENT_MAX_RUNNING", "1")),
         max_body_bytes=int(os.environ.get("DEAR_AGENT_MAX_BODY_BYTES", "1048576")),
         timeout_seconds=float(os.environ.get("DEAR_AGENT_HTTP_TIMEOUT", "15")),
+        max_workers=int(os.environ.get("DEAR_AGENT_HTTP_MAX_WORKERS", "32")),
         inbound=build_inbound(queue),
     )
 
