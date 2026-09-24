@@ -55,6 +55,18 @@ the webhook and JMAP paths. Processed messages are filed into
 Config: `DEAR_AGENT_IMAP_HOST|PORT|USER|PASSWORD|SSL|MAILBOX|DONE_MAILBOX` and
 `DEAR_AGENT_SMTP_HOST|PORT|USER|PASSWORD|STARTTLS|SSL|FROM`.
 
+## AgentMail
+
+For an "inbox API for agents", `DEAR_AGENT_BACKEND=agentmail` uses `AgentMailTransport`: it
+lists the inbox's `received` messages, skips the ones already labelled `dear-agent-done`, and
+replies **in-thread** to the original `message_id` (or starts a new message when there is
+nothing to reply to). `ack` adds the done label so a handled message is not reprocessed; the
+queue's dedupe on `message_id` makes a redelivery a no-op regardless.
+
+Config: `AGENTMAIL_API_TOKEN` (Bearer), `DEAR_AGENT_MAILBOX` (the inbox id/address; unset
+discovers the account's inbox) and `AGENTMAIL_BASE_URL` (default
+`https://api.agentmail.to/v0`).
+
 ## Comparison
 
 | Provider | Send | Receive | Async model | Notes |

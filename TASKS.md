@@ -49,7 +49,8 @@ log). See [ADR 0005](docs/decisions/0005-state-store.md).
 ## Configuration (see .env, never committed)
 
 - State: `DEAR_AGENT_QUEUE=memory|postgres` (default `memory`), `DEAR_AGENT_DATABASE_URL`.
-- Transport: `DEAR_AGENT_BACKEND=memory|jmap|imap`. JMAP: `FASTMAIL_API_TOKEN`,
+- Transport: `DEAR_AGENT_BACKEND=memory|jmap|imap|agentmail`. AgentMail: `AGENTMAIL_API_TOKEN`,
+  `DEAR_AGENT_MAILBOX` (inbox id; unset discovers it), `AGENTMAIL_BASE_URL`. JMAP: `FASTMAIL_API_TOKEN`,
   `FASTMAIL_ACCOUNT_ID`, `DEAR_AGENT_MAILBOX`. IMAP/SMTP: `DEAR_AGENT_IMAP_HOST|PORT|USER|PASSWORD|SSL|MAILBOX|DONE_MAILBOX`,
   `DEAR_AGENT_SMTP_HOST|PORT|USER|PASSWORD|STARTTLS|SSL|FROM`.
 - Inbound auth: `DEAR_AGENT_AUTH_DOMAINS` (DMARC-aligned domains), `DEAR_AGENT_AUTH_MECHANISMS`

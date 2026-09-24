@@ -221,6 +221,20 @@ def build_transport(backend: str | None = None) -> Transport:
             done_mailbox=os.environ.get("DEAR_AGENT_IMAP_DONE_MAILBOX", "Dear-Agent-Done"),
             sender=os.environ.get("DEAR_AGENT_SMTP_FROM", user),
         )
+    if backend == "agentmail":
+        from dear_agent.transports.agentmail import (
+            DEFAULT_BASE_URL,
+            AgentMailClient,
+            AgentMailTransport,
+        )
+
+        token = os.environ.get("AGENTMAIL_API_TOKEN")
+        if not token:
+            raise RuntimeError("AGENTMAIL_API_TOKEN is required for the agentmail backend")
+        client = AgentMailClient(
+            token, base_url=os.environ.get("AGENTMAIL_BASE_URL", DEFAULT_BASE_URL)
+        )
+        return AgentMailTransport(client, inbox_id=os.environ.get("DEAR_AGENT_MAILBOX") or None)
     raise RuntimeError(f"unknown backend {backend!r}")
 
 
