@@ -82,6 +82,7 @@ class ControlPlane:
         human_gate: HumanGate | None = None,
         events: EventLog | None = None,
         policies: PolicyStore | None = None,
+        require_policy: bool = False,
     ) -> None:
         self._transport = transport
         self._queue = queue
@@ -93,6 +94,7 @@ class ControlPlane:
         self._human_gate = human_gate
         self._events = events
         self._policies = policies
+        self._require_policy = require_policy
 
     def _emit(self, task_id: str, kind: str, **data: object) -> None:
         if self._events is None:
@@ -172,15 +174,16 @@ class ControlPlane:
     def _repo_allowed(self, repo: str) -> bool:
         """A repo is allowed when an enabled project policy matches it.
 
-        With no policies configured the deployment is open; once at least one policy exists
-        it is enforced, so an unknown or disabled repo is refused — one cannot ask Dear Agent to
-        work on a repository the operator did not allow.
+        Once at least one policy exists it is enforced, so an unknown or disabled repo is
+        refused — one cannot ask Dear Agent to work on a repository the operator did not allow.
+        With **no** policies, ``require_policy`` decides: the untrusted ingress sets it (fail
+        closed), while the library default is open for local use.
         """
         if self._policies is None:
-            return True
+            return not self._require_policy
         policies = self._policies.list()
         if not policies:
-            return True
+            return not self._require_policy
         policy = self._policies.for_repo(repo)
         return policy is not None and policy.enabled
 

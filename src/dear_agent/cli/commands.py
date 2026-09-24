@@ -352,6 +352,7 @@ def _inbound_plane(queue, transport):
         human_gate=HumanGate(decider=decider),
         events=build_event_log(),
         policies=build_policy_store(),
+        require_policy=os.environ.get("DEAR_AGENT_REQUIRE_REPO_POLICY", "true").lower() != "false",
     )
 
 

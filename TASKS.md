@@ -57,6 +57,8 @@ log). See [ADR 0005](docs/decisions/0005-state-store.md).
   `DEAR_AGENT_ALLOWED_SENDERS` (addresses/`@domain`; unset = accept any sender).
 - Inbound rate limit: `DEAR_AGENT_RATE_LIMIT` (messages per sender per minute, default `60`),
   applied to both the webhook and the email path.
+- Repo allowlist: `DEAR_AGENT_REQUIRE_REPO_POLICY` (default `true` for webhook/email ingress:
+  with no project policy, every repo is refused; set `false` for an open deployment).
 - HTTP entrypoint: `DEAR_AGENT_HOST`, `DEAR_AGENT_PORT`, `DEAR_AGENT_MAX_BODY_BYTES`
   (default 1 MiB), `DEAR_AGENT_HTTP_TIMEOUT` (idle socket timeout in seconds, default `15`),
   `DEAR_AGENT_HTTP_MAX_WORKERS` (concurrency cap, default `32`).
