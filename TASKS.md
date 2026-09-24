@@ -43,7 +43,8 @@ log). See [ADR 0005](docs/decisions/0005-state-store.md).
 
 ## Next
 
-- **Connection resilience / PITR** for the long-lived control plane.
+- **PITR / backups** for the Postgres store (connection resilience landed: `db.ResilientConnection`
+  reconnects on failure and sets TCP keepalives).
 - Verify the Postgres component on a live OpenShift cluster (as M6 was verified).
 
 ## Configuration (see .env, never committed)
