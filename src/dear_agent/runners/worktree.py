@@ -5,6 +5,8 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from dear_agent.refs import is_valid_ref
+
 
 class RunnerError(Exception):
     """Base class for runner errors."""
@@ -36,6 +38,11 @@ class Worktree:
         slug: str,
         base_branch: str = "main",
     ) -> Worktree:
+        if not is_valid_ref(base_branch):
+            # A message-supplied base could otherwise be read as a git option (argument
+            # injection), so it is validated at the boundary that runs git.
+            raise WorktreeError(f"invalid base branch {base_branch!r}")
+
         repo = Path(repo_path).resolve()
         if not (repo / ".git").exists():
             raise WorktreeError(f"{repo} is not a git repository")
