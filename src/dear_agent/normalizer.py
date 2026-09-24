@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from dear_agent.queue.models import Task, TaskSpec
+from dear_agent.refs import is_valid_ref
 from dear_agent.transports.base import RawMessage
 
 METADATA_RE = re.compile(
@@ -74,9 +75,13 @@ def normalize(message: RawMessage, *, recipient: str | None = None) -> Normaliza
         )
 
     depends_on = fields.get("depends-on")
+    base_branch = fields.get("base", DEFAULT_BASE_BRANCH)
+    if not is_valid_ref(base_branch):
+        # A message-supplied base must never be read as a git option: ignore an invalid one.
+        base_branch = DEFAULT_BASE_BRANCH
     spec = TaskSpec(
         repo_url=repo_url,
-        base_branch=fields.get("base", DEFAULT_BASE_BRANCH),
+        base_branch=base_branch,
         instructions=instructions.strip(),
         model_request=fields.get("model"),
         verify=fields.get("verify"),

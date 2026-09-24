@@ -136,3 +136,14 @@ def test_only_metadata_and_no_instructions_is_rejected() -> None:
 
     assert isinstance(result, Rejected)
     assert result.reason is RejectReason.EMPTY
+
+
+def test_an_option_looking_base_is_ignored() -> None:
+    result = normalize(
+        make_message(
+            "repo: https://github.com/owner/repo\nbase: --upload-pack=evil\n\nfix the build"
+        )
+    )
+
+    assert isinstance(result, NormalizedTask)
+    assert result.spec.base_branch == "main"

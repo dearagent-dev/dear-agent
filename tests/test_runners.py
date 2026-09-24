@@ -203,3 +203,14 @@ def test_command_runner_runs_with_the_worktree_as_pwd(repo: Path, tmp_path: Path
         worktree.remove()
 
     assert seen == str(worktree.path)
+
+
+def test_worktree_rejects_an_option_looking_base(tmp_path: Path) -> None:
+    # Validated before touching git, so no repository is needed.
+    with pytest.raises(WorktreeError):
+        Worktree.create(tmp_path, tmp_path / "wt", slug="s", base_branch="--upload-pack=evil")
+
+
+def test_worktree_rejects_a_base_with_whitespace(tmp_path: Path) -> None:
+    with pytest.raises(WorktreeError):
+        Worktree.create(tmp_path, tmp_path / "wt", slug="s", base_branch="main extra")
