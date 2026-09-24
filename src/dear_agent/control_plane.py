@@ -114,7 +114,10 @@ class ControlPlane:
                 self._emit(message.transport_id, "task.denied")
                 continue
 
-            decision = parse_reply(message.body)
+            # An approval decision is only recognized on an in-thread reply (thread_id is set
+            # from In-Reply-To/References); a fresh message is a task even if its body happens
+            # to contain "approve <token>".
+            decision = parse_reply(message.body) if message.thread_id is not None else None
             if decision is not None and self._approvals is not None:
                 if self._apply_decision(message, decision, recipient):
                     report.decided.append(message.transport_id)
