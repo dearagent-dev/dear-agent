@@ -77,6 +77,14 @@ def test_runner_template_carries_no_mail_credential() -> None:
     assert "jmap" not in container.get("args", [])
 
 
+@pytest.mark.parametrize("overlay", ["dev", "prod"])
+def test_runner_egress_policy_is_included(overlay: str) -> None:
+    policies = [doc for doc in build(overlay) if doc.get("kind") == "NetworkPolicy"]
+    names = {policy["metadata"]["name"] for policy in policies}
+
+    assert "dear-agent-runner-egress" in names
+
+
 def test_runner_template_has_the_hardening() -> None:
     job = runner_template(build("dev"))
     pod = job["spec"]["template"]["spec"]
