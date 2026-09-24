@@ -169,3 +169,53 @@ def test_bundle_injection_adds_the_bundle_mounts(monkeypatch) -> None:
 
     assert result.mounts == (Mount("/bundle/root", "/opt/dear-agent/harness"),)
     assert fake.ensured is True
+
+
+def test_runner_uses_the_declared_environment_and_injects_the_harness(
+    monkeypatch, tmp_path
+) -> None:
+    import dear_agent.environment.bundle as bundle_module
+    import dear_agent.environment.descriptor as descriptor_module
+    from dear_agent.environment.descriptor import EnvironmentDescriptor
+    from dear_agent.runners.opencode import OpenCodeRunner
+    from dear_agent.sandbox import ContainerSandbox, NoSandbox
+    from dear_agent.worker_factory import build_runner_and_session
+
+    class FakeBundle:
+        def ensure(self) -> None:
+            pass
+
+        def mounts(self) -> tuple[Mount, ...]:
+            return ()
+
+    monkeypatch.setenv("DEAR_AGENT_ISOLATION", "podman")
+    monkeypatch.setenv("DEAR_AGENT_HARNESS", "opencode")
+    monkeypatch.delenv("DEAR_AGENT_HARNESS_IMAGE", raising=False)
+    monkeypatch.delenv("DEAR_AGENT_HARNESS_BUNDLE", raising=False)
+    monkeypatch.setattr(
+        descriptor_module,
+        "detect",
+        lambda root: EnvironmentDescriptor(kind="devcontainer", image="env:1"),
+    )
+    monkeypatch.setattr(bundle_module, "opencode_bundle", lambda *a, **k: FakeBundle())
+
+    runner, session = build_runner_and_session(None, NoSandbox(), repo_path=str(tmp_path))
+
+    assert isinstance(runner, OpenCodeRunner)
+    assert isinstance(session, ContainerSandbox)
+    assert session.image == "env:1"  # the repository declared the environment
+
+
+def test_runner_without_a_descriptor_uses_the_harness_image(monkeypatch, tmp_path) -> None:
+    from dear_agent.sandbox import ContainerSandbox, NoSandbox
+    from dear_agent.worker_factory import build_runner_and_session
+
+    monkeypatch.setenv("DEAR_AGENT_ISOLATION", "podman")
+    monkeypatch.setenv("DEAR_AGENT_HARNESS", "opencode")
+    monkeypatch.delenv("DEAR_AGENT_HARNESS_IMAGE", raising=False)
+    monkeypatch.delenv("DEAR_AGENT_HARNESS_BUNDLE", raising=False)
+
+    _, session = build_runner_and_session(None, NoSandbox(), repo_path=str(tmp_path))
+
+    assert isinstance(session, ContainerSandbox)
+    assert session.image == "ghcr.io/anomalyco/opencode:latest"

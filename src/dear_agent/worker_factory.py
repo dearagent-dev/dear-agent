@@ -63,7 +63,7 @@ class WorktreeSpecResolver:
 
 
 def build_runner_and_session(
-    provider_model: str | None, sandbox: Sandbox
+    provider_model: str | None, sandbox: Sandbox, repo_path: str | None = None
 ) -> tuple[Runner, Sandbox]:
     """Build the harness runner and the environment session it runs in.
 
@@ -71,9 +71,13 @@ def build_runner_and_session(
     (ADR 0008). Under ``DEAR_AGENT_ISOLATION=podman`` it is the ``ContainerSandbox`` for the
     selected harness, so the harness and the ``verify`` gate share one container; otherwise it
     is the caller's sandbox (bubblewrap, or ``NoSandbox`` for a harness that is not jailed).
+
+    When ``repo_path`` declares an environment image (a Dev Container, an Ansible EE, …), that
+    image is used and the harness is injected into it; ``DEAR_AGENT_HARNESS_IMAGE`` still wins.
     """
     from dataclasses import replace
 
+    from dear_agent.environment.descriptor import detect
     from dear_agent.runners.catalog import (
         EnvHarnessCatalog,
         build_runner_for,
@@ -85,29 +89,43 @@ def build_runner_and_session(
     override = os.environ.get("DEAR_AGENT_HARNESS_BINARY")
     if override and info.id != "command":
         info = replace(info, binary=override)
-    if os.environ.get("DEAR_AGENT_ISOLATION", "bwrap").strip().lower() == "podman":
-        session = container_sandbox(info, os.environ)
+    env = dict(os.environ)
+    descriptor_image: str | None = None
+    if repo_path and not env.get("DEAR_AGENT_HARNESS_IMAGE"):
+        descriptor = detect(repo_path)
+        if descriptor.has_image:
+            descriptor_image = descriptor.image
+            env["DEAR_AGENT_HARNESS_IMAGE"] = descriptor.image
+    if env.get("DEAR_AGENT_ISOLATION", "bwrap").strip().lower() == "podman":
+        session = container_sandbox(info, env)
     elif info.id != "opencode":
         session = NoSandbox()
     else:
         session = sandbox
-    session = _maybe_inject_bundle(session, info)
+    session = _maybe_inject_bundle(session, info, descriptor_image=descriptor_image)
     return build_runner_for(info, provider_model, session), session
 
 
-def _maybe_inject_bundle(session: Sandbox, info: HarnessInfo) -> Sandbox:
-    """Mount a portable harness bundle into the session (ADR 0008), when opted in.
+def _maybe_inject_bundle(
+    session: Sandbox, info: HarnessInfo, *, descriptor_image: str | None = None
+) -> Sandbox:
+    """Mount a portable harness bundle into the session (ADR 0008), when needed.
 
-    This lets an *environment* image (a dev container, an Ansible EE) that does not contain the
-    harness still run it. It is opt-in because it is only meaningful under container isolation
-    and only implemented for OpenCode today; the Feature/prebuild path is the alternative.
+    A repository-declared environment image (``descriptor_image``) does not contain the harness,
+    so the bundle is injected automatically for OpenCode. It can also be forced with
+    ``DEAR_AGENT_HARNESS_BUNDLE=true``. The Feature/prebuild path is the alternative.
     """
     from dataclasses import replace
 
     from dear_agent.environment.bundle import opencode_bundle
 
-    enabled = os.environ.get("DEAR_AGENT_HARNESS_BUNDLE", "").strip().lower()
-    if enabled not in ("1", "true", "yes"):
+    requested = os.environ.get("DEAR_AGENT_HARNESS_BUNDLE", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    auto = bool(descriptor_image) and info.id == "opencode" and descriptor_image != info.image
+    if not (requested or auto):
         return session
     if not isinstance(session, ContainerSandbox):
         raise RuntimeError("DEAR_AGENT_HARNESS_BUNDLE requires DEAR_AGENT_ISOLATION=podman")
@@ -323,7 +341,7 @@ def build_worker(
             runner = routing
             session = sandbox
         else:
-            runner, session = build_runner_and_session(provider_model, sandbox)
+            runner, session = build_runner_and_session(provider_model, sandbox, repo_path=repo_path)
     approvals = ApprovalService(build_approval_store(), queue)
     events = build_event_log()
     verifier = CommandVerifier.from_env(os.environ, sandbox=session)
