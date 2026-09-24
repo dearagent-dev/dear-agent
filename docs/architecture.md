@@ -95,6 +95,12 @@ Hosted or local. See [providers.md](providers.md).
 Owns worktrees, branches and pull requests. **Agents never write `main`.** Every result is
 an `dear-agent/<slug>` branch and a draft PR.
 
+Only the **control process** commits, pushes and opens the PR — never the harness (ADR 0007).
+The PR is opened through the forge's REST API behind a `Forge` seam
+(`gitplane/forge.py`: GitHub/GitLab/Gitea), selected from the repository's remote host or
+`DEAR_AGENT_FORGE`, with a per-provider token passed by environment variable and no CLI
+dependency (ADR 0009).
+
 ### Notifier
 Threads status and approval requests back over the transport. Approvals are replied to and
 matched by token + thread.

@@ -126,21 +126,19 @@ log). See [ADR 0005](docs/decisions/0005-state-store.md).
   `GitPlane(forge=GhForge())`, and `GhForge` shells out to `gh pr create --draft`
   (`gitplane/gh.py`). That needs `gh` on `PATH` and a token, and only speaks GitHub. Decision:
   open the PR/MR through the forge **REST API** with a token, behind the existing `Forge`
-  protocol. Tasks:
-  - [ ] **API forge**: replace `GhForge` with a token-based API call
-    (`POST /repos/{owner}/{repo}/pulls` with `"draft": true`, `Authorization: Bearer $TOKEN`),
-    no `gh` dependency. Keep `gh` (or a token) only as an optional fallback.
-  - [ ] **Forge selection**: pick the forge from the repo host (`github.com`, `gitlab.com`,
-    self-hosted) and/or an explicit `DEAR_AGENT_FORGE=github|gitlab|gitea`, replacing the
-    hardcoded `GhForge()`.
-  - [ ] **GitLab/Gitea forges**: `GitLabForge` (`POST /projects/:id/merge_requests` with
-    `draft`) and `GiteaForge`; each with its own token env (`GITLAB_TOKEN`, `GITEA_TOKEN`).
+  protocol ([ADR 0009](docs/decisions/0009-forge-api.md)). Tasks:
+  - [x] **API forge**: `gitplane/forge.py` opens the PR/MR via `urllib` (GitHub, GitLab, Gitea),
+    no `gh` dependency. `GhForge` is kept behind `DEAR_AGENT_FORGE=gh`.
+  - [x] **Forge selection**: `DEAR_AGENT_FORGE=auto|github|gitlab|gitea|gh`; `auto` (default)
+    picks the API forge from the repository remote host.
+  - [x] **GitLab/Gitea forges**: `GitlabApiForge` (`Draft:` prefix, `PRIVATE-TOKEN`) and
+    `GiteaApiForge`; tokens `GITLAB_TOKEN` / `GITEA_TOKEN`.
+  - [x] Verified live: a GitHub task opened a draft PR through the API with `GH_TOKEN` and no
+    `gh` invocation.
   - [ ] **Credential wiring**: pass the forge token to the runner Job (secret → env); note the
     runner template currently mounts only the **read** git key (`dear-agent-git-read`) and sets
     no forge token, so in-cluster PR creation does not work yet. Push needs a scoped **write**
     credential (ADR 0003).
-  - [ ] Docs: extend [docs/decisions/0003-credentials.md](docs/decisions/0003-credentials.md)
-    or add an ADR for the forge seam; update `deploy/` and `docs/security.md`.
 - **PITR**: continuous WAL archiving to object storage. (Logical backups landed
   (`deploy/components/backup/`, a daily `pg_dump` keeping the last seven); connection
   resilience landed; the Postgres component is verified live on OpenShift.)
@@ -187,6 +185,11 @@ log). See [ADR 0005](docs/decisions/0005-state-store.md).
   `DEAR_AGENT_HARNESS_BUNDLE_IMAGE` (default: the harness image) and
   `DEAR_AGENT_HARNESS_BUNDLE_CACHE` (default `~/.cache/dear-agent/harness`). Requires
   `DEAR_AGENT_ISOLATION=podman`; on SELinux hosts set `DEAR_AGENT_HARNESS_CONTAINER_SELINUX=Z`.
+- Forge (ADR 0009): `DEAR_AGENT_FORGE=auto|github|gitlab|gitea|gh` (default `auto` opens the
+  PR/MR through the forge REST API, chosen from the repository remote host; `gh` keeps the CLI).
+  Tokens by provider: `GH_TOKEN`/`GITHUB_TOKEN`, `GITLAB_TOKEN`, `GITEA_TOKEN`. Environment
+  descriptor (ADR 0008): a repo-declared Dev Container/EE/Containerfile image is used for the
+  session; `DEAR_AGENT_HARNESS_IMAGE` overrides it.
 - Decision: `DEAR_AGENT_DECIDER=rules|jev|openai-compat|none`, `DEAR_AGENT_DECIDER_MODEL`,
   `DEAR_AGENT_DECIDER_ENDPOINT`, `DEAR_AGENT_DECIDER_BASE_URL`, `DEAR_AGENT_DECIDER_THRESHOLD`,
   `DEAR_AGENT_DECIDER_LOG` (`<path>` or `postgres`), `TYPESAFE_API_KEY`, `OPENROUTER_API_KEY`.
