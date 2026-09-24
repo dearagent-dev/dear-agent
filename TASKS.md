@@ -3,6 +3,55 @@
 Short-lived, per-slice work list. `AGENTS.md` is the durable contract; this file is the
 current state. Keep it short and delete finished items.
 
+## Session handoff (2026-09-24)
+
+Context for the next session. The project was renamed **Herald → Dear Agent** and the
+repository moved to the **`dearagent-dev`** org; every reference to the old name was purged.
+
+### Done
+- **Rename**: package `dear_agent`, CLI `dear-agent`, env `DEAR_AGENT_*`, DB tables
+  `dear_agent_*`. Repo `dearagent-dev/dear-agent`. Example repos renamed to
+  `rarguello/dear-agent-lab-{terraform,ansible,python}`. `herald-*` branches (local+remote),
+  the `herald-*` podman containers/images, the old Quay repo and the local directory were all
+  removed. The local project directory is now `~/Documents/Projects/dear-agent`.
+- **Security backlog (adversarial review) closed**: #72–#94 resolved; tracking #91 closed.
+- **Deploy**: image `quay.io/dear-agent/dear-agent` published from CI
+  (`.github/workflows/publish.yml`, Red Hat actions); domain `dearagent.dev` on GitHub Pages
+  behind Cloudflare (Enforce HTTPS on); Renovate runs (`RENOVATE_TOKEN`).
+- **Branch protection on `main`**: required checks `test (3.12)`, `test (3.13)`, `image`,
+  `secrets` (strict, enforce admins). Never merge with red checks.
+- **OpenShift**: namespace `dear-agent` deployed and verified live (Postgres `StatefulSet` +
+  PVC, schema `dear_agent_*`, control-plane `/health` green, egress NetworkPolicy, and a
+  daily `pg_dump` backup in `deploy/components/backup/`, verified).
+- **AgentMail backend** (`DEAR_AGENT_BACKEND=agentmail`) implemented and smoke-tested live.
+
+### Pending
+1. **Example-repo READMEs** still say "Herald practice repo" in
+   `dear-agent-lab-{terraform,ansible,python}` → change to "Dear Agent" (and any other
+   occurrence in those repos).
+2. **Historical PR titles** containing "herald": #102, #96, #60, #50, #47, #33, #32, #25
+   (optional; they are historical records).
+3. **End-to-end test with complex tasks** on the example repos (the point of this). Not run
+   yet beyond enqueue. Suggested below.
+4. **PITR**: continuous WAL archiving to object storage (logical backups are done).
+
+### End-to-end test recipe (local)
+- Launch a Postgres: `scripts/dev-postgres.sh up` (creds `dear-agent`/`dear-agent`); the
+  `memory` queue cannot be shared across `task enqueue` and `run` (separate processes).
+- Env: `DEAR_AGENT_QUEUE=postgres`, `DEAR_AGENT_DATABASE_URL=...`,
+  `DEAR_AGENT_HARNESS=opencode`, `DEAR_AGENT_SANDBOX=none` (local, trusted repos; bwrap would
+  hide `$HOME` and opencode's auth), `DEAR_AGENT_VERIFY_ALLOW='make test'`.
+- Example tasks (intentional bugs to fix): Python (`add` subtracts, `is_even` inverted; add
+  `multiply` + tests); Terraform (`var.aws_region` should be `var.region`, `aws_s3_bucket.log`
+  should be `.logs`); Ansible (task name typo "Instal", missing `git` package).
+- `dear-agent task enqueue "<instructions>" --repo git@github.com:rarguello/dear-agent-lab-<x>.git --verify "make test"`,
+  then `dear-agent run --repo /tmp/<x> <task-id>`; it pushes an `dear-agent/<slug>` branch and
+  opens a draft PR.
+
+### Session caveat
+The project directory was renamed while opencode was running, so the session's workspace root
+points at the old `.../herald` path; restart opencode from `~/Documents/Projects/dear-agent`.
+
 ## In progress
 
 _None — M8 is complete on branch `dear-agent-m8-postgres-deploy` (PR #55)._
