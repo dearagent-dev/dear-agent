@@ -41,7 +41,8 @@ def clock() -> FakeClock:
 @pytest.fixture()
 def queue(clock: FakeClock):
     pytest.importorskip("psycopg")
-    from dear_agent.queue.postgres import PostgresQueue, apply_schema, connect
+    from dear_agent.db import connect
+    from dear_agent.queue.postgres import PostgresQueue, apply_schema
 
     conn = connect(DSN)
     apply_schema(conn)
