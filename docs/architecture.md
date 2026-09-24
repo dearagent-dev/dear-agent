@@ -75,6 +75,18 @@ run(task, worktree) -> RunResult
 A runner adapter must: create/enter an isolated worktree, invoke the harness
 non-interactively, capture structured events, and never touch the user's tree.
 
+### Execution environment
+
+A task runs in **one environment session** (ADR 0008): the harness and the `verify` gate
+execute in the same container, so whatever the harness provisions is visible to the gate. The
+harness is **injected** into that environment, never assumed present: the repository declares
+the environment (`.devcontainer/devcontainer.json`, an Ansible `execution-environment.yml`, a
+`Containerfile`, `mise`/`.tool-versions`, or a fallback base image) and Dear Agent composes the
+harness in — a Dev Container *Feature* at build time, or a portable *bundle* at run time
+(`environment/bundle.py`). Where the session runs is a port (`RunnerHost`): a local `podman`
+container, a self-hosted Kubernetes/OpenShift Job, or a self-hosted CI runner. Hosted agent
+backends are out of scope.
+
 ### Provider
 Model backend configuration handed to the harness (endpoint, model id, key reference).
 Hosted or local. See [providers.md](providers.md).
@@ -82,6 +94,12 @@ Hosted or local. See [providers.md](providers.md).
 ### Git plane
 Owns worktrees, branches and pull requests. **Agents never write `main`.** Every result is
 an `dear-agent/<slug>` branch and a draft PR.
+
+Only the **control process** commits, pushes and opens the PR — never the harness (ADR 0007).
+The PR is opened through the forge's REST API behind a `Forge` seam
+(`gitplane/forge.py`: GitHub/GitLab/Gitea), selected from the repository's remote host or
+`DEAR_AGENT_FORGE`, with a per-provider token passed by environment variable and no CLI
+dependency (ADR 0009).
 
 ### Notifier
 Threads status and approval requests back over the transport. Approvals are replied to and

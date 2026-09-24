@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 import shutil
+import subprocess
+import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -43,12 +45,20 @@ class SandboxPolicy:
 
 @runtime_checkable
 class Sandbox(Protocol):
-    """Wraps a command so it runs under an OS sandbox."""
+    """Wraps a command so it runs under an OS sandbox.
+
+    ``wrap`` maps an argv to the argv that runs it inside the jail. For a container jail the
+    first ``wrap`` starts a long-lived environment **session** and later calls ``exec`` into it,
+    so a harness and the ``verify`` gate that follows share one environment (ADR 0008).
+    ``close`` ends the session; it is a no-op for jails without one.
+    """
 
     def wrap(self, argv: list[str], *, worktree: Path) -> list[str]: ...
 
     @property
     def available(self) -> bool: ...
+
+    def close(self) -> None: ...
 
 
 @dataclass(slots=True)
@@ -61,6 +71,9 @@ class NoSandbox:
 
     def wrap(self, argv: list[str], *, worktree: Path) -> list[str]:
         return list(argv)
+
+    def close(self) -> None:
+        return None
 
 
 @dataclass(slots=True)
@@ -110,6 +123,10 @@ class BubblewrapSandbox:
         command += argv
         return command
 
+    def close(self) -> None:
+        # bubblewrap is per-command; there is no session to end.
+        return None
+
 
 DEFAULT_CONTAINER_BINARY = "podman"
 
@@ -118,11 +135,16 @@ DEFAULT_CONTAINER_BINARY = "podman"
 class ContainerSandbox:
     """Wraps a command in an OCI container (``podman`` by default).
 
-    Unlike ``bwrap``, the image brings the harness and its whole runtime, so nothing has to
-    be installed on the host. The worktree is bind-mounted read-write at ``workdir`` — the
-    container writes there, and only there, so no source code has to leave the host (golden
-    rule 1). Credentials are exposed through ``mounts``; each is read-only unless the mount
-    says otherwise, so a harness cannot rewrite the operator's config.
+    Unlike ``bwrap``, the image brings the whole runtime, so nothing has to be installed on the
+    host. The worktree is bind-mounted read-write at ``workdir`` — the container writes there,
+    and only there, so no source code has to leave the host (golden rule 1). Credentials are
+    exposed through ``mounts``; each is read-only unless the mount says otherwise, so a harness
+    cannot rewrite the operator's config.
+
+    The sandbox is a **session** (ADR 0008): the first ``wrap`` starts a long-lived container
+    and later calls ``exec`` into it, so the harness and the ``verify`` gate share one
+    environment. The image may be the harness's own, or a repository-declared environment into
+    which the harness is injected (``environment/bundle.py``).
 
     ``container_home`` is the image's home: a mount whose container path starts with ``~`` is
     resolved against it, so the same metadata works for an image whose user is ``root`` or
@@ -148,6 +170,9 @@ class ContainerSandbox:
     #   disable - pass ``--security-opt label=disable`` and relabel nothing
     #   none    - never touch SELinux labels
     selinux: str = "auto"
+    # The live session's container name, or ``None`` before the first ``wrap`` (ADR 0008).
+    # Not part of equality: two sandboxes with the same configuration are the same sandbox.
+    _container: str | None = field(default=None, compare=False, repr=False)
 
     def __post_init__(self) -> None:
         if self.selinux not in _SELINUX_MODES:
@@ -163,19 +188,76 @@ class ContainerSandbox:
         return shutil.which(self.binary) is not None
 
     def wrap(self, argv: list[str], *, worktree: Path) -> list[str]:
+        """Run ``argv`` inside the task's environment session.
+
+        The first call starts a long-lived container; every later call (the ``verify`` gate that
+        follows the harness) executes in that same container, so anything the harness installed
+        is still there (ADR 0008). The caller ends the session with :meth:`close`.
+        """
         if not self.available:
             raise SandboxError(f"{self.binary!r} is not available")
-        return self.build_wrapped_argv(argv, worktree=worktree)
+        self._ensure_started(worktree)
+        return self.build_exec_argv(argv)
 
     def build_wrapped_argv(self, argv: list[str], *, worktree: Path) -> list[str]:
+        """Build a one-shot ``podman run --rm`` invocation (the per-command contract)."""
+        return self._run_argv(argv, worktree=worktree, remove=True, name=None)
+
+    def build_exec_argv(self, argv: list[str]) -> list[str]:
+        """Build the ``podman exec`` that runs ``argv`` in the live session."""
+        if self._container is None:
+            raise SandboxError("session has not been started")
+        command: list[str] = [self.binary, "exec", "--workdir", self.workdir]
+        for env_name in self.env_allowlist:
+            if env_name in os.environ:
+                command += ["--env", f"{env_name}={os.environ[env_name]}"]
+        # Tools (OpenCode) resolve the project from PWD; set it to the worktree inside.
+        command += ["--env", f"PWD={self.workdir}"]
+        command += [self._container]
+        command += argv
+        return command
+
+    def _ensure_started(self, worktree: Path) -> None:
+        if self._container is not None:
+            return
+        name = f"dear-agent-{uuid.uuid4().hex}"
+        argv = self._run_argv(
+            ["infinity"],
+            worktree=worktree,
+            remove=False,
+            name=name,
+            detach=True,
+            entrypoint="sleep",
+        )
+        result = subprocess.run(argv, capture_output=True, text=True, check=False)
+        if result.returncode != 0:
+            raise SandboxError(result.stderr.strip() or f"cannot start the {self.image!r} session")
+        self._container = name
+
+    def close(self) -> None:
+        """End the session and remove the container. Safe to call more than once."""
+        if self._container is None:
+            return
+        name, self._container = self._container, None
+        subprocess.run([self.binary, "rm", "-f", name], capture_output=True, text=True, check=False)
+
+    def _run_argv(
+        self,
+        argv: list[str],
+        *,
+        worktree: Path,
+        remove: bool,
+        name: str | None,
+        detach: bool = False,
+        entrypoint: str | None = None,
+    ) -> list[str]:
         """Build the container invocation without checking availability."""
-        command: list[str] = [
-            self.binary,
-            "run",
-            "--rm",
-            "--security-opt",
-            "no-new-privileges",
-        ]
+        command: list[str] = [self.binary, "run"]
+        if detach:
+            command += ["-d", "--name", name]
+        if remove:
+            command.append("--rm")
+        command += ["--security-opt", "no-new-privileges"]
         if self.cap_drop:
             command += ["--cap-drop", "ALL"]
         if self.pids_limit is not None:
@@ -199,10 +281,13 @@ class ContainerSandbox:
             container = _container_path(mount.container, self.container_home)
             mode = "ro" if mount.readonly else "rw"
             command += ["--volume", f"{host}:{container}:{mode}{self._mount_relabel()}"]
-        for name in self.env_allowlist:
-            if name in os.environ:
-                command += ["--env", f"{name}={os.environ[name]}"]
+        for env_name in self.env_allowlist:
+            if env_name in os.environ:
+                command += ["--env", f"{env_name}={os.environ[env_name]}"]
         command += list(self.extra_args)
+        if entrypoint:
+            # Override the image entrypoint so the session stays alive (e.g. `sleep infinity`).
+            command += ["--entrypoint", entrypoint]
         command += [self.image]
         command += argv
         return command

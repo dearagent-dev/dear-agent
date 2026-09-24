@@ -104,3 +104,17 @@ def test_open_draft_pr_refuses_a_protected_branch(repo: Path) -> None:
         GitPlane(forge=RecordingForge()).open_draft_pr(
             protected, base_branch="main", title="t", body="b"
         )
+
+
+def test_push_env_pins_the_write_key() -> None:
+    plane = GitPlane(forge=RecordingForge(), push_key="/run/secrets/git-push/ssh-privatekey")
+
+    env = plane._push_env()
+
+    assert env is not None
+    assert "ssh -i /run/secrets/git-push/ssh-privatekey" in env["GIT_SSH_COMMAND"]
+    assert "IdentitiesOnly=yes" in env["GIT_SSH_COMMAND"]
+
+
+def test_push_env_is_unset_without_a_push_key() -> None:
+    assert GitPlane(forge=RecordingForge())._push_env() is None

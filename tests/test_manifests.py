@@ -57,13 +57,21 @@ def test_every_pod_disables_service_account_token_mounting() -> None:
         assert pod_spec(doc)["automountServiceAccountToken"] is False, doc["metadata"]["name"]
 
 
-def test_runner_template_mounts_no_write_key() -> None:
+def test_runner_template_mounts_the_push_key_and_forge_token() -> None:
+    # The clone uses the read key, the push uses the write key (ADR 0003) and the API PR needs a
+    # forge token (ADR 0009). The sidecar template keeps both out of the harness container.
     job = runner_template(build("dev"))
-    volumes = job["spec"]["template"]["spec"]["volumes"]
-    names = {volume["name"] for volume in volumes}
+    pod = job["spec"]["template"]["spec"]
+    container = pod["containers"][0]
+    volumes = {volume["name"] for volume in pod["volumes"]}
+    env_names = {entry["name"] for entry in container.get("env", [])}
+    secret_sources = {
+        entry["secretRef"]["name"] for entry in container.get("envFrom", []) if "secretRef" in entry
+    }
 
-    assert "git-read" in names
-    assert "git-push" not in names
+    assert {"git-read", "git-push"} <= volumes
+    assert "DEAR_AGENT_GIT_PUSH_KEY" in env_names
+    assert "dear-agent-forge" in secret_sources
 
 
 def test_runner_template_carries_no_mail_credential() -> None:
@@ -94,13 +102,27 @@ def test_sidecar_runner_isolates_the_harness_container() -> None:
     harness = containers["harness"]
     env_names = {entry["name"] for entry in harness.get("env", [])}
     mount_names = {mount["name"] for mount in harness.get("volumeMounts", [])}
+    harness_secrets = {
+        entry["secretRef"]["name"] for entry in harness.get("envFrom", []) if "secretRef" in entry
+    }
 
-    # The harness holds no credential and cannot see the git key.
+    # The harness holds no credential and cannot see the git keys or the forge token.
     assert "DEAR_AGENT_DATABASE_URL" not in env_names
+    assert "DEAR_AGENT_GIT_PUSH_KEY" not in env_names
     assert "git-read" not in mount_names
+    assert "git-push" not in mount_names
+    assert "dear-agent-forge" not in harness_secrets
     assert "harness-serve" in harness["args"]
+    # The control container does clone/push/PR, so it carries the read+write keys and the token.
+    control = containers["control"]
+    control_mounts = {mount["name"] for mount in control["volumeMounts"]}
+    control_secrets = {
+        entry["secretRef"]["name"] for entry in control.get("envFrom", []) if "secretRef" in entry
+    }
+    assert {"git-read", "git-push"} <= control_mounts
+    assert "dear-agent-forge" in control_secrets
     # Both containers share the worktree.
-    assert "work" in {mount["name"] for mount in containers["control"]["volumeMounts"]}
+    assert "work" in control_mounts
 
 
 @pytest.mark.parametrize("overlay", ["dev", "prod"])

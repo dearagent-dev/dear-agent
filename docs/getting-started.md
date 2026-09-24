@@ -45,7 +45,29 @@ their own subscription. `DEAR_AGENT_HARNESS=auto` picks the first harness found 
 With `DEAR_AGENT_ISOLATION=podman` the harness runs in its per-harness container image
 (OpenCode defaults to `ghcr.io/anomalyco/opencode:latest`) with the worktree at `/work`;
 credentials are mounted read-only (`DEAR_AGENT_HARNESS_MOUNTS` overrides). See
-[ADR 0006](decisions/0006-container-isolation.md).
+[ADR 0006](decisions/0006-container-isolation.md). The run is **one session** (ADR 0008): the
+harness and the `verify` gate execute in the same container, so anything the harness installs
+(a language runtime, `make`) is visible to the gate.
+
+### The execution environment (ADR 0008)
+
+Dear Agent is language-agnostic, so it does not bake a toolchain: it takes the environment from
+the repository and injects the harness into it.
+
+- **Descriptor.** `detect()` reads, in order, `.devcontainer/devcontainer.json` (a Dev
+  Container), an Ansible `execution-environment.yml`, a `Containerfile`/`Dockerfile`, or
+  `mise.toml`/`.tool-versions`. A declared **image** becomes the session image;
+  `DEAR_AGENT_HARNESS_IMAGE` overrides it. `build`/`Containerfile` recipes are detected but not
+  built yet (next slice).
+- **Harness injection.** An environment image does not contain the harness, so Dear Agent mounts
+  a portable **bundle** of it into the session automatically (OpenCode today): a shim on `PATH`
+  runs the bundled binary through its own loader. Set `DEAR_AGENT_HARNESS_BUNDLE=true` to force
+  it, `DEAR_AGENT_HARNESS_BUNDLE_IMAGE` for the source image, and
+  `DEAR_AGENT_HARNESS_BUNDLE_CACHE` for its cache. On SELinux hosts use
+  `DEAR_AGENT_HARNESS_CONTAINER_SELINUX=Z`.
+- **Provisioning vs prebuild.** In the fallback (no descriptor) the harness installs the
+  toolchain itself; the reproducible path is to compose a Dev Container **Feature** (or a
+  `Containerfile`) with the harness and prebuild the image (next slice).
 
 On an SELinux host (Fedora/RHEL) the worktree is relabelled with `:Z` automatically
 (`DEAR_AGENT_HARNESS_CONTAINER_SELINUX=auto`, the default). Set it to `Z` to relabel the credential
@@ -92,6 +114,23 @@ Add `--recipient you@example.com` (with a JMAP transport) to get status by email
 ```sh
 dear-agent task show <task-id>   # state, attempts, lease
 ```
+
+## How the PR is opened (forge)
+
+The harness never opens the PR and never holds a push or forge credential (ADR 0007): the
+control process commits, pushes and opens the draft PR after the harness exits. The PR/MR is
+created through the forge **REST API** (ADR 0009), selected from the repository remote host:
+
+```sh
+export DEAR_AGENT_FORGE=auto                  # default: pick by remote host
+# export DEAR_AGENT_FORGE=github|gitlab|gitea|gh
+export GH_TOKEN=...                           # or GITHUB_TOKEN / GITLAB_TOKEN / GITEA_TOKEN
+# export DEAR_AGENT_GIT_PUSH_KEY=/path/to/write-key   # a write key used only for the push
+```
+
+`DEAR_AGENT_FORGE=gh` keeps the legacy `gh` CLI (which must be installed); the API forges need
+no binary. The clone uses the read credential; `DEAR_AGENT_GIT_PUSH_KEY` pins a scoped write key
+for the push (ADR 0003).
 
 ## The email path
 

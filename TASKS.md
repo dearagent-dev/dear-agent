@@ -26,25 +26,35 @@ repository moved to the **`dearagent-dev`** org; every reference to the old name
 - **AgentMail backend** (`DEAR_AGENT_BACKEND=agentmail`) implemented and smoke-tested live.
 
 ### Pending
-1. **Example-repo READMEs** still say "Herald practice repo" in
-   `dear-agent-lab-{terraform,ansible,python}` → change to "Dear Agent" (and any other
-   occurrence in those repos).
-2. **Historical PR titles** containing "herald": #102, #96, #60, #50, #47, #33, #32, #25
-   (optional; they are historical records).
-3. **End-to-end test with complex tasks** on the example repos (the point of this). Not run
-   yet beyond enqueue. Suggested below.
-4. **PITR**: continuous WAL archiving to object storage (logical backups are done).
+1. **Example-repo READMEs** — done: PRs in `dear-agent-lab-{terraform,ansible,python}` #2.
+2. **Historical PR titles** containing "herald" — done (#96, #60, #50, #47, #33, #32, #25;
+   #102 is the rename PR itself and keeps its title).
+3. **End-to-end test with complex tasks** — done, now with the ADR 0008 session
+   (`DEAR_AGENT_ISOLATION=podman`): the harness installed its toolchain inside the session and
+   the `verify` gate saw it. Python (`add`/`is_even` + `multiply`, `make test`), Terraform
+   (`var.region`/`.logs` + `bucket_name`, `terraform fmt -check`), Ansible ("Instal"→"Install"
+   + `git`, `ansible-playbook --syntax-check`) each opened a draft PR #3. Recipe below.
+4. **Execution environment + forge** — done and merged (ADR 0008/0009): one session per task,
+   injectable harness, repository-declared environment, draft PR through the forge REST API.
+   Open gaps in [Known gaps](#known-gaps-for-review).
+5. **PITR** — deferred (see Later); not needed at this scale.
 
-### End-to-end test recipe (local)
+### End-to-end test recipe (local, ADR 0008 session)
 - Launch a Postgres: `scripts/dev-postgres.sh up` (creds `dear-agent`/`dear-agent`); the
   `memory` queue cannot be shared across `task enqueue` and `run` (separate processes).
 - Env: `DEAR_AGENT_QUEUE=postgres`, `DEAR_AGENT_DATABASE_URL=...`,
-  `DEAR_AGENT_HARNESS=opencode`, `DEAR_AGENT_SANDBOX=none` (local, trusted repos; bwrap would
-  hide `$HOME` and opencode's auth), `DEAR_AGENT_VERIFY_ALLOW='make test'`.
+  `DEAR_AGENT_HARNESS=opencode`, `DEAR_AGENT_ISOLATION=podman`,
+  `DEAR_AGENT_HARNESS_MOUNTS='~/.local/share/opencode/auth.json:~/.local/share/opencode/auth.json:ro'`,
+  `DEAR_AGENT_HARNESS_CONTAINER_SELINUX=disable` (read the auth mount on an SELinux host),
+  `DEAR_AGENT_VERIFY_ALLOW=<the exact verify command>`.
+- The harness runs in a minimal Alpine image and **installs its own toolchain** (e.g.
+  `apk add --no-cache python3 make`); because harness and verify share one session, the
+  `verify` gate runs in the same container. Tools not in Alpine (Terraform) are downloaded into
+  `/usr/local/bin`; the next slice (environment descriptor) removes that guesswork.
 - Example tasks (intentional bugs to fix): Python (`add` subtracts, `is_even` inverted; add
-  `multiply` + tests); Terraform (`var.aws_region` should be `var.region`, `aws_s3_bucket.log`
-  should be `.logs`); Ansible (task name typo "Instal", missing `git` package).
-- `dear-agent task enqueue "<instructions>" --repo git@github.com:dearagent-dev/dear-agent-lab-<x>.git --verify "make test"`,
+  `multiply` + tests); Terraform (`var.aws_region` → `var.region`, `aws_s3_bucket.log` →
+  `.logs`); Ansible (task name typo "Instal", missing `git` package).
+- `dear-agent task enqueue "<instructions>" --repo git@github.com:dearagent-dev/dear-agent-lab-<x>.git --verify "<cmd>"`,
   then `dear-agent run --repo /tmp/<x> <task-id>`; it pushes an `dear-agent/<slug>` branch and
   opens a draft PR.
 
@@ -53,6 +63,30 @@ The project directory was renamed while opencode was running, so the session's w
 points at the old `.../herald` path; restart opencode from `~/Documents/Projects/dear-agent`.
 
 ## In progress
+
+### Execution environments (ADR 0008) — done
+
+The harness and the `verify` gate now share **one environment session** (one container per
+task), and the harness can be **injected** into an environment image that lacks it.
+
+- [x] `ContainerSandbox` session lifecycle: first `wrap` starts a long-lived container
+  (`podman run -d --entrypoint sleep … infinity`), later calls `podman exec` into it, `close`
+  removes it. `build_wrapped_argv` stays pure for the per-command tests.
+- [x] `TaskExecutor` owns the session (`close` in `finally`); `build_worker` resolves the
+  sandbox once and shares it between the runner and the verifier (fixes the podman mismatch
+  where the verifier silently got the bwrap sandbox).
+- [x] `environment/bundle.py`: `HarnessBundle` materializes a portable OpenCode bundle (musl
+  binary + loader + `libstdc++`/`libgcc`) and mounts it into the session, behind
+  `DEAR_AGENT_HARNESS_BUNDLE=true`.
+- [x] `environment/descriptor.py`: resolve a repository's environment descriptor in precedence
+  order — Dev Container (`image` or `build`, JSONC), Ansible EE (`images.base_image.name`),
+  `Containerfile`/`Dockerfile`, `mise`/`.tool-versions`, else fallback. `build_worker` uses a
+  declared **image** for the session and injects the harness automatically (OpenCode); an
+  explicit `DEAR_AGENT_HARNESS_IMAGE` still wins.
+- [x] Tests + a live proof (session persistence; bundle injection into a UBI image).
+- [ ] **Next**: the Dev Container **Feature/prebuild** path (compose `devcontainer.json` + a
+  harness Feature into an image) and turning a `build`/`Containerfile` descriptor into an image;
+  see [Known gaps](#known-gaps-for-review).
 
 _None — M8 is complete on branch `dear-agent-m8-postgres-deploy` (PR #55)._
 
@@ -90,11 +124,30 @@ log). See [ADR 0005](docs/decisions/0005-state-store.md).
   (`HumanGate`/`decision_needs_human`, `DEAR_AGENT_DECIDER`, default `rules`). Fail-open: no
   decider means no gate. The draft PR remains the landing gate.
 
-## Next
+## Known gaps (for review)
 
-- **PITR**: continuous WAL archiving to object storage. (Logical backups landed
-  (`deploy/components/backup/`, a daily `pg_dump` keeping the last seven); connection
-  resilience landed; the Postgres component is verified live on OpenShift.)
+The execution environment ([ADR 0008](docs/decisions/0008-execution-environment.md)) and forge
+([ADR 0009](docs/decisions/0009-forge-api.md)) slices are on `main`; these are the deliberate,
+still-open gaps:
+
+- **Routing**: with `DEAR_AGENT_HARNESSES`, each class builds its own sandbox, so the verifier
+  does not share the harness session (it falls back to the outer sandbox). ADR 0008.
+- **Environment build**: a descriptor's `build`/`Containerfile`/devcontainer-`build` is detected
+  but not built into an image; the Dev Container **Feature/prebuild** path is not implemented.
+- **Bundle**: OpenCode only and an explicit recipe (no `ldd` auto-discovery); needs
+  `DEAR_AGENT_HARNESS_CONTAINER_SELINUX=Z` and a writable `HOME`.
+- **Forge**: GitLab uses the `Draft:` title prefix (assumption); no Bitbucket; in the
+  single-container runner the write key and forge token are visible to the harness (ADR 0007
+  residual — use the sidecar for credential isolation).
+- **`command` harness** (`CommandRunner`) ignores the sandbox/session (pre-existing).
+- **Ops**: the sidecar harness image (`quay.io/dear-agent/harness:latest`) is a placeholder and
+  the in-cluster PR path is not live-tested (needs provisioned secrets).
+
+## Later
+
+- **PITR** (continuous WAL archiving to object storage): not needed yet. The daily `pg_dump`
+  (`deploy/components/backup/`, retention 7) plus connection resilience is enough at this scale;
+  revisit before the data becomes irreplaceable.
 
 ## Configuration (see .env, never committed)
 
@@ -133,6 +186,19 @@ log). See [ADR 0005](docs/decisions/0005-state-store.md).
   `DEAR_AGENT_HARNESS_COMMAND`, `DEAR_AGENT_HARNESSES`, `DEAR_AGENT_HARNESS_DEFAULT`, `DEAR_AGENT_SANDBOX`,
   `DEAR_AGENT_MAX_ATTEMPTS` (default 3), `DEAR_AGENT_VERIFY_ALLOW` (comma/semicolon-separated
   `verify:` commands, matched exactly and run under the sandbox).
+- Harness bundle (ADR 0008): `DEAR_AGENT_HARNESS_BUNDLE=true` mounts a portable harness bundle
+  into the session so an environment image without the harness can run it;
+  `DEAR_AGENT_HARNESS_BUNDLE_IMAGE` (default: the harness image) and
+  `DEAR_AGENT_HARNESS_BUNDLE_CACHE` (default `~/.cache/dear-agent/harness`). Requires
+  `DEAR_AGENT_ISOLATION=podman`; on SELinux hosts set `DEAR_AGENT_HARNESS_CONTAINER_SELINUX=Z`.
+- Forge (ADR 0009): `DEAR_AGENT_FORGE=auto|github|gitlab|gitea|gh` (default `auto` opens the
+  PR/MR through the forge REST API, chosen from the repository remote host; `gh` keeps the CLI).
+  Tokens by provider: `GH_TOKEN`/`GITHUB_TOKEN`, `GITLAB_TOKEN`, `GITEA_TOKEN`. Environment
+  descriptor (ADR 0008): a repo-declared Dev Container/EE/Containerfile image is used for the
+  session; `DEAR_AGENT_HARNESS_IMAGE` overrides it.
+- Git push key: `DEAR_AGENT_GIT_PUSH_KEY` (path to a write deploy key used only for the push;
+  unset locally uses the ambient credential). The runner templates mount `dear-agent-git-read`
+  and `dear-agent-git-push` and the `dear-agent-forge` secret.
 - Decision: `DEAR_AGENT_DECIDER=rules|jev|openai-compat|none`, `DEAR_AGENT_DECIDER_MODEL`,
   `DEAR_AGENT_DECIDER_ENDPOINT`, `DEAR_AGENT_DECIDER_BASE_URL`, `DEAR_AGENT_DECIDER_THRESHOLD`,
   `DEAR_AGENT_DECIDER_LOG` (`<path>` or `postgres`), `TYPESAFE_API_KEY`, `OPENROUTER_API_KEY`.

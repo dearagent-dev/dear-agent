@@ -364,6 +364,38 @@ def test_publish_failure_fails_the_task_and_escalates(repo: Path) -> None:
     assert "could not be pushed" in transport.outbox[0].body
 
 
+def test_executor_closes_the_environment_session(repo: Path) -> None:
+    class RecordingSession:
+        def __init__(self) -> None:
+            self.closed = False
+
+        @property
+        def available(self) -> bool:
+            return False
+
+        def wrap(self, argv: list[str], *, worktree: Path) -> list[str]:
+            return list(argv)
+
+        def close(self) -> None:
+            self.closed = True
+
+    queue = MemoryQueue()
+    task = make_task(queue)
+    session = RecordingSession()
+    executor = TaskExecutor(
+        queue=queue,
+        runner=FakeRunner(ok=True),
+        git=GitPlane(forge=RecordingForge()),
+        repo_path=str(repo),
+        worktrees_root=str(repo.parent / "wt"),
+        session=session,  # type: ignore[arg-type]
+    )
+
+    executor.execute(task, make_spec())
+
+    assert session.closed is True
+
+
 def test_report_skips_an_empty_recipient(tmp_path) -> None:
 
     from dear_agent.executor import TaskExecutor
