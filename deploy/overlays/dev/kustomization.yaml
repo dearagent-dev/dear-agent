@@ -5,6 +5,7 @@ resources:
   - ../../base
 components:
   - ../../components/postgresql
+  - ../../components/egress
 images:
   - name: quay.io/rarguello/dear-agent
     newTag: dev
