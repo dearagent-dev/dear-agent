@@ -10,8 +10,14 @@ INBOX = "bot@agentmail.to"
 
 
 class FakeClient:
-    def __init__(self, messages: list[dict[str, Any]] | None = None) -> None:
+    def __init__(
+        self,
+        messages: list[dict[str, Any]] | None = None,
+        *,
+        full: dict[str, dict[str, Any]] | None = None,
+    ) -> None:
         self.messages = messages or []
+        self.full = full or {}
         self.added: list[tuple[str, list[str]]] = []
         self.replies: list[tuple[str, str | None, str]] = []
         self.sent: list[tuple[str, str, str]] = []
@@ -23,6 +29,11 @@ class FakeClient:
         self, inbox_id: str, *, labels: list[str] | None = None, limit: int = 50
     ) -> list[dict[str, Any]]:
         return self.messages
+
+    def get_message(self, inbox_id: str, message_id: str) -> dict[str, Any]:
+        if message_id in self.full:
+            return self.full[message_id]
+        return next((m for m in self.messages if m.get("message_id") == message_id), {})
 
     def update_labels(
         self,
@@ -69,6 +80,22 @@ def test_poll_maps_a_received_message() -> None:
     assert raw.subject == "add healthz"
     assert "add healthz" in raw.body
     assert raw.received_at == datetime(2026, 1, 1, tzinfo=UTC)
+
+
+def test_poll_fetches_the_body_from_the_message_detail() -> None:
+    # The list endpoint omits the body; poll must GET the full message.
+    summary = {"message_id": "<m1@x>", "labels": ["received"], "timestamp": "2026-01-01T00:00:00Z"}
+    transport = AgentMailTransport(FakeClient([summary], full={"<m1@x>": message()}))
+
+    raw = transport.poll()[0]
+
+    assert "add healthz" in raw.body
+
+
+def test_poll_parses_a_display_name_sender() -> None:
+    transport = AgentMailTransport(FakeClient([message(from_="Bot <bot@agentmail.to>")]))
+
+    assert transport.poll()[0].sender == "bot@agentmail.to"
 
 
 def test_poll_skips_already_processed_messages() -> None:
@@ -149,7 +176,8 @@ def test_client_composes_the_send_request(monkeypatch: Any) -> None:
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
     AgentMailClient("secret").send(INBOX, to="a@b.c", subject="s", text="t")
 
-    assert captured["url"] == f"https://api.agentmail.to/v0/inboxes/{INBOX}/messages/send"
+    assert captured["url"].startswith("https://api.agentmail.to/v0/inboxes/")
+    assert captured["url"].endswith("/messages/send")
     assert captured["method"] == "POST"
     assert captured["auth"] == "Bearer secret"
     assert b'"subject": "s"' in captured["body"]

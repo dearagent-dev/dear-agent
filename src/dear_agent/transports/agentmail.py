@@ -5,6 +5,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import UTC, datetime
+from email.utils import parseaddr
 from typing import Any, Protocol
 
 from dear_agent.transports.base import Attachment, OutboundMessage, RawMessage
@@ -25,6 +26,7 @@ class _AgentMailClient(Protocol):
     def list_messages(
         self, inbox_id: str, *, labels: list[str] | None = None, limit: int = 50
     ) -> list[dict[str, Any]]: ...
+    def get_message(self, inbox_id: str, message_id: str) -> dict[str, Any]: ...
     def update_labels(
         self,
         inbox_id: str,
@@ -97,8 +99,11 @@ class AgentMailClient:
         params: dict[str, Any] = {"limit": limit}
         if labels:
             params["labels"] = list(labels)
-        data = self._request("GET", f"/inboxes/{inbox_id}/messages", params=params)
+        data = self._request("GET", f"/inboxes/{_seg(inbox_id)}/messages", params=params)
         return list(data.get("messages") or [])
+
+    def get_message(self, inbox_id: str, message_id: str) -> dict[str, Any]:
+        return self._request("GET", f"/inboxes/{_seg(inbox_id)}/messages/{_seg(message_id)}")
 
     def update_labels(
         self,
@@ -113,18 +118,20 @@ class AgentMailClient:
             body["add_labels"] = list(add)
         if remove:
             body["remove_labels"] = list(remove)
-        self._request("PATCH", f"/inboxes/{inbox_id}/messages/{message_id}", body=body)
+        self._request("PATCH", f"/inboxes/{_seg(inbox_id)}/messages/{_seg(message_id)}", body=body)
 
     def reply(self, inbox_id: str, message_id: str, *, text: str, to: str | None = None) -> None:
         body: dict[str, Any] = {"text": text}
         if to:
             body["to"] = to
-        self._request("POST", f"/inboxes/{inbox_id}/messages/{message_id}/reply", body=body)
+        self._request(
+            "POST", f"/inboxes/{_seg(inbox_id)}/messages/{_seg(message_id)}/reply", body=body
+        )
 
     def send(self, inbox_id: str, *, to: str, subject: str, text: str) -> None:
         self._request(
             "POST",
-            f"/inboxes/{inbox_id}/messages/send",
+            f"/inboxes/{_seg(inbox_id)}/messages/send",
             body={"to": to, "subject": subject, "text": text},
         )
 
@@ -153,7 +160,17 @@ class AgentMailTransport:
         messages = self._client.list_messages(self._inbox_id, labels=[RECEIVED_LABEL], limit=limit)
         fresh = [m for m in messages if self._done_label not in (m.get("labels") or [])]
         fresh.sort(key=lambda m: str(m.get("timestamp") or m.get("created_at") or ""))
-        return [self._to_raw(message) for message in fresh]
+        # The list endpoint omits the body; fetch each message's full record.
+        return [self._to_raw(self._full(message)) for message in fresh]
+
+    def _full(self, message: dict[str, Any]) -> dict[str, Any]:
+        message_id = message.get("message_id")
+        if not message_id:
+            return message
+        try:
+            return self._client.get_message(self._inbox_id, str(message_id))
+        except Exception:  # noqa: BLE001 - fall back to the list record
+            return message
 
     def ack(self, messages: list[RawMessage]) -> None:
         """Label handled messages so the next poll skips them (best effort)."""
@@ -204,10 +221,18 @@ class AgentMailTransport:
         )
 
 
+def _seg(value: str) -> str:
+    """Quote a path segment (message ids contain ``<...>@...``)."""
+    return urllib.parse.quote(str(value), safe="")
+
+
 def _first_address(value: Any) -> str | None:
     if isinstance(value, list):
-        return str(value[0]) if value else None
-    return str(value) if value else None
+        value = value[0] if value else None
+    if not value:
+        return None
+    # AgentMail may return ``Display Name <addr>`` or a bare address; keep the address.
+    return parseaddr(str(value))[1] or str(value)
 
 
 def _parse_time(value: Any) -> datetime:
