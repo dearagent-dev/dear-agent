@@ -75,9 +75,14 @@ task), and the harness can be **injected** into an environment image that lacks 
 - [x] `environment/bundle.py`: `HarnessBundle` materializes a portable OpenCode bundle (musl
   binary + loader + `libstdc++`/`libgcc`) and mounts it into the session, behind
   `DEAR_AGENT_HARNESS_BUNDLE=true`.
+- [x] `environment/descriptor.py`: resolve a repository's environment descriptor in precedence
+  order — Dev Container (`image` or `build`, JSONC), Ansible EE (`images.base_image.name`),
+  `Containerfile`/`Dockerfile`, `mise`/`.tool-versions`, else fallback. `build_worker` uses a
+  declared **image** for the session and injects the harness automatically (OpenCode); an
+  explicit `DEAR_AGENT_HARNESS_IMAGE` still wins.
 - [x] Tests + a live proof (session persistence; bundle injection into a UBI image).
-- [ ] Next: the `Environment` descriptor resolver (devcontainer/EE/Containerfile/mise) and the
-  Dev Container Feature/prebuild path.
+- [ ] Next: the Dev Container **Feature/prebuild** path (compose `devcontainer.json` + a harness
+  Feature into an image) and turning a `build`/`Containerfile` descriptor into an image.
 
 _None — M8 is complete on branch `dear-agent-m8-postgres-deploy` (PR #55)._
 
@@ -117,6 +122,25 @@ log). See [ADR 0005](docs/decisions/0005-state-store.md).
 
 ## Next
 
+- **Forge by API (no CLI), multi-forge.** Today `build_worker` hardcodes
+  `GitPlane(forge=GhForge())`, and `GhForge` shells out to `gh pr create --draft`
+  (`gitplane/gh.py`). That needs `gh` on `PATH` and a token, and only speaks GitHub. Decision:
+  open the PR/MR through the forge **REST API** with a token, behind the existing `Forge`
+  protocol. Tasks:
+  - [ ] **API forge**: replace `GhForge` with a token-based API call
+    (`POST /repos/{owner}/{repo}/pulls` with `"draft": true`, `Authorization: Bearer $TOKEN`),
+    no `gh` dependency. Keep `gh` (or a token) only as an optional fallback.
+  - [ ] **Forge selection**: pick the forge from the repo host (`github.com`, `gitlab.com`,
+    self-hosted) and/or an explicit `DEAR_AGENT_FORGE=github|gitlab|gitea`, replacing the
+    hardcoded `GhForge()`.
+  - [ ] **GitLab/Gitea forges**: `GitLabForge` (`POST /projects/:id/merge_requests` with
+    `draft`) and `GiteaForge`; each with its own token env (`GITLAB_TOKEN`, `GITEA_TOKEN`).
+  - [ ] **Credential wiring**: pass the forge token to the runner Job (secret → env); note the
+    runner template currently mounts only the **read** git key (`dear-agent-git-read`) and sets
+    no forge token, so in-cluster PR creation does not work yet. Push needs a scoped **write**
+    credential (ADR 0003).
+  - [ ] Docs: extend [docs/decisions/0003-credentials.md](docs/decisions/0003-credentials.md)
+    or add an ADR for the forge seam; update `deploy/` and `docs/security.md`.
 - **PITR**: continuous WAL archiving to object storage. (Logical backups landed
   (`deploy/components/backup/`, a daily `pg_dump` keeping the last seven); connection
   resilience landed; the Postgres component is verified live on OpenShift.)
