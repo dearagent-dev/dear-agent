@@ -1,7 +1,7 @@
 ---
 project: dear-agent-lab
 repos:
-  - "rarguello/dear-agent-lab-*"
+  - "dearagent-dev/dear-agent-lab-*"
 enabled: true
 base_branch: main
 harness: opencode
@@ -12,7 +12,7 @@ verify_allow:
 
 # Dear Agent lab projects
 
-Policy for the `rarguello/dear-agent-lab-*` practice repositories.
+Policy for the `dearagent-dev/dear-agent-lab-*` practice repositories.
 
 The front matter above is the editable source of truth: run
 `dear-agent policy sync --dir policy` to project it into the database, where the worker reads

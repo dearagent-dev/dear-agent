@@ -69,7 +69,7 @@ def test_receive_the_dmarc_gate_and_ack(transport: ImapSmtpTransport) -> None:
     message_id = make_msgid()
     raw["Message-ID"] = message_id
     raw["Authentication-Results"] = AUTH_RESULTS
-    raw.set_content("repo: https://github.com/rarguello/dear-agent-lab-python\n\nfix the tests")
+    raw.set_content("repo: https://github.com/dearagent-dev/dear-agent-lab-python\n\nfix the tests")
     transport.smtp.send(raw.as_bytes(), sender="ricardo.arguello@gmail.com", recipients=[ADDRESS])
 
     messages = _poll_until(transport, lambda message: message.transport_id == message_id)

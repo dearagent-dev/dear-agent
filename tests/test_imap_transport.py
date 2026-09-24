@@ -45,7 +45,7 @@ def build_raw(
     *,
     sender: str = "ricardo.arguello@gmail.com",
     subject: str = "a task",
-    body: str = "repo: https://github.com/rarguello/dear-agent-lab-python\n\nfix it",
+    body: str = "repo: https://github.com/dearagent-dev/dear-agent-lab-python\n\nfix it",
     message_id: str = "<m1@x>",
     in_reply_to: str | None = None,
     auth_results: str | None = None,

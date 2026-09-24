@@ -11,7 +11,7 @@ repository moved to the **`dearagent-dev`** org; every reference to the old name
 ### Done
 - **Rename**: package `dear_agent`, CLI `dear-agent`, env `DEAR_AGENT_*`, DB tables
   `dear_agent_*`. Repo `dearagent-dev/dear-agent`. Example repos renamed to
-  `rarguello/dear-agent-lab-{terraform,ansible,python}`. `herald-*` branches (local+remote),
+  `dearagent-dev/dear-agent-lab-{terraform,ansible,python}`. `herald-*` branches (local+remote),
   the `herald-*` podman containers/images, the old Quay repo and the local directory were all
   removed. The local project directory is now `~/Documents/Projects/dear-agent`.
 - **Security backlog (adversarial review) closed**: #72–#94 resolved; tracking #91 closed.
@@ -44,7 +44,7 @@ repository moved to the **`dearagent-dev`** org; every reference to the old name
 - Example tasks (intentional bugs to fix): Python (`add` subtracts, `is_even` inverted; add
   `multiply` + tests); Terraform (`var.aws_region` should be `var.region`, `aws_s3_bucket.log`
   should be `.logs`); Ansible (task name typo "Instal", missing `git` package).
-- `dear-agent task enqueue "<instructions>" --repo git@github.com:rarguello/dear-agent-lab-<x>.git --verify "make test"`,
+- `dear-agent task enqueue "<instructions>" --repo git@github.com:dearagent-dev/dear-agent-lab-<x>.git --verify "make test"`,
   then `dear-agent run --repo /tmp/<x> <task-id>`; it pushes an `dear-agent/<slug>` branch and
   opens a draft PR.
 
