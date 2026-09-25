@@ -57,7 +57,9 @@ If a change does not serve one of those goals (or a milestone in
 environment and forge slices ([ADR 0008](docs/decisions/0008-execution-environment.md),
 [ADR 0009](docs/decisions/0009-forge-api.md)): a run is one **environment session**
 (harness + verify share one container), the harness is injected into a repository-declared
-environment, and the draft PR is opened through the forge **REST API** (no `gh`). M0–M7 are
+environment, and the draft PR is opened through the forge **REST API** (no `gh`), with an
+optional adversarial review before the PR
+([ADR 0010](docs/decisions/0010-adversarial-review.md)). M0–M7 are
 done; M0–M6 were verified live on OpenShift + Fastmail. The mailbox is **ingress**: durable
 tasks, state, approvals and the decision log live in PostgreSQL — see
 [`docs/decisions/0005-state-store.md`](docs/decisions/0005-state-store.md), which supersedes

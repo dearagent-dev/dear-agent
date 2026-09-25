@@ -27,7 +27,9 @@ class RecordingForge:
     def open_draft_pr(
         self, *, repo_path: Path, branch: str, base_branch: str, title: str, body: str
     ) -> PullRequest:
-        self.calls.append({"branch": branch, "base_branch": base_branch, "title": title})
+        self.calls.append(
+            {"branch": branch, "base_branch": base_branch, "title": title, "body": body}
+        )
         return PullRequest(url="https://example.com/pr/1", number=1)
 
 
@@ -482,3 +484,120 @@ def test_executor_runs_verify_in_the_runners_session_and_closes_it(repo: Path) -
 
     assert session.wrapped == [["make", "test"]]
     assert session.closed is True
+
+
+class SpecRecordingRunner:
+    def __init__(self) -> None:
+        self.specs: list[str] = []
+
+    def run(self, task: Task, spec: TaskSpec, worktree: Worktree) -> RunResult:
+        self.specs.append(spec.instructions)
+        (worktree.path / "change.txt").write_text("x\n")
+        return RunResult(exit_code=0, branch=worktree.branch)
+
+
+class ScriptedReviewer:
+    def __init__(self, verdicts: list[object]) -> None:
+        self._verdicts = verdicts
+        self.calls = 0
+
+    def review(self, *, diff: str, instructions: str):
+        from dear_agent.review import ReviewVerdict
+
+        item = self._verdicts[min(self.calls, len(self._verdicts) - 1)]
+        self.calls += 1
+        if isinstance(item, Exception):
+            raise item
+        assert isinstance(item, ReviewVerdict)
+        return item
+
+
+def _debate_executor(queue, repo, forge, runner, transport, reviewer, rounds=1):
+    return TaskExecutor(
+        queue=queue,
+        runner=runner,
+        git=GitPlane(forge=forge),
+        repo_path=str(repo),
+        worktrees_root=str(repo.parent / "wt"),
+        notifier=Notifier(transport),
+        escalator=Escalator(transport),
+        reviewer=reviewer,
+        debate_rounds=rounds,
+    )
+
+
+def test_review_approval_publishes_with_one_harness_run(repo: Path) -> None:
+    from dear_agent.review import ReviewVerdict
+
+    queue = MemoryQueue()
+    task = make_task(queue)
+    runner = SpecRecordingRunner()
+    forge = RecordingForge()
+    transport = MemoryTransport()
+    reviewer = ScriptedReviewer([ReviewVerdict(approved=True, summary="looks good")])
+    executor = _debate_executor(queue, repo, forge, runner, transport, reviewer)
+
+    evidence = executor.execute(task, make_spec(), recipient="dev@example.com")
+
+    assert evidence.ok
+    assert evidence.review is not None and evidence.review.approved
+    assert len(runner.specs) == 1
+    assert "Reviewer: approved" in str(forge.calls[0]["body"])
+
+
+def test_review_revision_reruns_the_harness_with_notes(repo: Path) -> None:
+    from dear_agent.review import ReviewVerdict
+
+    queue = MemoryQueue()
+    task = make_task(queue)
+    runner = SpecRecordingRunner()
+    forge = RecordingForge()
+    transport = MemoryTransport()
+    reviewer = ScriptedReviewer(
+        [
+            ReviewVerdict(approved=False, notes="add a test"),
+            ReviewVerdict(approved=True, summary="ok now"),
+        ]
+    )
+    executor = _debate_executor(queue, repo, forge, runner, transport, reviewer)
+
+    evidence = executor.execute(task, make_spec(), recipient="dev@example.com")
+
+    assert evidence.ok
+    assert evidence.review is not None and evidence.review.approved
+    assert len(runner.specs) == 2
+    assert "add a test" in runner.specs[1]
+
+
+def test_review_error_fails_open(repo: Path) -> None:
+    from dear_agent.review import ReviewError
+
+    queue = MemoryQueue()
+    task = make_task(queue)
+    runner = SpecRecordingRunner()
+    forge = RecordingForge()
+    transport = MemoryTransport()
+    reviewer = ScriptedReviewer([ReviewError("boom")])
+    executor = _debate_executor(queue, repo, forge, runner, transport, reviewer)
+
+    evidence = executor.execute(task, make_spec(), recipient="dev@example.com")
+
+    assert evidence.ok
+    assert evidence.review is None
+    assert len(runner.specs) == 1
+    assert "Reviewer" not in str(forge.calls[0]["body"])
+
+
+def test_no_reviewer_means_no_debate(repo: Path) -> None:
+    queue = MemoryQueue()
+    task = make_task(queue)
+    runner = SpecRecordingRunner()
+    forge = RecordingForge()
+    transport = MemoryTransport()
+    executor = _debate_executor(queue, repo, forge, runner, transport, None, rounds=1)
+
+    evidence = executor.execute(task, make_spec(), recipient="dev@example.com")
+
+    assert evidence.ok
+    assert evidence.review is None
+    assert len(runner.specs) == 1

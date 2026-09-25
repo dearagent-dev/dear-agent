@@ -93,6 +93,25 @@ class GitPlane:
         )
         return result.returncode == 1
 
+    def diff(self, worktree: Worktree, base_branch: str, *, limit: int = 20000) -> str:
+        """The staged diff against ``base_branch``, for a reviewer (ADR 0010).
+
+        Stages the worktree first so new (untracked) files are included; ``commit_all`` stages
+        again, so this is safe to call before the publish.
+        """
+        self._assert_not_protected(worktree.branch)
+        subprocess.run(
+            ["git", "add", "-A"], cwd=worktree.path, capture_output=True, text=True, check=False
+        )
+        result = subprocess.run(
+            ["git", "diff", "--cached", base_branch, "--"],
+            cwd=worktree.path,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return (result.stdout or "")[:limit]
+
     def open_draft_pr(
         self,
         worktree: Worktree,

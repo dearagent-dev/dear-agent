@@ -118,3 +118,19 @@ def test_push_env_pins_the_write_key() -> None:
 
 def test_push_env_is_unset_without_a_push_key() -> None:
     assert GitPlane(forge=RecordingForge())._push_env() is None
+
+
+def test_diff_includes_new_files(worktree: Worktree) -> None:
+    (worktree.path / "new.txt").write_text("hello\n")
+
+    diff = GitPlane(forge=RecordingForge()).diff(worktree, "main")
+
+    assert "new.txt" in diff
+    assert "+hello" in diff
+
+
+def test_diff_refuses_a_protected_branch(repo: Path) -> None:
+    protected = Worktree(repo_path=repo, path=repo, branch="main")
+
+    with pytest.raises(ProtectedBranchError):
+        GitPlane(forge=RecordingForge()).diff(protected, "main")

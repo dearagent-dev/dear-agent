@@ -87,6 +87,14 @@ harness in — a Dev Container *Feature* at build time, or a portable *bundle* a
 container, a self-hosted Kubernetes/OpenShift Job, or a self-hosted CI runner. Hosted agent
 backends are out of scope.
 
+### Adversarial review (optional)
+
+Before the draft PR is opened, an optional second model reviews the diff (the `Reviewer` port,
+[ADR 0010](decisions/0010-adversarial-review.md)): on a "revise" verdict the harness runs one
+**bounded** round with the reviewer's notes, then the PR is opened regardless. It is opt-in
+(`DEAR_AGENT_REVIEWER=openai-compat`) and fail-open — a reviewer outage publishes as today — and
+the human PR review remains the real gate.
+
 ### Provider
 Model backend configuration handed to the harness (endpoint, model id, key reference).
 Hosted or local. See [providers.md](providers.md).

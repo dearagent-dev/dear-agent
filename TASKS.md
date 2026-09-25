@@ -204,6 +204,9 @@ still-open gaps:
 - Git push key: `DEAR_AGENT_GIT_PUSH_KEY` (path to a write deploy key used only for the push;
   unset locally uses the ambient credential). The runner templates mount `dear-agent-git-read`
   and `dear-agent-git-push` and the `dear-agent-forge` secret.
+- Adversarial review (ADR 0010): `DEAR_AGENT_REVIEWER=none|openai-compat` (default `none`);
+  `DEAR_AGENT_REVIEWER_BASE_URL`, `_MODEL`, `_API_KEY` (falls back to `OPENROUTER_API_KEY`),
+  `_TIMEOUT`, and `DEAR_AGENT_DEBATE_ROUNDS` (default `1`) bound the revisions.
 - Decision: `DEAR_AGENT_DECIDER=rules|jev|openai-compat|none`, `DEAR_AGENT_DECIDER_MODEL`,
   `DEAR_AGENT_DECIDER_ENDPOINT`, `DEAR_AGENT_DECIDER_BASE_URL`, `DEAR_AGENT_DECIDER_THRESHOLD`,
   `DEAR_AGENT_DECIDER_LOG` (`<path>` or `postgres`), `TYPESAFE_API_KEY`, `OPENROUTER_API_KEY`.
