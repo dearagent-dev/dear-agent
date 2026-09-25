@@ -139,7 +139,9 @@ environment and never assumed; the draft PR is opened through the forge **REST A
 - [x] **M9.6** Feature/prebuild: `EnvironmentBuilder` builds a Containerfile with `podman` or a
   Dev Container with the `devcontainer` CLI (optionally adding a harness Feature); CI builds and
   publishes the sidecar harness image (`deploy/harness/Containerfile`).
-- [ ] **M9.7** Verify the in-cluster PR path live (sidecar runner + provisioned secrets).
+- [ ] **M9.7** Verify the in-cluster PR path live (sidecar runner + provisioned secrets):
+  runbook + script ready ([`verify-openshift.md`](verify-openshift.md),
+  `scripts/verify-openshift.sh`); run it and record the result.
 
 ## Later / ideas
 
