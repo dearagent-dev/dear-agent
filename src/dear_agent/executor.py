@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, replace
 from datetime import timedelta
 
@@ -323,7 +324,11 @@ class TaskExecutor:
 def _slug(task: Task) -> str:
     raw = task.subject or task.id
     slug = "".join(char if char.isalnum() else "-" for char in raw.lower()).strip("-")
-    return "-".join(filter(None, slug.split("-")))[:40] or "task"
+    slug = "-".join(filter(None, slug.split("-")))[:40] or "task"
+    # Two tasks can share a subject; the branch must be unique per task (a deterministic slug
+    # alone collides on the remote and the second push is rejected as non-fast-forward).
+    digest = hashlib.sha256(task.id.encode()).hexdigest()[:8]
+    return f"{slug}-{digest}"
 
 
 def _commit_message(task: Task, spec: TaskSpec) -> str:

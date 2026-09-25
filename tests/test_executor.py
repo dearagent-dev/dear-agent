@@ -276,13 +276,16 @@ def test_executor_records_typed_events(repo: Path) -> None:
     assert "task.done" in kinds
 
 
-def test_slug_is_branch_safe() -> None:
+def test_slug_is_branch_safe_and_unique_per_task() -> None:
     task = Task(id="e1", transport_id="<m1@x>", subject="Add /healthz & metrics!!")
 
     slug = _slug(task)
 
-    assert slug == "add-healthz-metrics"
+    assert slug.startswith("add-healthz-metrics-")
     assert "/" not in slug and " " not in slug
+    assert _slug(task) == slug  # stable for the same task
+    other = Task(id="e2", transport_id="<m2@x>", subject="Add /healthz & metrics!!")
+    assert _slug(other) != slug  # same subject, different task -> different branch
 
 
 def test_failed_run_escalates_to_a_human(repo: Path) -> None:
