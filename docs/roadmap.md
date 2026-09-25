@@ -122,6 +122,24 @@ See [ADR 0005](decisions/0005-state-store.md).
   persisted with the task, so a runner no longer reads the mailbox. No backfill is needed at
   the current scale (there is no production mailbox state to migrate).
 
+## M9 — Execution environments and the forge (ADR 0008, ADR 0009)
+
+A run is one **environment session**; the harness is injected into a repository-declared
+environment and never assumed; the draft PR is opened through the forge **REST API**.
+
+- [x] **M9.1** One session per task: `ContainerSandbox` starts a long-lived container the harness
+  and the `verify` gate share; `TaskExecutor` owns its lifecycle.
+- [x] **M9.2** Environment descriptor: detect Dev Container / Ansible EE / Containerfile / mise
+  and use a declared image for the session (`environment/descriptor.py`).
+- [x] **M9.3** Harness bundle: a portable OpenCode bundle (binary + loader + libs) injected into
+  any environment image (`environment/bundle.py`).
+- [x] **M9.4** Forge by API: GitHub/GitLab/Gitea draft PR/MR over REST, chosen by remote host or
+  `DEAR_AGENT_FORGE`; read/write git keys and the forge token wired into the runner.
+- [x] **M9.5** Routing shares the session with the verify gate (`SessionProvider`).
+- [ ] **M9.6** Feature/prebuild: compose a Dev Container Feature (or build a `Containerfile`/
+  `build` descriptor) into an image.
+- [ ] **M9.7** Publish the sidecar harness image and verify the in-cluster PR path live.
+
 ## Later / ideas
 
 - [x] **Gate high-risk inbound runs behind approval.** Inbound tasks whose decider verdict
@@ -131,7 +149,9 @@ See [ADR 0005](decisions/0005-state-store.md).
   per statement) and sets TCP keepalives, so a dropped Postgres connection does not break the
   long-lived control plane.
 - [x] **Automated backups**: a daily `pg_dump` to a dedicated PVC keeping the last seven
-  (`deploy/components/backup/`). **PITR** (continuous WAL archiving to object storage) remains.
+  (`deploy/components/backup/`).
+- [ ] **PITR** (continuous WAL archiving to object storage): deferred — the daily dump is enough
+  at this scale; revisit before the data becomes irreplaceable.
 - [x] Idle proposals dedupe on the database (the deterministic transport id + the queue's
   unique index) and the budget is the DB queue depth; no further persistence is needed.
 - [x] Live OpenShift verification of the Postgres component (StatefulSet/PVC up, schema
@@ -143,7 +163,8 @@ See [ADR 0005](decisions/0005-state-store.md).
 - [x] JMAP `PushSubscription`/EventSource for low-latency triggering (replaces the sweep):
   `JmapClient` exposes `event_source_url`, `push_create` and `push_destroy`; `dear-agent listen`
   opens the EventSource and re-polls (idempotently) on an `Email` `StateChange`.
-- IMAP transport as a secondary backend.
-- Self-hosted decision model (Simple Jev / Laya / NanoJev) as the reference local decider.
-- Multi-provider debate (two models review each other before a PR).
-- Per-project policies (which repos, which providers, which tasks allowed).
+- [x] IMAP transport as a secondary backend (`transports/imap.py`, `imap/`, `smtp/`;
+  `DEAR_AGENT_BACKEND=imap`).
+- [ ] Self-hosted decision model (Simple Jev / Laya / NanoJev) as the reference local decider.
+- [ ] Multi-provider debate (two models review each other before a PR).
+- [x] Per-project policies (which repos, which providers, which tasks allowed).

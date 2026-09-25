@@ -130,8 +130,6 @@ The execution environment ([ADR 0008](docs/decisions/0008-execution-environment.
 ([ADR 0009](docs/decisions/0009-forge-api.md)) slices are on `main`; these are the deliberate,
 still-open gaps:
 
-- **Routing**: with `DEAR_AGENT_HARNESSES`, each class builds its own sandbox, so the verifier
-  does not share the harness session (it falls back to the outer sandbox). ADR 0008.
 - **Environment build**: a descriptor's `build`/`Containerfile`/devcontainer-`build` is detected
   but not built into an image; the Dev Container **Feature/prebuild** path is not implemented.
 - **Bundle**: OpenCode only and an explicit recipe (no `ldd` auto-discovery); needs
