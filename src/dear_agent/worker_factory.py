@@ -179,7 +179,16 @@ def _maybe_inject_bundle(
         raise RuntimeError("no image to build the harness bundle from")
     bundle = opencode_bundle(bundle_image, container_binary=session.binary)
     bundle.ensure()
-    return replace(session, mounts=session.mounts + bundle.mounts())
+    # An environment image's home may not be writable (UBI's /root is 0550 and --cap-drop ALL
+    # removes the override). Give the harness a writable home on a tmpfs — outside the worktree,
+    # so it is never committed — and remap the credential mounts (``~`` paths) under it.
+    home = "/dear-agent-home"
+    return replace(
+        session,
+        mounts=session.mounts + bundle.mounts(),
+        container_home=home,
+        extra_args=session.extra_args + ("--tmpfs", home, "--env", f"HOME={home}"),
+    )
 
 
 def build_runner(provider_model: str | None, sandbox: Sandbox) -> Runner:

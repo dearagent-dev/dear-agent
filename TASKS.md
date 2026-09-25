@@ -133,8 +133,8 @@ The execution environment ([ADR 0008](docs/decisions/0008-execution-environment.
 ([ADR 0009](docs/decisions/0009-forge-api.md)) slices are on `main`; these are the deliberate,
 still-open gaps:
 
-- **Bundle**: OpenCode only and an explicit recipe (no `ldd` auto-discovery); needs
-  `DEAR_AGENT_HARNESS_CONTAINER_SELINUX=Z` and a writable `HOME`.
+- **Bundle**: OpenCode only and an explicit recipe (no `ldd` auto-discovery); the SELinux
+  relabel and the writable home are now handled by the session.
 - **Forge**: GitLab uses the `Draft:` title prefix (assumption); Bitbucket Server (self-hosted)
   is not supported; in the single-container runner the write key and forge token are visible to
   the harness (ADR 0007 residual — use the sidecar for credential isolation).
@@ -189,7 +189,8 @@ still-open gaps:
   into the session so an environment image without the harness can run it;
   `DEAR_AGENT_HARNESS_BUNDLE_IMAGE` (default: the harness image) and
   `DEAR_AGENT_HARNESS_BUNDLE_CACHE` (default `~/.cache/dear-agent/harness`). Requires
-  `DEAR_AGENT_ISOLATION=podman`; on SELinux hosts set `DEAR_AGENT_HARNESS_CONTAINER_SELINUX=Z`.
+  `DEAR_AGENT_ISOLATION=podman`; the bundle mount is relabeled on SELinux and the harness gets a
+  writable tmpfs `HOME` automatically.
 - Environment build (ADR 0008): `DEAR_AGENT_BUILD_ENVIRONMENT=true` builds the repository-declared
   environment image (Containerfile via `podman build`, Dev Container via `devcontainer build`);
   `DEAR_AGENT_ENVIRONMENT_IMAGE` (default `dear-agent-env:latest`) names it and

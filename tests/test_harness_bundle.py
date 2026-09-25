@@ -101,9 +101,17 @@ def test_bundle_mounts_expose_the_root_and_the_shim(tmp_path: Path) -> None:
 
     mounts = bundle.mounts()
 
-    assert Mount(str(tmp_path / "root"), "/opt/dear-agent/harness", readonly=True) in mounts
     assert (
-        Mount(str(tmp_path / "bin" / "opencode"), "/usr/local/bin/opencode", readonly=True)
+        Mount(str(tmp_path / "root"), "/opt/dear-agent/harness", readonly=True, relabel=True)
+        in mounts
+    )
+    assert (
+        Mount(
+            str(tmp_path / "bin" / "opencode"),
+            "/usr/local/bin/opencode",
+            readonly=True,
+            relabel=True,
+        )
         in mounts
     )
 
@@ -168,6 +176,11 @@ def test_bundle_injection_adds_the_bundle_mounts(monkeypatch) -> None:
     )
 
     assert result.mounts == (Mount("/bundle/root", "/opt/dear-agent/harness"),)
+    # The harness gets a writable home on a tmpfs, outside the worktree, so an unwritable image
+    # home (UBI /root) does not break it and its cache is never committed.
+    assert result.container_home == "/dear-agent-home"
+    assert "--tmpfs" in result.extra_args
+    assert "HOME=/dear-agent-home" in result.extra_args
     assert fake.ensured is True
 
 

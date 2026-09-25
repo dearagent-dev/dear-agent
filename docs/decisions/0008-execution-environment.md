@@ -122,13 +122,14 @@ environment; the environment is described by the repository, not by Dear Agent.*
   configuration for the bundle cache and the harness Feature. Docs in
   [../getting-started.md](../getting-started.md) and [../architecture.md](../architecture.md)
   travel with it.
-- **The session must give the harness a writable home.** With `--cap-drop ALL` (the default)
-  and an image whose `HOME` directory is not writable by its user — UBI's `/root` is `0550` —
-  the harness cannot create its cache and fails. The session must point `HOME` at a writable
-  path (the worktree) or the image must provide one.
-- **Bundle mounts need SELinux relabeling on enforcing hosts.** `DEAR_AGENT_HARNESS_CONTAINER_SELINUX=Z`
-  (or `disable`) is required for the mounted shim to be executable; `auto` deliberately leaves
-  non-worktree mounts alone.
+- **The session gives the bundled harness a writable home.** With `--cap-drop ALL` (the default)
+  and an image whose `HOME` is not writable — UBI's `/root` is `0550` — the harness cannot create
+  its cache. When the bundle is injected the session sets `HOME` to a **tmpfs** (`/dear-agent-home`),
+  outside the worktree so its cache is never committed, and the credential mounts (`~` paths)
+  resolve under it.
+- **Bundle mounts are relabeled automatically on SELinux.** `Mount.relabel` requests a `Z`
+  relabel even under the `auto` policy, so the mounted shim is executable without requiring
+  `DEAR_AGENT_HARNESS_CONTAINER_SELINUX=Z`; the operator's credential mounts stay untouched.
 
 ## Alternatives
 
