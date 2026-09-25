@@ -4,9 +4,9 @@
 # Enable it by pointing the scheduler at this template:
 #   DEAR_AGENT_RUNNER_TEMPLATE_CONFIGMAP=dear-agent-runner-sidecar-template
 #
-# The `harness` container needs an image that bundles the harness (OpenCode/Claude/Codex);
-# the base `quay.io/dear-agent/dear-agent` image ships none. Build a derived image and set it
-# below (kustomize's `images:` does not manage this placeholder).
+# The `harness` container image bundles the harness (OpenCode today) on top of the control-plane
+# image: see deploy/harness/Containerfile, published as quay.io/dear-agent/harness (same tags as
+# the control-plane image). kustomize's `images:` does not manage this placeholder.
 apiVersion: v1
 kind: ConfigMap
 metadata:

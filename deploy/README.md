@@ -107,11 +107,13 @@ selected repositories.
   them and times out idle connections (`DEAR_AGENT_HTTP_TIMEOUT`).
 - `GIT_SSH_COMMAND` pins the mounted key and `StrictHostKeyChecking=yes`, so a run cannot
   be redirected to another host.
-- A dedicated read-only secret is mounted into the runner; the write key stays out of it.
+- A dedicated read-only key is mounted for the clone; the push uses a scoped write key
+  (`DEAR_AGENT_GIT_PUSH_KEY`) and the draft PR a forge token (`dear-agent-forge`, ADR 0009).
 - An **opt-in two-container runner** (`runner-sidecar-template.yaml`, ADR 0007): the untrusted
-  harness runs in its own container with no credential and only the shared worktree. Enable it
-  with `DEAR_AGENT_RUNNER_TEMPLATE_CONFIGMAP=dear-agent-runner-sidecar-template` and a harness
-  image that bundles the harness.
+  harness runs in its own container with no credential and only the shared worktree, while the
+  control container carries the git keys and the forge token. Enable it with
+  `DEAR_AGENT_RUNNER_TEMPLATE_CONFIGMAP=dear-agent-runner-sidecar-template`. The harness image is
+  built from `deploy/harness/Containerfile` and published as `quay.io/dear-agent/harness`.
 - An **egress allowlist** for runner Jobs (`deploy/components/egress/`), included by default:
   DNS, same-namespace (Postgres) and everything except link-local/metadata, so the model and
   Git work out of the box. Tighten it to the model/Git CIDRs or an egress proxy. It is the
@@ -137,9 +139,12 @@ selected repositories.
 - Approvals and the decision log live in Postgres (`dear_agent_approval`, `dear_agent_decision`);
   the file stores are a single-process fallback only. The parsed `TaskSpec` is persisted on
   the task row, so a runner needs no mailbox access to run.
-- **The base image ships no harness.** Build a derived runner image that installs OpenCode
-  (or Claude Code / Codex), or set `DEAR_AGENT_HARNESS=command` with `DEAR_AGENT_HARNESS_COMMAND`.
-  Without one, runs fail as `HARNESS_MISSING` and escalate to a human.
+- **The base control-plane image ships no harness.** The harness image
+  (`deploy/harness/Containerfile`, published as `quay.io/dear-agent/harness`) bundles OpenCode on
+  top of it for the two-container runner. For the single-container runner, point at a repository
+  that declares its environment (ADR 0008), inject the harness bundle
+  (`DEAR_AGENT_HARNESS_BUNDLE=true`), or set `DEAR_AGENT_HARNESS=command` with
+  `DEAR_AGENT_HARNESS_COMMAND`. Without a harness, runs fail as `HARNESS_MISSING` and escalate.
 
 ## Verified on a live OpenShift cluster
 

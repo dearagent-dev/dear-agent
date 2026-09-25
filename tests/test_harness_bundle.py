@@ -175,11 +175,10 @@ def test_runner_uses_the_declared_environment_and_injects_the_harness(
     monkeypatch, tmp_path
 ) -> None:
     import dear_agent.environment.bundle as bundle_module
-    import dear_agent.environment.descriptor as descriptor_module
+    import dear_agent.worker_factory as wf
     from dear_agent.environment.descriptor import EnvironmentDescriptor
     from dear_agent.runners.opencode import OpenCodeRunner
     from dear_agent.sandbox import ContainerSandbox, NoSandbox
-    from dear_agent.worker_factory import build_runner_and_session
 
     class FakeBundle:
         def ensure(self) -> None:
@@ -193,13 +192,11 @@ def test_runner_uses_the_declared_environment_and_injects_the_harness(
     monkeypatch.delenv("DEAR_AGENT_HARNESS_IMAGE", raising=False)
     monkeypatch.delenv("DEAR_AGENT_HARNESS_BUNDLE", raising=False)
     monkeypatch.setattr(
-        descriptor_module,
-        "detect",
-        lambda root: EnvironmentDescriptor(kind="devcontainer", image="env:1"),
+        wf, "detect", lambda root: EnvironmentDescriptor(kind="devcontainer", image="env:1")
     )
     monkeypatch.setattr(bundle_module, "opencode_bundle", lambda *a, **k: FakeBundle())
 
-    runner, session = build_runner_and_session(None, NoSandbox(), repo_path=str(tmp_path))
+    runner, session = wf.build_runner_and_session(None, NoSandbox(), repo_path=str(tmp_path))
 
     assert isinstance(runner, OpenCodeRunner)
     assert isinstance(session, ContainerSandbox)
@@ -219,3 +216,77 @@ def test_runner_without_a_descriptor_uses_the_harness_image(monkeypatch, tmp_pat
 
     assert isinstance(session, ContainerSandbox)
     assert session.image == "ghcr.io/anomalyco/opencode:latest"
+
+
+def test_build_environment_builds_and_uses_the_image(monkeypatch, tmp_path) -> None:
+    import dear_agent.environment.bundle as bundle_module
+    import dear_agent.worker_factory as wf
+    from dear_agent.environment.descriptor import EnvironmentDescriptor
+    from dear_agent.sandbox import NoSandbox
+
+    class FakeBuilder:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        def build(self, descriptor, *, workspace, image_name=None, harness_feature=None):
+            return "env:built"
+
+    class FakeBundle:
+        def ensure(self) -> None:
+            pass
+
+        def mounts(self) -> tuple[Mount, ...]:
+            return ()
+
+    monkeypatch.setenv("DEAR_AGENT_ISOLATION", "podman")
+    monkeypatch.setenv("DEAR_AGENT_HARNESS", "opencode")
+    monkeypatch.setenv("DEAR_AGENT_BUILD_ENVIRONMENT", "true")
+    monkeypatch.delenv("DEAR_AGENT_HARNESS_IMAGE", raising=False)
+    monkeypatch.delenv("DEAR_AGENT_HARNESS_BUNDLE", raising=False)
+    monkeypatch.setattr(
+        wf,
+        "detect",
+        lambda root: EnvironmentDescriptor(kind="devcontainer", path=tmp_path / "dc.json"),
+    )
+    monkeypatch.setattr(wf, "EnvironmentBuilder", FakeBuilder)
+    monkeypatch.setattr(bundle_module, "opencode_bundle", lambda *a, **k: FakeBundle())
+
+    _, session = wf.build_runner_and_session(None, NoSandbox(), repo_path=str(tmp_path))
+
+    assert session.image == "env:built"
+
+
+def test_harness_feature_bakes_the_harness_and_skips_the_bundle(monkeypatch, tmp_path) -> None:
+    import dear_agent.environment.bundle as bundle_module
+    import dear_agent.worker_factory as wf
+    from dear_agent.environment.descriptor import EnvironmentDescriptor
+    from dear_agent.sandbox import NoSandbox
+
+    class FakeBuilder:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        def build(self, descriptor, *, workspace, image_name=None, harness_feature=None):
+            assert harness_feature == "ghcr.io/example/opencode:1"
+            return "env:featured"
+
+    def explode(*args: object, **kwargs: object) -> None:
+        raise AssertionError("bundle must not be injected when a harness feature is baked in")
+
+    monkeypatch.setenv("DEAR_AGENT_ISOLATION", "podman")
+    monkeypatch.setenv("DEAR_AGENT_HARNESS", "opencode")
+    monkeypatch.setenv("DEAR_AGENT_BUILD_ENVIRONMENT", "true")
+    monkeypatch.setenv("DEAR_AGENT_HARNESS_FEATURE", "ghcr.io/example/opencode:1")
+    monkeypatch.delenv("DEAR_AGENT_HARNESS_IMAGE", raising=False)
+    monkeypatch.delenv("DEAR_AGENT_HARNESS_BUNDLE", raising=False)
+    monkeypatch.setattr(
+        wf,
+        "detect",
+        lambda root: EnvironmentDescriptor(kind="devcontainer", path=tmp_path / "dc.json"),
+    )
+    monkeypatch.setattr(wf, "EnvironmentBuilder", FakeBuilder)
+    monkeypatch.setattr(bundle_module, "opencode_bundle", explode)
+
+    _, session = wf.build_runner_and_session(None, NoSandbox(), repo_path=str(tmp_path))
+
+    assert session.image == "env:featured"

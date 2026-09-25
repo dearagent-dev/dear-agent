@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import timedelta
 
 from dear_agent.events import EventLog
@@ -9,7 +9,7 @@ from dear_agent.notify.escalate import Escalator, FailureKind
 from dear_agent.notify.notifier import Notifier, TaskLinks
 from dear_agent.queue.models import Evidence, Task, TaskSpec, TaskState
 from dear_agent.queue.port import Queue
-from dear_agent.runners.port import Runner
+from dear_agent.runners.port import Runner, SessionProvider
 from dear_agent.runners.worktree import RunResult, Worktree
 from dear_agent.sandbox import Sandbox
 from dear_agent.verify import CommandVerifier
@@ -113,7 +113,15 @@ class TaskExecutor:
             # fail the task, not leave it running until the lease expires.
             self._queue.transition(running, TaskState.FAILED)
             raise
+        run_session: Sandbox | None = None
         try:
+            # A routing runner chooses the harness (and therefore the image) per task; the
+            # verify gate must run in that same session (ADR 0008).
+            active_verifier = verifier or self._verifier
+            if isinstance(self._runner, SessionProvider):
+                run_session = self._runner.session_for(task, spec)
+                if run_session is not None and active_verifier is not None:
+                    active_verifier = replace(active_verifier, sandbox=run_session)
             try:
                 run = self._runner.run(task, spec, worktree)
             except Exception as exc:  # noqa: BLE001 - a broken runner must not wedge the task
@@ -130,7 +138,7 @@ class TaskExecutor:
                 # The harness succeeded. Run the task's verify gate first (only if the
                 # command is allowlisted), then publish. A git/forge error must fail the task
                 # cleanly, never leave it `running` until the lease expires.
-                failure = self._verify(task, spec, worktree, verifier)
+                failure = self._verify(task, spec, worktree, active_verifier)
                 if failure is None:
                     try:
                         commit = self._git.commit_all(worktree, message=_commit_message(task, spec))
@@ -186,8 +194,11 @@ class TaskExecutor:
             self._report(evidence, recipient=recipient)
             return evidence
         finally:
-            # End the environment session before the worktree disappears, so the harness's
-            # provisioning cannot outlive the task (ADR 0008).
+            # End the environment session(s) before the worktree disappears, so the harness's
+            # provisioning cannot outlive the task (ADR 0008). A routing runner's session can
+            # differ from the one the factory built.
+            if run_session is not None and run_session is not self._session:
+                run_session.close()
             if self._session is not None:
                 self._session.close()
             worktree.remove()

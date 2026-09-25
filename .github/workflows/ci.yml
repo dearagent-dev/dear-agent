@@ -97,3 +97,20 @@ jobs:
 
       - name: Smoke-check the image
         run: podman run --rm dear-agent:ci dear-agent --help
+
+      # The harness image (ADR 0007) is built FROM the just-built image and bundles the harness
+      # through its own loader. Build it so a broken Containerfile or shim fails CI, then check
+      # both the CLI and the bundled-harness entrypoint.
+      - name: Build the harness image
+        uses: redhat-actions/buildah-build@v3
+        with:
+          image: dear-agent-harness
+          tags: ci
+          context: ./deploy/harness
+          containerfiles: ./deploy/harness/Containerfile
+          build-args: DEAR_AGENT_IMAGE=dear-agent:ci
+
+      - name: Smoke-check the harness image
+        run: |
+          podman run --rm --entrypoint dear-agent dear-agent-harness:ci harness-serve --help >/dev/null
+          podman run --rm --entrypoint sh dear-agent-harness:ci -c 'HOME=/tmp opencode --version'

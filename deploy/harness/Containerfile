@@ -1,0 +1,25 @@
+# The harness image for the two-container runner (ADR 0007): the control-plane image plus a
+# bundled harness, so `dear-agent harness-serve` can run the harness in a container that holds
+# no credential.
+#
+# Build it FROM the published dear-agent image (CI passes DEAR_AGENT_IMAGE) and copy the harness
+# out of its own image. The harness binary is musl-linked and the base is glibc, so it is invoked
+# through its bundled loader (ADR 0008); `opencode-shim` is that entrypoint, on PATH.
+#
+#   podman build -f deploy/harness/Containerfile \
+#     --build-arg DEAR_AGENT_IMAGE=quay.io/dear-agent/dear-agent:latest \
+#     -t quay.io/dear-agent/harness:latest deploy/harness
+ARG DEAR_AGENT_IMAGE=quay.io/dear-agent/dear-agent:latest
+FROM ghcr.io/anomalyco/opencode:latest AS harness
+
+FROM ${DEAR_AGENT_IMAGE}
+USER 0
+COPY opencode-shim /usr/local/bin/opencode
+COPY --from=harness /usr/local/bin/opencode /opt/dear-agent/harness/opencode
+COPY --from=harness /lib/ld-musl-x86_64.so.1 /opt/dear-agent/harness/
+COPY --from=harness /usr/lib/libstdc++.so.6 /opt/dear-agent/harness/
+COPY --from=harness /usr/lib/libgcc_s.so.1 /opt/dear-agent/harness/
+RUN chmod 0755 /usr/local/bin/opencode /opt/dear-agent/harness/opencode \
+    && chgrp -R 0 /opt/dear-agent/harness \
+    && chmod -R g+rX /opt/dear-agent/harness
+USER 1001

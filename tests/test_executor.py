@@ -428,3 +428,57 @@ def test_report_skips_an_empty_recipient(tmp_path) -> None:
         pr_url = None
 
     executor._report(Evidence(), recipient="")  # type: ignore[arg-type]
+
+
+def test_executor_runs_verify_in_the_runners_session_and_closes_it(repo: Path) -> None:
+    from dear_agent.verify import CommandVerifier
+
+    class Session:
+        def __init__(self) -> None:
+            self.closed = False
+            self.wrapped: list[list[str]] = []
+
+        @property
+        def available(self) -> bool:
+            return False
+
+        def wrap(self, argv: list[str], *, worktree: Path) -> list[str]:
+            self.wrapped.append(list(argv))
+            return list(argv)
+
+        def close(self) -> None:
+            self.closed = True
+
+    class SessionRunner:
+        def __init__(self, session: Session) -> None:
+            self.session = session
+
+        def run(self, task: Task, spec: TaskSpec, worktree: Worktree) -> RunResult:
+            (worktree.path / "change.txt").write_text("x\n")
+            return RunResult(exit_code=0, branch=worktree.branch)
+
+        def session_for(self, task: Task, spec: TaskSpec) -> Session:
+            return self.session
+
+    def fake_execute(argv, cwd, timeout):
+        return subprocess.CompletedProcess(args=list(argv), returncode=0, stdout="", stderr="")
+
+    session = Session()
+    queue = MemoryQueue()
+    task = make_task(queue)
+    verifier = CommandVerifier(allowed=(("make", "test"),), _execute=fake_execute)
+    executor = TaskExecutor(
+        queue=queue,
+        runner=SessionRunner(session),
+        git=GitPlane(forge=RecordingForge()),
+        repo_path=str(repo),
+        worktrees_root=str(repo.parent / "wt"),
+        verifier=verifier,
+    )
+    spec = make_spec()
+    spec.verify = "make test"
+
+    executor.execute(task, spec)
+
+    assert session.wrapped == [["make", "test"]]
+    assert session.closed is True

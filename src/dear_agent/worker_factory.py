@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
+from dear_agent.environment.builder import DEFAULT_IMAGE_NAME, EnvironmentBuilder
+from dear_agent.environment.descriptor import EnvironmentDescriptor, detect
 from dear_agent.executor import TaskExecutor
 from dear_agent.gitplane.forge import build_forge
 from dear_agent.gitplane.plane import GitPlane
@@ -77,7 +80,6 @@ def build_runner_and_session(
     """
     from dataclasses import replace
 
-    from dear_agent.environment.descriptor import detect
     from dear_agent.runners.catalog import (
         EnvHarnessCatalog,
         build_runner_for,
@@ -91,29 +93,68 @@ def build_runner_and_session(
         info = replace(info, binary=override)
     env = dict(os.environ)
     descriptor_image: str | None = None
+    harness_baked = False
     if repo_path and not env.get("DEAR_AGENT_HARNESS_IMAGE"):
-        descriptor = detect(repo_path)
-        if descriptor.has_image:
-            descriptor_image = descriptor.image
-            env["DEAR_AGENT_HARNESS_IMAGE"] = descriptor.image
+        descriptor_image, harness_baked = _environment_image(detect(repo_path), repo_path, env)
+        if descriptor_image:
+            env["DEAR_AGENT_HARNESS_IMAGE"] = descriptor_image
     if env.get("DEAR_AGENT_ISOLATION", "bwrap").strip().lower() == "podman":
         session = container_sandbox(info, env)
     elif info.id != "opencode":
         session = NoSandbox()
     else:
         session = sandbox
-    session = _maybe_inject_bundle(session, info, descriptor_image=descriptor_image)
+    session = _maybe_inject_bundle(
+        session, info, descriptor_image=descriptor_image, auto=not harness_baked
+    )
     return build_runner_for(info, provider_model, session), session
 
 
+def _env_flag(env: Mapping[str, str], name: str) -> bool:
+    return (env.get(name) or "").strip().lower() in ("1", "true", "yes")
+
+
+def _environment_image(
+    descriptor: EnvironmentDescriptor, repo_path: str, env: Mapping[str, str]
+) -> tuple[str | None, bool]:
+    """Resolve (image, harness_baked) for the session from a repository descriptor.
+
+    A declared ``image`` is used as-is; a ``build``/Dev Container is built only when
+    ``DEAR_AGENT_BUILD_ENVIRONMENT`` is on (locally, or as a CI prebuild). A
+    ``DEAR_AGENT_HARNESS_FEATURE`` adds the harness as a Dev Container Feature, so the harness is
+    baked in and no bundle is needed.
+    """
+    feature = (env.get("DEAR_AGENT_HARNESS_FEATURE") or "").strip() or None
+    if descriptor.has_image and not feature:
+        return descriptor.image, False
+    if descriptor.kind != "devcontainer" and not descriptor.has_build:
+        return None, False
+    if not _env_flag(env, "DEAR_AGENT_BUILD_ENVIRONMENT"):
+        return None, False
+    builder = EnvironmentBuilder(
+        container_binary=env.get("DEAR_AGENT_CONTAINER_BINARY") or "podman"
+    )
+    image = builder.build(
+        descriptor,
+        workspace=repo_path,
+        image_name=env.get("DEAR_AGENT_ENVIRONMENT_IMAGE") or DEFAULT_IMAGE_NAME,
+        harness_feature=feature,
+    )
+    return image, bool(feature)
+
+
 def _maybe_inject_bundle(
-    session: Sandbox, info: HarnessInfo, *, descriptor_image: str | None = None
+    session: Sandbox,
+    info: HarnessInfo,
+    *,
+    descriptor_image: str | None = None,
+    auto: bool = True,
 ) -> Sandbox:
     """Mount a portable harness bundle into the session (ADR 0008), when needed.
 
     A repository-declared environment image (``descriptor_image``) does not contain the harness,
-    so the bundle is injected automatically for OpenCode. It can also be forced with
-    ``DEAR_AGENT_HARNESS_BUNDLE=true``. The Feature/prebuild path is the alternative.
+    so the bundle is injected automatically for OpenCode (``auto=False`` when a harness Feature
+    already baked it in). It can also be forced with ``DEAR_AGENT_HARNESS_BUNDLE=true``.
     """
     from dataclasses import replace
 
@@ -124,8 +165,10 @@ def _maybe_inject_bundle(
         "true",
         "yes",
     )
-    auto = bool(descriptor_image) and info.id == "opencode" and descriptor_image != info.image
-    if not (requested or auto):
+    auto_inject = (
+        auto and bool(descriptor_image) and info.id == "opencode" and descriptor_image != info.image
+    )
+    if not (requested or auto_inject):
         return session
     if not isinstance(session, ContainerSandbox):
         raise RuntimeError("DEAR_AGENT_HARNESS_BUNDLE requires DEAR_AGENT_ISOLATION=podman")
@@ -336,8 +379,8 @@ def build_worker(
         sandbox = sandbox or default_sandbox()
         routing = build_routing_runner(sandbox)
         if routing is not None:
-            # Routing builds one sandbox per class internally, so a single session cannot yet
-            # serve both the harness and the verifier (known gap, ADR 0008).
+            # The routing runner is a SessionProvider: the executor swaps the verifier's sandbox
+            # for the session of the harness it actually chose (ADR 0008).
             runner = routing
             session = sandbox
         else:
