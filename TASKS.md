@@ -38,6 +38,15 @@ repository moved to the **`dearagent-dev`** org; every reference to the old name
    injectable harness, repository-declared environment, draft PR through the forge REST API.
    Open gaps in [Known gaps](#known-gaps-for-review).
 5. **PITR** — deferred (see Later); not needed at this scale.
+6. **Remaining after the M9 session** — pick these up next; none is a self-contained code slice:
+   - **M9.7** live in-cluster PR path (runbook + `scripts/verify-openshift.sh`; needs a cluster
+     and provisioned secrets).
+   - **Bundle multi-harness**: Claude Code / Codex are not single binaries (Node/npm), so they
+     need a different packaging than the OpenCode musl bundle.
+   - **Credential isolation in the single-container runner**: the write key and the forge token
+     are visible to the harness (ADR 0007 residual); the sidecar is the isolated path.
+   - Also closed this session: Bitbucket forge (ADR 0009), descriptor path-traversal hardening,
+     bundle robustness, self-hosted decider docs, adversarial review (ADR 0010).
 
 ### End-to-end test recipe (local, ADR 0008 session)
 - Launch a Postgres: `scripts/dev-postgres.sh up` (creds `dear-agent`/`dear-agent`); the
