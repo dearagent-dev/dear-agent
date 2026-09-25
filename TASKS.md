@@ -78,15 +78,18 @@ task), and the harness can be **injected** into an environment image that lacks 
 - [x] `environment/bundle.py`: `HarnessBundle` materializes a portable OpenCode bundle (musl
   binary + loader + `libstdc++`/`libgcc`) and mounts it into the session, behind
   `DEAR_AGENT_HARNESS_BUNDLE=true`.
+- [x] `environment/builder.py`: `EnvironmentBuilder` builds a repository's environment image —
+  `podman build` for a `Containerfile`, `devcontainer build` (with `--additional-features`) for a
+  Dev Container, adding a harness Feature (`DEAR_AGENT_HARNESS_FEATURE`) so the harness is baked
+  in. `DEAR_AGENT_BUILD_ENVIRONMENT=true` builds and uses it; a baked harness skips the bundle.
 - [x] `environment/descriptor.py`: resolve a repository's environment descriptor in precedence
   order — Dev Container (`image` or `build`, JSONC), Ansible EE (`images.base_image.name`),
   `Containerfile`/`Dockerfile`, `mise`/`.tool-versions`, else fallback. `build_worker` uses a
   declared **image** for the session and injects the harness automatically (OpenCode); an
   explicit `DEAR_AGENT_HARNESS_IMAGE` still wins.
 - [x] Tests + a live proof (session persistence; bundle injection into a UBI image).
-- [ ] **Next**: the Dev Container **Feature/prebuild** path (compose `devcontainer.json` + a
-  harness Feature into an image) and turning a `build`/`Containerfile` descriptor into an image;
-  see [Known gaps](#known-gaps-for-review).
+- [ ] **Next**: verify the in-cluster PR path live (sidecar runner + secrets); see
+  [Known gaps](#known-gaps-for-review).
 
 _None — M8 is complete on branch `dear-agent-m8-postgres-deploy` (PR #55)._
 
@@ -130,16 +133,14 @@ The execution environment ([ADR 0008](docs/decisions/0008-execution-environment.
 ([ADR 0009](docs/decisions/0009-forge-api.md)) slices are on `main`; these are the deliberate,
 still-open gaps:
 
-- **Environment build**: a descriptor's `build`/`Containerfile`/devcontainer-`build` is detected
-  but not built into an image; the Dev Container **Feature/prebuild** path is not implemented.
 - **Bundle**: OpenCode only and an explicit recipe (no `ldd` auto-discovery); needs
   `DEAR_AGENT_HARNESS_CONTAINER_SELINUX=Z` and a writable `HOME`.
 - **Forge**: GitLab uses the `Draft:` title prefix (assumption); no Bitbucket; in the
   single-container runner the write key and forge token are visible to the harness (ADR 0007
   residual — use the sidecar for credential isolation).
 - **`command` harness** (`CommandRunner`) ignores the sandbox/session (pre-existing).
-- **Ops**: the sidecar harness image (`quay.io/dear-agent/harness:latest`) is a placeholder and
-  the in-cluster PR path is not live-tested (needs provisioned secrets).
+- **Ops**: the sidecar harness image is published from `deploy/harness/Containerfile`, but the
+  in-cluster PR path has not been verified live (needs provisioned secrets and a cluster).
 
 ## Later
 
@@ -189,6 +190,10 @@ still-open gaps:
   `DEAR_AGENT_HARNESS_BUNDLE_IMAGE` (default: the harness image) and
   `DEAR_AGENT_HARNESS_BUNDLE_CACHE` (default `~/.cache/dear-agent/harness`). Requires
   `DEAR_AGENT_ISOLATION=podman`; on SELinux hosts set `DEAR_AGENT_HARNESS_CONTAINER_SELINUX=Z`.
+- Environment build (ADR 0008): `DEAR_AGENT_BUILD_ENVIRONMENT=true` builds the repository-declared
+  environment image (Containerfile via `podman build`, Dev Container via `devcontainer build`);
+  `DEAR_AGENT_ENVIRONMENT_IMAGE` (default `dear-agent-env:latest`) names it and
+  `DEAR_AGENT_HARNESS_FEATURE` adds a harness Dev Container Feature so the harness is baked in.
 - Forge (ADR 0009): `DEAR_AGENT_FORGE=auto|github|gitlab|gitea|gh` (default `auto` opens the
   PR/MR through the forge REST API, chosen from the repository remote host; `gh` keeps the CLI).
   Tokens by provider: `GH_TOKEN`/`GITHUB_TOKEN`, `GITLAB_TOKEN`, `GITEA_TOKEN`. Environment

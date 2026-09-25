@@ -136,9 +136,10 @@ environment and never assumed; the draft PR is opened through the forge **REST A
 - [x] **M9.4** Forge by API: GitHub/GitLab/Gitea draft PR/MR over REST, chosen by remote host or
   `DEAR_AGENT_FORGE`; read/write git keys and the forge token wired into the runner.
 - [x] **M9.5** Routing shares the session with the verify gate (`SessionProvider`).
-- [ ] **M9.6** Feature/prebuild: compose a Dev Container Feature (or build a `Containerfile`/
-  `build` descriptor) into an image.
-- [ ] **M9.7** Publish the sidecar harness image and verify the in-cluster PR path live.
+- [x] **M9.6** Feature/prebuild: `EnvironmentBuilder` builds a Containerfile with `podman` or a
+  Dev Container with the `devcontainer` CLI (optionally adding a harness Feature); CI builds and
+  publishes the sidecar harness image (`deploy/harness/Containerfile`).
+- [ ] **M9.7** Verify the in-cluster PR path live (sidecar runner + provisioned secrets).
 
 ## Later / ideas
 

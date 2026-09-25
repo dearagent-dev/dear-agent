@@ -113,6 +113,7 @@ def test_sidecar_runner_isolates_the_harness_container() -> None:
     assert "git-push" not in mount_names
     assert "dear-agent-forge" not in harness_secrets
     assert "harness-serve" in harness["args"]
+    assert harness["image"] == "quay.io/dear-agent/harness:latest"
     # The control container does clone/push/PR, so it carries the read+write keys and the token.
     control = containers["control"]
     control_mounts = {mount["name"] for mount in control["volumeMounts"]}

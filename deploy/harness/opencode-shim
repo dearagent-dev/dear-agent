@@ -1,0 +1,5 @@
+#!/bin/sh
+# Run the bundled harness through its own loader, so a musl-linked harness runs on the glibc
+# base image (ADR 0008). Installed on PATH as `opencode` by deploy/harness/Containerfile.
+LD_LIBRARY_PATH=/opt/dear-agent/harness \
+  exec /opt/dear-agent/harness/ld-musl-x86_64.so.1 /opt/dear-agent/harness/opencode "$@"
