@@ -48,6 +48,23 @@ repository moved to the **`dearagent-dev`** org; every reference to the old name
    - Also closed this session: Bitbucket forge (ADR 0009), descriptor path-traversal hardening,
      bundle robustness, self-hosted decider docs, adversarial review (ADR 0010).
 
+### SNO cluster teardown — 2026-09-25
+
+The `dear-agent` namespace was **deleted** from the SNO cluster (`api-virt-daytwo-dev`) so a
+course can use it. This removed the control-plane Deployment, the Postgres `StatefulSet` with
+its **PVCs** (queue, decisions and backups data) and the **Secrets**. The images remain in Quay
+(`quay.io/dear-agent/dear-agent`, `quay.io/dear-agent/harness`).
+
+**Redeploy from scratch** before the next M9.7 check:
+
+1. `oc new-project dear-agent` (or the target namespace).
+2. Recreate the Secrets out of band — `dear-agent-postgres`, `dear-agent-git-read`,
+   `dear-agent-git-push`, `dear-agent-forge`, `dear-agent-inbound`, `dear-agent-model`
+   (see [`docs/verify-openshift.md`](docs/verify-openshift.md) §1; the values are not in git).
+3. `scripts/verify-openshift.sh --namespace dear-agent --overlay dev --apply`.
+4. Enable the sidecar template and a real `DEAR_AGENT_MODEL` in `deploy/base/config.yaml`, then
+   re-run the M9.7 verification. State (queue/decisions) starts empty.
+
 ### End-to-end test recipe (local, ADR 0008 session)
 - Launch a Postgres: `scripts/dev-postgres.sh up` (creds `dear-agent`/`dear-agent`); the
   `memory` queue cannot be shared across `task enqueue` and `run` (separate processes).
