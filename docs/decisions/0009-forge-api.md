@@ -27,15 +27,17 @@ three problems:
 **Open the PR/MR through the forge's REST API with an explicit token, behind the existing
 `Forge` protocol. No CLI.**
 
-1. `gitplane/forge.py` implements `GithubApiForge`, `GitlabApiForge` and `GiteaApiForge`. Each
+1. `gitplane/forge.py` implements `GithubApiForge`, `GitlabApiForge`, `GiteaApiForge` and
+   `BitbucketApiForge`. Each
    resolves the repository from the worktree's `origin` remote, posts a draft PR/MR, and returns
    its URL. `default_http_post` uses the standard library (`urllib`), so there is no new
    dependency.
 2. `DEAR_AGENT_FORGE` selects the mechanism: `auto` (default) picks the API forge from the
-   remote host (`provider_for_host`), `github`/`gitlab`/`gitea` force one, and `gh` keeps the
-   legacy CLI for anyone who prefers it.
+   remote host (`provider_for_host`), `github`/`gitlab`/`gitea`/`bitbucket` force one, and `gh`
+   keeps the legacy CLI for anyone who prefers it.
 3. **Tokens are environment variables named per provider** — `GH_TOKEN`/`GITHUB_TOKEN`,
-   `GITLAB_TOKEN`, `GITEA_TOKEN` — referenced by name only, never committed (golden rule 6).
+   `GITLAB_TOKEN`, `GITEA_TOKEN`, and `BITBUCKET_TOKEN` + `BITBUCKET_USERNAME`/`BITBUCKET_EMAIL`
+   (Basic auth for Bitbucket Cloud) — referenced by name only, never committed (golden rule 6).
    A missing token fails the task as `PUBLISH_FAILED` with a clear message.
 4. `build_worker` wires `GitPlane(forge=build_forge())` instead of a hardcoded `GhForge`.
 
@@ -43,8 +45,8 @@ three problems:
 
 - An HTTP call needs no binary, so the runner image stays small and `gh` stops being a hidden
   dependency.
-- Host-based selection makes the same runner work against GitHub, GitLab and Gitea/Forgejo
-  without per-deployment forks.
+- Host-based selection makes the same runner work against GitHub, GitLab, Gitea/Forgejo and
+  Bitbucket Cloud without per-deployment forks.
 - Passing the token explicitly matches ADR 0003: one scoped credential per purpose, referenced
   by name, mounted by role.
 
@@ -53,14 +55,16 @@ three problems:
 - **The runner Job carries the forge token and the write git key.** `deploy/base/runner-template.yaml`
   and the sidecar `control` container set `DEAR_AGENT_GIT_PUSH_KEY` (a scoped write deploy key,
   ADR 0003) and mount a `dear-agent-forge` secret through `envFrom` (`GH_TOKEN`/`GITHUB_TOKEN`,
-  `GITLAB_TOKEN`, `GITEA_TOKEN`). The clone keeps the read key. In the **sidecar** template the
+  `GITLAB_TOKEN`, `GITEA_TOKEN`, `BITBUCKET_TOKEN` + `BITBUCKET_USERNAME`). The clone keeps the
+  read key. In the **sidecar** template the
   harness container receives neither, which is the credential-isolated path; the default
   single-container runner shares them with the harness (ADR 0007 residual).
 - **`GitPlane.push` pins the write key** when `DEAR_AGENT_GIT_PUSH_KEY` is set, so the clone can
   stay on the read key; locally the ambient git credential is used.
 - **Self-hosted hosts default to GitHub** unless `DEAR_AGENT_FORGE` says otherwise; the API base
   is derived from the remote host (GitHub Enterprise uses `/api/v3`, Gitea `/api/v1`, GitLab
-  `/api/v4`).
+  `/api/v4`, Bitbucket Cloud `/2.0`). Bitbucket Server/Data Center (self-hosted) is not
+  supported yet.
 - **The `gh` CLI path is kept** as an opt-in fallback and is not the default.
 - Verified live: a task on a GitHub remote opened a draft PR through the API with `GH_TOKEN`
   and no `gh` invocation.

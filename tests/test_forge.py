@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 from collections.abc import Mapping
 from pathlib import Path
@@ -8,6 +9,7 @@ import pytest
 
 from dear_agent.gitplane.forge import (
     AutoForge,
+    BitbucketApiForge,
     GiteaApiForge,
     GithubApiForge,
     GitlabApiForge,
@@ -75,7 +77,7 @@ def test_build_forge_without_a_token_fails_loudly() -> None:
 
 def test_build_forge_rejects_an_unknown_choice() -> None:
     with pytest.raises(GitError, match="unknown DEAR_AGENT_FORGE"):
-        build_forge({"DEAR_AGENT_FORGE": "bitbucket"})
+        build_forge({"DEAR_AGENT_FORGE": "sourcehut"})
 
 
 def test_github_forge_posts_a_draft_pr_and_reads_html_url(monkeypatch) -> None:
@@ -178,3 +180,73 @@ def test_auto_forge_without_a_token_fails_loudly(monkeypatch) -> None:
         AutoForge({}, http_post=http).open_draft_pr(
             repo_path=Path("/tmp/x"), branch="b", base_branch="main", title="t", body="b"
         )
+
+
+def test_bitbucket_host_maps_to_the_bitbucket_provider() -> None:
+    assert provider_for_host("bitbucket.org") == "bitbucket"
+    assert provider_for_host("git@bitbucket.org") == "bitbucket"
+
+
+def test_build_forge_selects_bitbucket_with_basic_credentials() -> None:
+    forge = build_forge(
+        {
+            "DEAR_AGENT_FORGE": "bitbucket",
+            "BITBUCKET_USERNAME": "dev@example.com",
+            "BITBUCKET_TOKEN": "token",
+        }
+    )
+
+    assert isinstance(forge, BitbucketApiForge)
+
+
+def test_build_forge_bitbucket_without_credentials_fails_loudly() -> None:
+    with pytest.raises(GitError, match="BITBUCKET_TOKEN"):
+        build_forge({"DEAR_AGENT_FORGE": "bitbucket", "BITBUCKET_TOKEN": "token"})
+
+
+def test_bitbucket_forge_posts_a_draft_pr_with_basic_auth(monkeypatch) -> None:
+    origin(monkeypatch, "git@bitbucket.org:my-workspace/my-repo.git")
+    http = Recorder(
+        created(
+            {
+                "id": 5,
+                "links": {
+                    "html": {"href": "https://bitbucket.org/my-workspace/my-repo/pull-requests/5"}
+                },
+            }
+        )
+    )
+    forge = BitbucketApiForge("dev@example.com", "token", http_post=http)
+
+    pr = forge.open_draft_pr(
+        repo_path=Path("/tmp/x"), branch="dear-agent/a", base_branch="main", title="t", body="b"
+    )
+
+    url, headers, body = http.calls[0]
+    assert url == "https://api.bitbucket.org/2.0/repositories/my-workspace/my-repo/pullrequests"
+    expected = base64.b64encode(b"dev@example.com:token").decode()
+    assert headers["Authorization"] == f"Basic {expected}"
+    payload = json.loads(body)
+    assert payload["draft"] is True
+    assert payload["source"] == {"branch": {"name": "dear-agent/a"}}
+    assert payload["destination"] == {"branch": {"name": "main"}}
+    assert pr.url.endswith("/pull-requests/5")
+    assert pr.number == 5
+    assert pr.is_draft
+
+
+def test_auto_forge_picks_bitbucket_from_the_remote(monkeypatch) -> None:
+    origin(monkeypatch, "git@bitbucket.org:my-workspace/my-repo.git")
+    http = Recorder(
+        created({"links": {"html": {"href": "https://bitbucket.org/x/y/pull-requests/1"}}})
+    )
+    forge = AutoForge(
+        {"BITBUCKET_USERNAME": "dev@example.com", "BITBUCKET_TOKEN": "token"}, http_post=http
+    )
+
+    pr = forge.open_draft_pr(
+        repo_path=Path("/tmp/x"), branch="b", base_branch="main", title="t", body="b"
+    )
+
+    assert http.calls[0][0].startswith("https://api.bitbucket.org/")
+    assert pr.is_draft
