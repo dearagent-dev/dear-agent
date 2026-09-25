@@ -139,7 +139,8 @@ still-open gaps:
   single-container runner the write key and forge token are visible to the harness (ADR 0007
   residual — use the sidecar for credential isolation).
 - **Ops**: the sidecar harness image is published from `deploy/harness/Containerfile`, but the
-  in-cluster PR path has not been verified live (needs provisioned secrets and a cluster).
+  in-cluster PR path has not been verified live. Runbook + preflight/enqueue script ready:
+  [`docs/verify-openshift.md`](docs/verify-openshift.md), `scripts/verify-openshift.sh`.
 
 ## Later
 

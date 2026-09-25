@@ -157,3 +157,7 @@ fixed by doing this:
 2. Pods failed with `CreateContainerConfigError` when the referenced Secret had no keys, so
    every `secretKeyRef` is now `optional: true`; the app fails closed on a missing token at
    startup rather than the pod refusing to schedule.
+
+For the **full end-to-end path** (inbound → queue → sidecar runner → harness → draft PR) follow
+[`../docs/verify-openshift.md`](../docs/verify-openshift.md) and its companion
+`scripts/verify-openshift.sh`. That is the M9.7 check and it is **not yet recorded as run**.
