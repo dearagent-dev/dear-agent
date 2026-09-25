@@ -59,10 +59,11 @@ the repository and injects the harness into it.
   `mise.toml`/`.tool-versions`. A declared **image** becomes the session image;
   `DEAR_AGENT_HARNESS_IMAGE` overrides it. `build`/`Containerfile` recipes are detected but not
   built yet (next slice).
-- **Harness injection.** An environment image does not contain the harness, so Dear Agent mounts
-  a portable **bundle** of it into the session automatically (OpenCode today): a shim on `PATH`
-  runs the bundled binary through its own loader. Set `DEAR_AGENT_HARNESS_BUNDLE=true` to force
-  it, `DEAR_AGENT_HARNESS_BUNDLE_IMAGE` for the source image, and
+- **Harness injection.** An environment image does not contain the harness, so Dear Agent either
+  mounts a portable **bundle** (OpenCode today: a shim on `PATH` runs the bundled binary through
+  its own loader) or **bootstraps** it with the harness's install recipe (Claude Code and Codex
+  via `npm install -g …`; the image must provide `npm`). Set `DEAR_AGENT_HARNESS_BUNDLE=true` to
+  force the bundle, `DEAR_AGENT_HARNESS_BUNDLE_IMAGE` for the source image, and
   `DEAR_AGENT_HARNESS_BUNDLE_CACHE` for its cache. The bundle mount is relabeled on SELinux and
   the session gives the harness a writable `HOME` on a tmpfs, so it works in an image with an
   unwritable home (e.g. UBI).

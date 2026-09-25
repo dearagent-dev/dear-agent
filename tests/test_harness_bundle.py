@@ -303,3 +303,37 @@ def test_harness_feature_bakes_the_harness_and_skips_the_bundle(monkeypatch, tmp
     _, session = wf.build_runner_and_session(None, NoSandbox(), repo_path=str(tmp_path))
 
     assert session.image == "env:featured"
+
+
+def test_harness_with_an_install_recipe_is_bootstrapped() -> None:
+    from dear_agent.runners.catalog import HarnessInfo
+    from dear_agent.sandbox import ContainerSandbox
+    from dear_agent.worker_factory import _maybe_install_harness
+
+    session = ContainerSandbox(image="env:1")
+    info = HarnessInfo(
+        id="claude",
+        binary="claude",
+        image="claude:img",
+        install=(("npm", "install", "-g", "@anthropic-ai/claude-code"),),
+    )
+
+    result = _maybe_install_harness(session, info, descriptor_image="env:1", auto=True)
+
+    assert result.setup == (("npm", "install", "-g", "@anthropic-ai/claude-code"),)
+
+
+def test_harness_is_not_bootstrapped_when_it_ships_its_own_image() -> None:
+    from dear_agent.runners.catalog import HarnessInfo
+    from dear_agent.sandbox import ContainerSandbox
+    from dear_agent.worker_factory import _maybe_install_harness
+
+    session = ContainerSandbox(image="claude:img")
+    info = HarnessInfo(
+        id="claude",
+        binary="claude",
+        image="claude:img",
+        install=(("npm", "install", "-g", "@anthropic-ai/claude-code"),),
+    )
+
+    assert _maybe_install_harness(session, info, descriptor_image="claude:img").setup == ()

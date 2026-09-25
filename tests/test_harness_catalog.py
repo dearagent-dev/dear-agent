@@ -104,3 +104,11 @@ def test_build_runner_auto_selects_an_available_agent(monkeypatch) -> None:
     runner = build_runner(None, sandbox=NoSandbox())
 
     assert isinstance(runner, OpenCodeRunner)
+
+
+def test_claude_and_codex_ship_bootstrap_recipes() -> None:
+    catalog = {info.id: info for info in EnvHarnessCatalog(env={}).list_harnesses()}
+
+    assert catalog["claude"].install == (("npm", "install", "-g", "@anthropic-ai/claude-code"),)
+    assert catalog["codex"].install == (("npm", "install", "-g", "@openai/codex"),)
+    assert catalog["opencode"].install == ()

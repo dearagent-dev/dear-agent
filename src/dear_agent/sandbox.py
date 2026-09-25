@@ -166,6 +166,9 @@ class ContainerSandbox:
     cap_drop: bool = True
     pids_limit: int | None = 512
     read_only: bool = False
+    # argv lists run in the session, in order, right after it starts and before the harness
+    # (ADR 0008 bootstrap): how a harness is installed into an environment that lacks it.
+    setup: tuple[tuple[str, ...], ...] = ()
     # SELinux handling for the bind mounts (Fedora/RHEL/OpenShift run enforcing):
     #   auto    - relabel the disposable worktree with :Z when SELinux is enabled; leave the
     #             credential mounts alone (relabel them explicitly with ``Z``/``z`` if needed)
@@ -236,6 +239,17 @@ class ContainerSandbox:
         if result.returncode != 0:
             raise SandboxError(result.stderr.strip() or f"cannot start the {self.image!r} session")
         self._container = name
+        for command in self.setup:
+            self._run_setup(command)
+
+    def _run_setup(self, command: tuple[str, ...]) -> None:
+        """Run one bootstrap command in the live session; fail loudly if it does not work."""
+        result = subprocess.run(
+            self.build_exec_argv(list(command)), capture_output=True, text=True, check=False
+        )
+        if result.returncode != 0:
+            detail = (result.stderr or result.stdout or "").strip()
+            raise SandboxError(f"session setup {command!r} failed: {detail[:300]}")
 
     def close(self) -> None:
         """End the session and remove the container. Safe to call more than once."""

@@ -138,7 +138,9 @@ environment and never assumed; the draft PR is opened through the forge **REST A
 - [x] **M9.5** Routing shares the session with the verify gate (`SessionProvider`).
 - [x] **M9.6** Feature/prebuild: `EnvironmentBuilder` builds a Containerfile with `podman` or a
   Dev Container with the `devcontainer` CLI (optionally adding a harness Feature); CI builds and
-  publishes the sidecar harness image (`deploy/harness/Containerfile`).
+  publishes the sidecar harness image (`deploy/harness/Containerfile`). Harness injection is
+  multi-harness: OpenCode via a portable bundle, Claude Code/Codex via bootstrap
+  (`HarnessInfo.install` → `ContainerSandbox.setup`).
 - [ ] **M9.7** Verify the in-cluster PR path live (sidecar runner + provisioned secrets):
   runbook + script ready ([`verify-openshift.md`](verify-openshift.md),
   `scripts/verify-openshift.sh`); run it and record the result.
