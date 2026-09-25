@@ -317,6 +317,18 @@ def test_build_runner_for_passes_the_sandbox_to_every_harness() -> None:
     assert opencode.sandbox is sandbox
 
 
+def test_build_runner_for_passes_the_sandbox_to_the_command_harness() -> None:
+    from dear_agent.runners.command import CommandRunner
+
+    info = HarnessInfo(id="command", binary="my-harness --flag")
+    sandbox = ContainerSandbox(image="img")
+
+    runner = build_runner_for(info, None, sandbox)
+
+    assert isinstance(runner, CommandRunner)
+    assert runner.sandbox is sandbox
+
+
 def _record_subprocess(calls: list[list[str]]):
     def run(argv, **kwargs: object) -> subprocess.CompletedProcess[str]:
         calls.append(list(argv))

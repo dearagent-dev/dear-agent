@@ -138,7 +138,6 @@ still-open gaps:
 - **Forge**: GitLab uses the `Draft:` title prefix (assumption); no Bitbucket; in the
   single-container runner the write key and forge token are visible to the harness (ADR 0007
   residual — use the sidecar for credential isolation).
-- **`command` harness** (`CommandRunner`) ignores the sandbox/session (pre-existing).
 - **Ops**: the sidecar harness image is published from `deploy/harness/Containerfile`, but the
   in-cluster PR path has not been verified live (needs provisioned secrets and a cluster).
 

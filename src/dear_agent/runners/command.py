@@ -1,38 +1,38 @@
 from __future__ import annotations
 
 import subprocess
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, field
 
 from dear_agent.queue.models import Task, TaskSpec
-from dear_agent.runners.harness import harness_env
+from dear_agent.runners.harness import default_execute, text
 from dear_agent.runners.worktree import RunResult, Worktree
+from dear_agent.sandbox import NoSandbox, Sandbox
 
 DEFAULT_TIMEOUT_SECONDS = 3600
+
+SubprocessRunner = Callable[[list[str], str, int], subprocess.CompletedProcess[str]]
 
 
 @dataclass(slots=True)
 class CommandRunner:
-    """A minimal runner that invokes one command in the worktree.
+    """A minimal runner that invokes one configured command in the worktree.
 
-    This is the base a harness adapter builds on: it is deliberately dumb and contains no
-    harness knowledge. The command must be provided by configuration, never derived from
-    an inbound message.
+    Like a harness adapter it runs inside the configured sandbox/session, so an
+    ``DEAR_AGENT_ISOLATION=podman`` run executes the command in the same container as the
+    ``verify`` gate (ADR 0008), and it never touches the user's tree. The command must come from
+    configuration, never from an inbound message.
     """
 
     command: list[str]
     timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS
+    sandbox: Sandbox = field(default_factory=NoSandbox)
+    _execute: SubprocessRunner = field(default=default_execute, repr=False)
 
     def run(self, task: Task, spec: TaskSpec, worktree: Worktree) -> RunResult:
+        argv = self.sandbox.wrap(list(self.command), worktree=worktree.path)
         try:
-            completed = subprocess.run(
-                self.command,
-                cwd=worktree.path,
-                env=harness_env(str(worktree.path)),
-                capture_output=True,
-                text=True,
-                timeout=self.timeout_seconds,
-                check=False,
-            )
+            completed = self._execute(argv, str(worktree.path), self.timeout_seconds)
         except FileNotFoundError:
             binary = self.command[0] if self.command else "command"
             return RunResult(
@@ -47,13 +47,12 @@ class CommandRunner:
                 branch=worktree.branch,
             )
         except subprocess.TimeoutExpired as exc:
-            output = exc.stdout or ""
-            errors = exc.stderr or ""
-            if isinstance(output, bytes):
-                output = output.decode(errors="replace")
-            if isinstance(errors, bytes):
-                errors = errors.decode(errors="replace")
-            return RunResult(exit_code=124, stdout=output, stderr=errors, branch=worktree.branch)
+            return RunResult(
+                exit_code=124,
+                stdout=text(exc.stdout),
+                stderr=text(exc.stderr),
+                branch=worktree.branch,
+            )
 
         return RunResult(
             exit_code=completed.returncode,
@@ -61,3 +60,6 @@ class CommandRunner:
             stderr=completed.stderr,
             branch=worktree.branch,
         )
+
+
+__all__ = ["DEFAULT_TIMEOUT_SECONDS", "CommandRunner"]

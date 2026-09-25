@@ -168,7 +168,7 @@ def build_runner_for(info: HarnessInfo, model: str | None, sandbox: Sandbox) -> 
     if info.id == "command":
         from dear_agent.runners.command import CommandRunner
 
-        return CommandRunner(command=info.binary.split())
+        return CommandRunner(command=info.binary.split(), sandbox=sandbox)
     if info.id == "claude":
         from dear_agent.runners.claude import ClaudeCodeRunner
 

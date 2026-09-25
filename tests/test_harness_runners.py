@@ -114,3 +114,29 @@ def test_no_sandbox_leaves_the_command_unwrapped(tmp_path: Path) -> None:
     OpenCodeRunner(_execute=fake_execute).run(make_task(), make_spec(), worktree)
 
     assert seen[0][0] == "opencode"
+
+
+def test_command_runner_satisfies_the_port() -> None:
+    from dear_agent.runners.command import CommandRunner
+
+    assert isinstance(CommandRunner(command=["my-harness"]), Runner)
+
+
+def test_command_runner_uses_the_sandbox(tmp_path: Path) -> None:
+    from dear_agent.runners.command import CommandRunner
+
+    worktree = make_worktree(tmp_path)
+    seen: list[list[str]] = []
+
+    def fake_execute(argv: list[str], cwd: str, timeout: int) -> subprocess.CompletedProcess:
+        seen.append(argv)
+        return subprocess.CompletedProcess(args=argv, returncode=0, stdout="", stderr="")
+
+    runner = CommandRunner(
+        command=["my-harness", "--flag"], sandbox=RecordingSandbox(), _execute=fake_execute
+    )
+    runner.run(make_task(), make_spec(), worktree)
+
+    assert seen[0][0] == "bwrap"
+    assert "my-harness" in seen[0]
+    assert "--flag" in seen[0]
