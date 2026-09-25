@@ -336,8 +336,8 @@ def build_worker(
         sandbox = sandbox or default_sandbox()
         routing = build_routing_runner(sandbox)
         if routing is not None:
-            # Routing builds one sandbox per class internally, so a single session cannot yet
-            # serve both the harness and the verifier (known gap, ADR 0008).
+            # The routing runner is a SessionProvider: the executor swaps the verifier's sandbox
+            # for the session of the harness it actually chose (ADR 0008).
             runner = routing
             session = sandbox
         else:
