@@ -9,6 +9,7 @@ from dear_agent.notify.escalate import Escalator, FailureKind
 from dear_agent.notify.notifier import Notifier, TaskLinks
 from dear_agent.queue.models import Evidence, Task, TaskSpec, TaskState
 from dear_agent.queue.port import Queue
+from dear_agent.review import Reviewer, ReviewVerdict
 from dear_agent.runners.port import Runner, SessionProvider
 from dear_agent.runners.worktree import RunResult, Worktree
 from dear_agent.sandbox import Sandbox
@@ -29,6 +30,7 @@ class ExecutedTask:
     run: RunResult
     failure: FailureKind | None = None
     detail: str | None = None
+    review: ReviewVerdict | None = None
 
     @property
     def ok(self) -> bool:
@@ -58,6 +60,8 @@ class TaskExecutor:
         events: EventLog | None = None,
         lease: timedelta = DEFAULT_LEASE,
         session: Sandbox | None = None,
+        reviewer: Reviewer | None = None,
+        debate_rounds: int = 0,
     ) -> None:
         self._queue = queue
         self._runner = runner
@@ -72,6 +76,10 @@ class TaskExecutor:
         # The environment session the runner and the verifier share (ADR 0008). The executor
         # owns its lifetime, so a failed run never leaks a container.
         self._session = session
+        # An optional adversarial reviewer of the diff, bounded to `debate_rounds` revisions
+        # (ADR 0010). Advisory and fail-open.
+        self._reviewer = reviewer
+        self._debate_rounds = debate_rounds
 
     def _emit(self, task_id: str, kind: str, **data: object) -> None:
         if self._events is None:
@@ -122,23 +130,22 @@ class TaskExecutor:
                 run_session = self._runner.session_for(task, spec)
                 if run_session is not None and active_verifier is not None:
                     active_verifier = replace(active_verifier, sandbox=run_session)
-            try:
-                run = self._runner.run(task, spec, worktree)
-            except Exception as exc:  # noqa: BLE001 - a broken runner must not wedge the task
-                run = RunResult(
-                    exit_code=1,
-                    stderr=f"runner raised {type(exc).__name__}",
-                    branch=worktree.branch,
-                )
+            review: ReviewVerdict | None = None
+            run = self._run_harness(task, spec, worktree)
             failure: FailureKind | None = None
             commit: str | None = None
             pr_url: str | None = None
 
             if run.ok:
                 # The harness succeeded. Run the task's verify gate first (only if the
-                # command is allowlisted), then publish. A git/forge error must fail the task
-                # cleanly, never leave it `running` until the lease expires.
+                # command is allowlisted), then an optional adversarial review (ADR 0010), then
+                # publish. A git/forge error must fail the task cleanly, never leave it
+                # `running` until the lease expires.
                 failure = self._verify(task, spec, worktree, active_verifier)
+                if failure is None:
+                    run, spec, failure, review = self._debate(
+                        task, spec, worktree, run, failure, active_verifier
+                    )
                 if failure is None:
                     try:
                         commit = self._git.commit_all(worktree, message=_commit_message(task, spec))
@@ -150,7 +157,7 @@ class TaskExecutor:
                                 worktree,
                                 base_branch=spec.base_branch,
                                 title=_pr_title(task),
-                                body=_pr_body(task),
+                                body=_pr_body(task, review),
                             )
                             pr_url = pr.url
                     except GitError:
@@ -174,6 +181,7 @@ class TaskExecutor:
                 run=run,
                 failure=failure,
                 detail=spec.verify if failure in _VERIFY_FAILURES else None,
+                review=review,
             )
             final = self._queue.transition(
                 running,
@@ -231,6 +239,57 @@ class TaskExecutor:
         self._emit(task.id, "verify.passed", command=spec.verify)
         return None
 
+    def _run_harness(self, task: Task, spec: TaskSpec, worktree: Worktree) -> RunResult:
+        try:
+            return self._runner.run(task, spec, worktree)
+        except Exception as exc:  # noqa: BLE001 - a broken runner must not wedge the task
+            return RunResult(
+                exit_code=1,
+                stderr=f"runner raised {type(exc).__name__}",
+                branch=worktree.branch,
+            )
+
+    def _debate(
+        self,
+        task: Task,
+        spec: TaskSpec,
+        worktree: Worktree,
+        run: RunResult,
+        failure: FailureKind | None,
+        verifier: CommandVerifier | None,
+    ) -> tuple[RunResult, TaskSpec, FailureKind | None, ReviewVerdict | None]:
+        """Let a second model review the diff; on "revise", re-run the harness (ADR 0010).
+
+        Bounded to ``debate_rounds`` revisions, advisory and fail-open: no reviewer, a review
+        error, or a re-run that fails leaves the prior change to be published.
+        """
+        if self._reviewer is None or self._debate_rounds <= 0:
+            return run, spec, failure, None
+        review: ReviewVerdict | None = None
+        remaining = self._debate_rounds
+        while True:
+            try:
+                diff = self._git.diff(worktree, spec.base_branch)
+                verdict = self._reviewer.review(diff=diff, instructions=spec.instructions)
+            except Exception:  # noqa: BLE001 - the reviewer is advisory; never wedge the task
+                self._emit(task.id, "review.skipped")
+                return run, spec, failure, review
+            review = verdict
+            self._emit(task.id, "review.approved" if verdict.approved else "review.revise")
+            if verdict.approved or remaining <= 0:
+                return run, spec, failure, review
+            remaining -= 1
+            revised = replace(
+                spec, instructions=_revise_instructions(spec.instructions, verdict.notes)
+            )
+            next_run = self._run_harness(task, revised, worktree)
+            if not next_run.ok:
+                return run, spec, failure, review
+            next_failure = self._verify(task, revised, worktree, verifier)
+            run, spec, failure = next_run, revised, next_failure
+            if next_failure is not None:
+                return run, spec, failure, review
+
     def _report(self, evidence: ExecutedTask, *, recipient: str | None) -> None:
         if not recipient:
             return
@@ -278,13 +337,26 @@ def _pr_title(task: Task) -> str:
     return task.subject or f"dear-agent: {task.id}"
 
 
-def _pr_body(task: Task) -> str:
-    return "\n".join(
-        [
-            f"Task: `{task.id}`",
-            "",
-            "Opened by an agent. A human reviews and lands it; agents never write `main`.",
-        ]
+def _pr_body(task: Task, review: ReviewVerdict | None = None) -> str:
+    lines = [
+        f"Task: `{task.id}`",
+        "",
+        "Opened by an agent. A human reviews and lands it; agents never write `main`.",
+    ]
+    if review is not None:
+        lines.append("")
+        lines.append(f"Reviewer: {'approved' if review.approved else 'requested a revision'}.")
+        if review.summary:
+            lines.append(f"_{review.summary}_")
+    return "\n".join(lines)
+
+
+def _revise_instructions(instructions: str, notes: str) -> str:
+    if not notes.strip():
+        return instructions
+    return (
+        f"{instructions}\n\n---\nA reviewer asked for a revision. Address these points:\n"
+        f"{notes.strip()}"
     )
 
 

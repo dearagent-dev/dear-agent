@@ -106,6 +106,12 @@ A model-backed decider is always wrapped so an outage, a missing key, or a low-c
 falls back to the deterministic `rules` (see `FallbackDecider`); the decider is advisory and
 never a boundary. Keep the model small and local for privacy and cost — it only picks a class.
 
+The same OpenAI-compatible plumbing powers the optional adversarial **reviewer** that looks at
+the diff before the draft PR (ADR 0010). Enable it with `DEAR_AGENT_REVIEWER=openai-compat` and
+`DEAR_AGENT_REVIEWER_BASE_URL`/`_MODEL`; point it at a **different model (or a local one)** than
+the harness for an independent opinion. It can ask for one bounded revision and then the PR is
+opened regardless; a reviewer outage never blocks the deliverable.
+
 ## Routing the harness per task
 
 The same decision can pick the *harness*, not just the model. Set `DEAR_AGENT_HARNESSES` to map

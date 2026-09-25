@@ -171,5 +171,6 @@ environment and never assumed; the draft PR is opened through the forge **REST A
 - [x] Self-hosted decision model: any local OpenAI-compatible server (llama.cpp, vLLM, Colibri,
   self-hosted Jev) is the reference decider via `openai-compat`; loopback endpoints are marked
   local and need no key. See [providers.md](providers.md#self-hosted-reference-decider).
-- [ ] Multi-provider debate (two models review each other before a PR).
+- [x] Multi-provider debate: an optional second model reviews the diff before the PR and can
+  request one bounded revision ([ADR 0010](decisions/0010-adversarial-review.md)).
 - [x] Per-project policies (which repos, which providers, which tasks allowed).

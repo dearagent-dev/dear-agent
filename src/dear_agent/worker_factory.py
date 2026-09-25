@@ -14,6 +14,7 @@ from dear_agent.notify.notifier import Notifier
 from dear_agent.queue.models import Task, TaskSpec
 from dear_agent.queue.port import Queue
 from dear_agent.repo import RepoPreparer
+from dear_agent.review import build_reviewer
 from dear_agent.runners.port import Runner
 from dear_agent.sandbox import (
     BubblewrapSandbox,
@@ -411,6 +412,8 @@ def build_worker(
         verifier=verifier,
         events=events,
         session=session,
+        reviewer=build_reviewer(),
+        debate_rounds=int(os.environ.get("DEAR_AGENT_DEBATE_ROUNDS", "1")),
     )
     return TaskWorker(
         queue=queue,
