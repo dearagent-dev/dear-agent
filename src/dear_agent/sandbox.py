@@ -20,12 +20,15 @@ class Mount:
 
     ``host`` may start with ``~`` (the host home). ``container`` may start with ``~`` to mean
     the image's home (``ContainerSandbox.container_home``), so the same metadata works for an
-    image whose user is ``root`` or ``node``.
+    image whose user is ``root`` or ``node``. ``relabel`` requests an SELinux ``Z`` relabel of
+    this mount even under the ``auto`` policy; use it for paths Dear Agent owns (the harness
+    bundle), never for the operator's credential files.
     """
 
     host: str
     container: str
     readonly: bool = True
+    relabel: bool = False
 
 
 @dataclass(slots=True, frozen=True)
@@ -280,7 +283,7 @@ class ContainerSandbox:
             host = str(Path(mount.host).expanduser())
             container = _container_path(mount.container, self.container_home)
             mode = "ro" if mount.readonly else "rw"
-            command += ["--volume", f"{host}:{container}:{mode}{self._mount_relabel()}"]
+            command += ["--volume", f"{host}:{container}:{mode}{self._mount_relabel(mount)}"]
         for env_name in self.env_allowlist:
             if env_name in os.environ:
                 command += ["--env", f"{env_name}={os.environ[env_name]}"]
@@ -299,8 +302,12 @@ class ContainerSandbox:
             return ",Z"
         return ""
 
-    def _mount_relabel(self) -> str:
-        return f",{self.selinux}" if self.selinux in ("z", "Z") else ""
+    def _mount_relabel(self, mount: Mount) -> str:
+        if self.selinux in ("z", "Z"):
+            return f",{self.selinux}"
+        if mount.relabel and self.selinux == "auto" and _selinux_enabled():
+            return ",Z"
+        return ""
 
 
 _SELINUX_MODES = frozenset({"auto", "none", "z", "Z", "disable"})

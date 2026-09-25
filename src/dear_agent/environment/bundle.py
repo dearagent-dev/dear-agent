@@ -111,10 +111,15 @@ class HarnessBundle:
         self.shim.chmod(self.shim.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
     def mounts(self) -> tuple[Mount, ...]:
-        """The mounts that expose the bundle inside an environment session."""
+        """The mounts that expose the bundle inside an environment session.
+
+        Marked ``relabel`` because the cache is Dear Agent's own; unlike the operator's
+        credential mounts, relabeling it on SELinux is safe and lets the mounted shim run
+        without requiring ``DEAR_AGENT_HARNESS_CONTAINER_SELINUX=Z``.
+        """
         return (
-            Mount(str(self.root), self.bundle_dir, readonly=True),
-            Mount(str(self.shim), f"{self.bin_dir}/{self.binary}", readonly=True),
+            Mount(str(self.root), self.bundle_dir, readonly=True, relabel=True),
+            Mount(str(self.shim), f"{self.bin_dir}/{self.binary}", readonly=True, relabel=True),
         )
 
 

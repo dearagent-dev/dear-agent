@@ -63,8 +63,9 @@ the repository and injects the harness into it.
   a portable **bundle** of it into the session automatically (OpenCode today): a shim on `PATH`
   runs the bundled binary through its own loader. Set `DEAR_AGENT_HARNESS_BUNDLE=true` to force
   it, `DEAR_AGENT_HARNESS_BUNDLE_IMAGE` for the source image, and
-  `DEAR_AGENT_HARNESS_BUNDLE_CACHE` for its cache. On SELinux hosts use
-  `DEAR_AGENT_HARNESS_CONTAINER_SELINUX=Z`.
+  `DEAR_AGENT_HARNESS_BUNDLE_CACHE` for its cache. The bundle mount is relabeled on SELinux and
+  the session gives the harness a writable `HOME` on a tmpfs, so it works in an image with an
+  unwritable home (e.g. UBI).
 - **Provisioning vs prebuild.** In the fallback (no descriptor) the harness installs the
   toolchain itself; the reproducible path is to compose a Dev Container **Feature** (or a
   `Containerfile`) with the harness and prebuild the image (next slice).

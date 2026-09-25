@@ -136,6 +136,26 @@ def test_container_auto_leaves_mounts_alone_on_selinux(monkeypatch) -> None:
     assert "/h/.cfg:/root/.cfg:ro" in wrapped
 
 
+def test_container_auto_relabels_a_marked_mount(monkeypatch) -> None:
+    monkeypatch.setattr("dear_agent.sandbox._selinux_enabled", lambda: True)
+
+    wrapped = container_argv(
+        ["true"], selinux="auto", mounts=(Mount("/h/.cfg", "/root/.cfg", relabel=True),)
+    )
+
+    assert "/h/.cfg:/root/.cfg:ro,Z" in wrapped
+
+
+def test_container_auto_does_not_relabel_a_marked_mount_without_selinux(monkeypatch) -> None:
+    monkeypatch.setattr("dear_agent.sandbox._selinux_enabled", lambda: False)
+
+    wrapped = container_argv(
+        ["true"], selinux="auto", mounts=(Mount("/h/.cfg", "/root/.cfg", relabel=True),)
+    )
+
+    assert "/h/.cfg:/root/.cfg:ro" in wrapped
+
+
 def test_container_relabels_every_mount_with_Z() -> None:
     wrapped = container_argv(["true"], selinux="Z", mounts=(Mount("/h/.cfg", "/root/.cfg"),))
 
