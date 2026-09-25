@@ -108,7 +108,33 @@ def build_runner_and_session(
     session = _maybe_inject_bundle(
         session, info, descriptor_image=descriptor_image, auto=not harness_baked
     )
+    session = _maybe_install_harness(
+        session, info, descriptor_image=descriptor_image, auto=not harness_baked
+    )
     return build_runner_for(info, provider_model, session), session
+
+
+def _maybe_install_harness(
+    session: Sandbox,
+    info: HarnessInfo,
+    *,
+    descriptor_image: str | None = None,
+    auto: bool = True,
+) -> Sandbox:
+    """Bootstrap a harness into a repository-declared environment (ADR 0008).
+
+    A harness with no bundle (Claude Code, Codex) is installed by its recipe in the session
+    before it runs. Only when a *different* environment image is in use (``auto``); a harness
+    that ships its own image needs nothing. The environment image must provide the recipe's
+    runtime (e.g. ``npm``).
+    """
+    from dataclasses import replace
+
+    if not isinstance(session, ContainerSandbox) or not info.install:
+        return session
+    if not auto or not descriptor_image or descriptor_image == info.image:
+        return session
+    return replace(session, setup=session.setup + info.install)
 
 
 def _env_flag(env: Mapping[str, str], name: str) -> bool:

@@ -394,3 +394,32 @@ def test_container_session_close_removes_the_container_once(monkeypatch) -> None
 def test_container_exec_before_the_session_starts_raises() -> None:
     with pytest.raises(SandboxError):
         ContainerSandbox(image="img").build_exec_argv(["true"])
+
+
+def test_container_session_runs_setup_before_the_harness(monkeypatch) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.setattr("dear_agent.sandbox.subprocess.run", _record_subprocess(calls))
+    sandbox = ContainerSandbox(
+        image="img:latest", selinux="none", setup=(("npm", "install", "-g", "pkg"),)
+    )
+
+    argv = sandbox.wrap(["my-harness"], worktree=WORKTREE)
+
+    execs = [c for c in calls if len(c) > 1 and c[1] == "exec"]
+    assert execs[0][-4:] == ["npm", "install", "-g", "pkg"]
+    assert argv[-1] == "my-harness"
+
+
+def test_container_setup_failure_raises(monkeypatch) -> None:
+    def run(argv, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if len(argv) > 1 and argv[1] == "exec":
+            return subprocess.CompletedProcess(
+                args=list(argv), returncode=1, stdout="", stderr="npm: not found"
+            )
+        return subprocess.CompletedProcess(args=list(argv), returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr("dear_agent.sandbox.subprocess.run", run)
+    sandbox = ContainerSandbox(image="img", setup=(("npm", "install", "-g", "claude"),))
+
+    with pytest.raises(SandboxError, match="setup"):
+        sandbox.wrap(["claude"], worktree=WORKTREE)

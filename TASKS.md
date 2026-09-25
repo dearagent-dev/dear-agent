@@ -159,8 +159,10 @@ The execution environment ([ADR 0008](docs/decisions/0008-execution-environment.
 ([ADR 0009](docs/decisions/0009-forge-api.md)) slices are on `main`; these are the deliberate,
 still-open gaps:
 
-- **Bundle**: OpenCode only and an explicit recipe (no `ldd` auto-discovery); the SELinux
-  relabel and the writable home are now handled by the session.
+- **Harness injection**: OpenCode uses a portable **bundle**; Claude Code and Codex use
+  **bootstrap** (`HarnessInfo.install` → `ContainerSandbox.setup`, `npm install -g …`), so the
+  environment image must provide `npm`. The bundle has no `ldd` auto-discovery; the SELinux
+  relabel and the writable home are handled by the session.
 - **Forge**: GitLab uses the `Draft:` title prefix (assumption); Bitbucket Server (self-hosted)
   is not supported; in the single-container runner the write key and forge token are visible to
   the harness (ADR 0007 residual — use the sidecar for credential isolation).

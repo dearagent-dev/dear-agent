@@ -68,8 +68,10 @@ environment; the environment is described by the repository, not by Dear Agent.*
      loader and libraries) and mount it into any environment. Verified: the musl-linked OpenCode
      binary runs in a glibc UBI container when invoked through its bundled
      `ld-musl-x86_64.so.1` with `LD_LIBRARY_PATH` pointing at the bundle. No build, no network.
-   - **Bootstrap (run-time fallback):** run the harness's own installer at session start. Needs
-     network and a shell; not hermetic.
+   - **Bootstrap (run-time fallback):** run the harness's own install recipe in the session at
+     start. Implemented as `HarnessInfo.install` (argv lists) run by `ContainerSandbox.setup`
+     before the harness, for a harness with no bundle (Claude Code, Codex via `npm`). Needs the
+     recipe's runtime in the image (e.g. `node`/`npm`); not hermetic.
 
 4. **Where the session runs is a port (`RunnerHost`), not a branch.** Local `podman`, a
    self-hosted Kubernetes/OpenShift Job, and a self-hosted CI runner are all in scope. **Hosted
@@ -115,6 +117,10 @@ environment; the environment is described by the repository, not by Dear Agent.*
 - **The descriptor cannot escape the checkout.** A `build.dockerfile`/`build.context` that
   resolves outside the repository is rejected, so a malicious descriptor cannot hand host files
   to `podman build` as build context.
+- **Multi-harness injection is a mix of mechanisms.** OpenCode uses the bundle (no network);
+  Claude Code and Codex use **bootstrap** (`HarnessInfo.install` → `ContainerSandbox.setup`), so
+  the repository's environment image must provide `npm`. A harness whose recipe cannot run in the
+  image fails the task loudly (`HARNESS_FAILED`) rather than silently.
 - **In OpenShift the image must be prebuilt** (or the bundle mounted through an `initContainer`
   + `emptyDir`), because a restricted SCC forbids nested containers. The runner Job then *is* the
   environment; the session degrades to "the pod".

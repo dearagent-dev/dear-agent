@@ -35,6 +35,10 @@ class HarnessInfo:
     image: str | None = None
     mounts: tuple[Mount, ...] = ()
     container_env: tuple[str, ...] = ()
+    # Bootstrapping recipes (ADR 0008): argv lists run in the session, in order, before the
+    # harness, so a harness can be installed into a repository-declared environment that does
+    # not contain it. Empty when the harness ships its own image (or a bundle is used).
+    install: tuple[tuple[str, ...], ...] = ()
 
 
 @runtime_checkable
@@ -73,8 +77,14 @@ class EnvHarnessCatalog:
                     Mount("~/.claude", "~/.claude", False),
                     Mount("~/.claude.json", "~/.claude.json", False),
                 ),
+                install=(("npm", "install", "-g", "@anthropic-ai/claude-code"),),
             ),
-            HarnessInfo(id="codex", binary="codex", accepts_model=False),
+            HarnessInfo(
+                id="codex",
+                binary="codex",
+                accepts_model=False,
+                install=(("npm", "install", "-g", "@openai/codex"),),
+            ),
         ]
         command = self.env.get("DEAR_AGENT_HARNESS_COMMAND")
         if command:
