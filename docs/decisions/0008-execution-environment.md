@@ -109,8 +109,12 @@ environment; the environment is described by the repository, not by Dear Agent.*
   the runner, the verifier and the executor.
 - **`TaskExecutor` gains a session lifecycle** (`close()` in its `finally`), so a container is
   not leaked on a failed run.
-- **Routing (`DEAR_AGENT_HARNESSES`) is a known gap:** each class builds its own sandbox, so a
-  single session cannot yet serve routing. Documented, not fixed here.
+- **Routing shares the session.** `RoutingRunner` is a `SessionProvider`: it caches the per-task
+  choice and hands the chosen harness's session to the verifier, so a routed run verifies in the
+  environment it ran in.
+- **The descriptor cannot escape the checkout.** A `build.dockerfile`/`build.context` that
+  resolves outside the repository is rejected, so a malicious descriptor cannot hand host files
+  to `podman build` as build context.
 - **In OpenShift the image must be prebuilt** (or the bundle mounted through an `initContainer`
   + `emptyDir`), because a restricted SCC forbids nested containers. The runner Job then *is* the
   environment; the session degrades to "the pod".
