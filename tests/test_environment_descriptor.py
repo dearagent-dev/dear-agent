@@ -115,3 +115,35 @@ def test_devcontainer_wins_over_a_containerfile(tmp_path: Path) -> None:
     write(tmp_path / ".devcontainer/devcontainer.json", '{"image": "env:1"}')
 
     assert detect(tmp_path).kind == "devcontainer"
+
+
+def test_devcontainer_build_escaping_the_repository_is_rejected(tmp_path: Path) -> None:
+    write(
+        tmp_path / ".devcontainer/devcontainer.json",
+        '{"build": {"dockerfile": "../../evil/Dockerfile"}}',
+    )
+
+    descriptor = detect(tmp_path)
+
+    assert descriptor.kind == "devcontainer"
+    assert not descriptor.has_build
+    assert "outside the repository" in descriptor.detail
+
+
+def test_devcontainer_absolute_build_path_is_rejected(tmp_path: Path) -> None:
+    write(
+        tmp_path / ".devcontainer/devcontainer.json",
+        '{"build": {"dockerfile": "/etc/passwd"}}',
+    )
+
+    assert not detect(tmp_path).has_build
+
+
+def test_devcontainer_context_escaping_the_repository_is_rejected(tmp_path: Path) -> None:
+    write(tmp_path / "Dockerfile", "FROM scratch\n")
+    write(
+        tmp_path / ".devcontainer/devcontainer.json",
+        '{"build": {"dockerfile": "../Dockerfile", "context": "../../.."}}',
+    )
+
+    assert not detect(tmp_path).has_build

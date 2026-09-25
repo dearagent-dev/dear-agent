@@ -53,7 +53,7 @@ def detect(root: str | Path) -> EnvironmentDescriptor:
     ``Containerfile``/``Dockerfile``, tool-version files. No descriptor is not an error: the
     fallback runs the harness image and lets the harness provision the toolchain.
     """
-    base = Path(root)
+    base = Path(root).resolve()
     for finder in (_find_devcontainer, _find_ansible_ee, _find_containerfile, _find_tool_versions):
         descriptor = finder(base)
         if descriptor is not None:
@@ -65,15 +65,15 @@ def _find_devcontainer(root: Path) -> EnvironmentDescriptor | None:
     for rel in DEV_CONTAINER_LOCATIONS:
         candidate = root / rel
         if candidate.is_file():
-            return _parse_devcontainer(candidate)
+            return _parse_devcontainer(candidate, root)
     container_dir = root / ".devcontainer"
     if container_dir.is_dir():
         for candidate in sorted(container_dir.glob("*/devcontainer.json")):
-            return _parse_devcontainer(candidate)
+            return _parse_devcontainer(candidate, root)
     return None
 
 
-def _parse_devcontainer(path: Path) -> EnvironmentDescriptor:
+def _parse_devcontainer(path: Path, root: Path) -> EnvironmentDescriptor:
     try:
         data = _load_jsonc(path)
     except (OSError, ValueError) as exc:
@@ -88,6 +88,12 @@ def _parse_devcontainer(path: Path) -> EnvironmentDescriptor:
     recipe = _devcontainer_build(data, path.parent)
     if recipe is not None:
         dockerfile, context = recipe
+        # The descriptor is repository-controlled, so a build path that escapes the checkout
+        # could hand host files to `podman build` as context. Reject it.
+        if not (_within(root, dockerfile) and _within(root, context)):
+            return EnvironmentDescriptor(
+                kind="devcontainer", path=path, detail="build path outside the repository"
+            )
         detail = f"build {dockerfile.name}"
         features = _features_note(data)
         if features:
@@ -100,6 +106,10 @@ def _parse_devcontainer(path: Path) -> EnvironmentDescriptor:
             detail=detail,
         )
     return EnvironmentDescriptor(kind="devcontainer", path=path, detail="no image or build")
+
+
+def _within(root: Path, path: Path) -> bool:
+    return path == root or path.is_relative_to(root)
 
 
 def _devcontainer_build(data: dict[str, Any], directory: Path) -> tuple[Path, Path] | None:
