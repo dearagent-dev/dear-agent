@@ -97,8 +97,8 @@ an `dear-agent/<slug>` branch and a draft PR.
 
 Only the **control process** commits, pushes and opens the PR — never the harness (ADR 0007).
 The PR is opened through the forge's REST API behind a `Forge` seam
-(`gitplane/forge.py`: GitHub/GitLab/Gitea), selected from the repository's remote host or
-`DEAR_AGENT_FORGE`, with a per-provider token passed by environment variable and no CLI
+(`gitplane/forge.py`: GitHub/GitLab/Gitea/Bitbucket), selected from the repository's remote host
+or `DEAR_AGENT_FORGE`, with a per-provider token passed by environment variable and no CLI
 dependency (ADR 0009).
 
 ### Notifier

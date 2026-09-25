@@ -65,6 +65,7 @@ One credential per purpose, least privilege, referenced by `secretKeyRef`:
 |---|---|---|---|
 | `dear-agent-git-read` | `ssh-privatekey` | clone/read repositories | read-only deploy key |
 | `dear-agent-git-push` | `ssh-privatekey` | push `dear-agent/<slug>`, open draft PR | write deploy key, `dear-agent/*` only |
+| `dear-agent-forge` | `GH_TOKEN` / `GITLAB_TOKEN` / `GITEA_TOKEN` / `BITBUCKET_TOKEN`(+`BITBUCKET_USERNAME`) | open the draft PR/MR via the API (ADR 0009) | pull-request write on the target repos |
 | `dear-agent-jmap` | `FASTMAIL_API_TOKEN` | read/send mail | `Email` (+ `Email submission`) |
 | `dear-agent-model` | provider-specific | model calls | scoped provider key |
 | `dear-agent-postgres` | `POSTGRESQL_*`, `DATABASE_URL` | database credentials | one database, least privilege |
@@ -78,6 +79,8 @@ oc create secret generic dear-agent-git-read \
   --from-file=ssh-privatekey="$HOME/.ssh/dear_agent_read"
 oc create secret generic dear-agent-git-push \
   --from-file=ssh-privatekey="$HOME/.ssh/dear_agent_push"
+oc create secret generic dear-agent-forge \
+  --from-literal=GH_TOKEN="$FORGE_TOKEN"
 oc create secret generic dear-agent-model \
   --from-literal=API_KEY="$MODEL_API_KEY"
 oc create secret generic dear-agent-postgres \

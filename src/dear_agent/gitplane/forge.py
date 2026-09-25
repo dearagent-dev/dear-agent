@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import os
 import subprocess
@@ -86,6 +87,8 @@ def provider_for_host(host: str) -> str:
         return "github"
     if "gitlab" in lowered:
         return "gitlab"
+    if "bitbucket" in lowered:
+        return "bitbucket"
     if any(marker in lowered for marker in ("gitea", "forgejo", "codeberg")):
         return "gitea"
     return "github"
@@ -221,6 +224,56 @@ class GiteaApiForge:
 
 
 @dataclass(slots=True)
+class BitbucketApiForge:
+    """Opens a draft PR through the Bitbucket Cloud REST API.
+
+    Authentication is Basic with the Atlassian account email and an API token (app passwords
+    are deprecated). Bitbucket Cloud supports native draft PRs via ``"draft": true``.
+    """
+
+    username: str
+    token: str
+    http_post: HttpPost = field(default=default_http_post, repr=False)
+
+    def open_draft_pr(
+        self, *, repo_path: Path, branch: str, base_branch: str, title: str, body: str
+    ) -> PullRequest:
+        remote = parse_remote(read_origin(repo_path))
+        payload = json.dumps(
+            {
+                "title": title,
+                "source": {"branch": {"name": branch}},
+                "destination": {"branch": {"name": base_branch}},
+                "description": body,
+                "draft": True,
+            }
+        )
+        credentials = base64.b64encode(f"{self.username}:{self.token}".encode()).decode()
+        headers = {
+            "Authorization": f"Basic {credentials}",
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        }
+
+        def parse(data: dict[str, object]) -> PullRequest:
+            links = data.get("links") or {}
+            html = links.get("html") if isinstance(links, dict) else None  # type: ignore[union-attr]
+            url = html.get("href") if isinstance(html, dict) else None
+            if not url:
+                raise GitError("bitbucket API returned no PR URL")
+            return PullRequest(url=str(url), number=data.get("id"), is_draft=True)
+
+        return _post(
+            self.http_post,
+            f"https://api.bitbucket.org/2.0/repositories/{remote.path}/pullrequests",
+            headers,
+            payload,
+            "bitbucket",
+            parse,
+        )
+
+
+@dataclass(slots=True)
 class AutoForge:
     """Picks the API forge from the repository's remote host, per task."""
 
@@ -231,12 +284,8 @@ class AutoForge:
         self, *, repo_path: Path, branch: str, base_branch: str, title: str, body: str
     ) -> PullRequest:
         remote = parse_remote(read_origin(repo_path))
-        provider = provider_for_host(remote.host)
-        cls, token_envs = _FORGES[provider]
-        token = _first_env(self.env, token_envs)
-        if token is None:
-            raise GitError(f"no {provider} token; set one of {', '.join(token_envs)}")
-        return cls(token, http_post=self.http_post).open_draft_pr(
+        forge = _forge_for(provider_for_host(remote.host), self.env, self.http_post)
+        return forge.open_draft_pr(
             repo_path=repo_path, branch=branch, base_branch=base_branch, title=title, body=body
         )
 
@@ -246,6 +295,29 @@ _FORGES: dict[str, tuple[type, tuple[str, ...]]] = {
     "gitlab": (GitlabApiForge, ("GITLAB_TOKEN",)),
     "gitea": (GiteaApiForge, ("GITEA_TOKEN",)),
 }
+PROVIDERS = frozenset({*_FORGES, "bitbucket"})
+
+
+def _forge_for(provider: str, env: Mapping[str, str], http_post: HttpPost) -> Forge:
+    """Build the API forge for ``provider`` from ``env``, or fail with a clear message."""
+    if provider == "bitbucket":
+        # Bitbucket Cloud authenticates with Basic (account email + API token); app passwords
+        # are deprecated.
+        token = _first_env(env, ("BITBUCKET_TOKEN",))
+        username = _first_env(env, ("BITBUCKET_USERNAME", "BITBUCKET_EMAIL", "ATLASSIAN_EMAIL"))
+        if token is None or username is None:
+            raise GitError(
+                "bitbucket needs BITBUCKET_TOKEN and BITBUCKET_USERNAME (or BITBUCKET_EMAIL)"
+            )
+        return BitbucketApiForge(username, token, http_post=http_post)
+    selected = _FORGES.get(provider)
+    if selected is None:
+        raise GitError(f"unknown forge provider {provider!r}")
+    cls, token_envs = selected
+    token = _first_env(env, token_envs)
+    if token is None:
+        raise GitError(f"no {provider} token; set one of {', '.join(token_envs)}")
+    return cls(token, http_post=http_post)
 
 
 def build_forge(
@@ -254,8 +326,8 @@ def build_forge(
     """Build the forge that opens the draft PR/MR.
 
     ``DEAR_AGENT_FORGE`` selects the mechanism: ``auto`` (default) picks the API forge from each
-    repository's remote host; ``github``/``gitlab``/``gitea`` force one API forge; ``gh`` keeps
-    the legacy ``gh`` CLI. No ``gh`` binary is needed for the API forges.
+    repository's remote host; ``github``/``gitlab``/``gitea``/``bitbucket`` force one API forge;
+    ``gh`` keeps the legacy ``gh`` CLI. No ``gh`` binary is needed for the API forges.
     """
     source = env if env is not None else os.environ
     post = http_post or default_http_post
@@ -266,23 +338,22 @@ def build_forge(
         return GhForge()
     if choice == "auto":
         return AutoForge(source, http_post=post)
-    selected = _FORGES.get(choice)
-    if selected is None:
-        raise GitError(f"unknown DEAR_AGENT_FORGE {choice!r}; expected auto|github|gitlab|gitea|gh")
-    cls, token_envs = selected
-    token = _first_env(source, token_envs)
-    if token is None:
-        raise GitError(f"DEAR_AGENT_FORGE={choice} needs one of {', '.join(token_envs)}")
-    return cls(token, http_post=post)
+    if choice not in PROVIDERS:
+        raise GitError(
+            f"unknown DEAR_AGENT_FORGE {choice!r}; expected auto|{'|'.join(sorted(PROVIDERS))}|gh"
+        )
+    return _forge_for(choice, source, post)
 
 
 __all__ = [
     "AutoForge",
+    "BitbucketApiForge",
     "GiteaApiForge",
     "GitlabApiForge",
     "GithubApiForge",
     "HttpPost",
     "HttpResponse",
+    "PROVIDERS",
     "Remote",
     "build_forge",
     "default_http_post",

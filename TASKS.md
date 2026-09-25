@@ -135,9 +135,9 @@ still-open gaps:
 
 - **Bundle**: OpenCode only and an explicit recipe (no `ldd` auto-discovery); needs
   `DEAR_AGENT_HARNESS_CONTAINER_SELINUX=Z` and a writable `HOME`.
-- **Forge**: GitLab uses the `Draft:` title prefix (assumption); no Bitbucket; in the
-  single-container runner the write key and forge token are visible to the harness (ADR 0007
-  residual — use the sidecar for credential isolation).
+- **Forge**: GitLab uses the `Draft:` title prefix (assumption); Bitbucket Server (self-hosted)
+  is not supported; in the single-container runner the write key and forge token are visible to
+  the harness (ADR 0007 residual — use the sidecar for credential isolation).
 - **Ops**: the sidecar harness image is published from `deploy/harness/Containerfile`, but the
   in-cluster PR path has not been verified live. Runbook + preflight/enqueue script ready:
   [`docs/verify-openshift.md`](docs/verify-openshift.md), `scripts/verify-openshift.sh`.
@@ -194,9 +194,10 @@ still-open gaps:
   environment image (Containerfile via `podman build`, Dev Container via `devcontainer build`);
   `DEAR_AGENT_ENVIRONMENT_IMAGE` (default `dear-agent-env:latest`) names it and
   `DEAR_AGENT_HARNESS_FEATURE` adds a harness Dev Container Feature so the harness is baked in.
-- Forge (ADR 0009): `DEAR_AGENT_FORGE=auto|github|gitlab|gitea|gh` (default `auto` opens the
-  PR/MR through the forge REST API, chosen from the repository remote host; `gh` keeps the CLI).
-  Tokens by provider: `GH_TOKEN`/`GITHUB_TOKEN`, `GITLAB_TOKEN`, `GITEA_TOKEN`. Environment
+- Forge (ADR 0009): `DEAR_AGENT_FORGE=auto|github|gitlab|gitea|bitbucket|gh` (default `auto`
+  opens the PR/MR through the forge REST API, chosen from the repository remote host; `gh` keeps
+  the CLI). Tokens by provider: `GH_TOKEN`/`GITHUB_TOKEN`, `GITLAB_TOKEN`, `GITEA_TOKEN`,
+  `BITBUCKET_TOKEN` + `BITBUCKET_USERNAME`/`BITBUCKET_EMAIL`. Environment
   descriptor (ADR 0008): a repo-declared Dev Container/EE/Containerfile image is used for the
   session; `DEAR_AGENT_HARNESS_IMAGE` overrides it.
 - Git push key: `DEAR_AGENT_GIT_PUSH_KEY` (path to a write deploy key used only for the push;
