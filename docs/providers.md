@@ -81,6 +81,31 @@ Configure with `DEAR_AGENT_DECIDER=rules|jev|openai-compat|none` (default `rules
 confidence below which the rules answer is used, and `DEAR_AGENT_DECIDER_LOG` records every
 decision for calibration.
 
+### Self-hosted reference decider
+
+The decision layer has no direct-LLM path and asks only small, typed questions, so the reference
+self-hosted decider is **any local OpenAI-compatible server** — `llama.cpp`'s `llama-server`,
+`vllm serve`, Colibri's `coli serve`, or a self-hosted Jev. There is no bespoke adapter to write;
+`openai-compat` is the adapter, and the catalog marks a loopback endpoint as `local` so the
+policy prefers it and no API key is required.
+
+```sh
+# e.g. llama.cpp: a small instruct model is enough (the decider answers choices/scores, not code)
+llama-server -m qwen3-4b-instruct.gguf --port 8080
+
+export DEAR_AGENT_DECIDER=openai-compat
+export DEAR_AGENT_DECIDER_BASE_URL=http://127.0.0.1:8080/v1
+export DEAR_AGENT_DECIDER_MODEL=qwen3-4b-instruct
+# export DEAR_AGENT_DECIDER_THRESHOLD=0.6      # below this, the rules answer wins
+# export DEAR_AGENT_DECIDER_LOG=postgres       # persist decisions for calibration
+
+dear-agent decide "audit the auth module for timing side-channels"
+```
+
+A model-backed decider is always wrapped so an outage, a missing key, or a low-confidence answer
+falls back to the deterministic `rules` (see `FallbackDecider`); the decider is advisory and
+never a boundary. Keep the model small and local for privacy and cost — it only picks a class.
+
 ## Routing the harness per task
 
 The same decision can pick the *harness*, not just the model. Set `DEAR_AGENT_HARNESSES` to map

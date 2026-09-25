@@ -168,6 +168,8 @@ environment and never assumed; the draft PR is opened through the forge **REST A
   opens the EventSource and re-polls (idempotently) on an `Email` `StateChange`.
 - [x] IMAP transport as a secondary backend (`transports/imap.py`, `imap/`, `smtp/`;
   `DEAR_AGENT_BACKEND=imap`).
-- [ ] Self-hosted decision model (Simple Jev / Laya / NanoJev) as the reference local decider.
+- [x] Self-hosted decision model: any local OpenAI-compatible server (llama.cpp, vLLM, Colibri,
+  self-hosted Jev) is the reference decider via `openai-compat`; loopback endpoints are marked
+  local and need no key. See [providers.md](providers.md#self-hosted-reference-decider).
 - [ ] Multi-provider debate (two models review each other before a PR).
 - [x] Per-project policies (which repos, which providers, which tasks allowed).
