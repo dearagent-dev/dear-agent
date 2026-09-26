@@ -141,9 +141,12 @@ environment and never assumed; the draft PR is opened through the forge **REST A
   publishes the sidecar harness image (`deploy/harness/Containerfile`). Harness injection is
   multi-harness: OpenCode via a portable bundle, Claude Code/Codex via bootstrap
   (`HarnessInfo.install` → `ContainerSandbox.setup`).
-- [ ] **M9.7** Verify the in-cluster PR path live (sidecar runner + provisioned secrets):
-  runbook + script ready ([`verify-openshift.md`](verify-openshift.md),
-  `scripts/verify-openshift.sh`); run it and record the result.
+- [x] **M9.7** In-cluster PR path verified live on the SNO cluster: inbound webhook → queue →
+  sweep → sidecar runner (control + harness) → the harness ran OpenCode → commit/push → draft PR
+  opened through the forge API (`dear-agent-lab-python` PR #6). Runbook:
+  [`verify-openshift.md`](verify-openshift.md). Follow-ups: publish `quay.io/dear-agent/harness`
+  (the Quay robot needs the repo/permission — the CI push is failing), and manage the runner
+  ConfigMap image tags (kustomize `images:` cannot rewrite them).
 
 ## Later / ideas
 
