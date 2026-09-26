@@ -164,8 +164,9 @@ still-open gaps:
   environment image must provide `npm`. The bundle has no `ldd` auto-discovery; the SELinux
   relabel and the writable home are handled by the session.
 - **Forge**: GitLab uses the `Draft:` title prefix (assumption); Bitbucket Server (self-hosted)
-  is not supported; in the single-container runner the write key and forge token are visible to
-  the harness (ADR 0007 residual — use the sidecar for credential isolation).
+  is not supported. The two-container runner is now the default, so this is isolated; the
+  opt-in single-container runner (`DEAR_AGENT_RUNNER_TEMPLATE_CONFIGMAP=dear-agent-runner-template`)
+  still exposes the write key and forge token to the harness (ADR 0007 residual).
 - **Ops**: the sidecar harness image is published from `deploy/harness/Containerfile`, but the
   in-cluster PR path has not been verified live. Runbook + preflight/enqueue script ready:
   [`docs/verify-openshift.md`](docs/verify-openshift.md), `scripts/verify-openshift.sh`.

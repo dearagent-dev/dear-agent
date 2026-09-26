@@ -5,8 +5,9 @@
 #   DEAR_AGENT_RUNNER_TEMPLATE_CONFIGMAP=dear-agent-runner-sidecar-template
 #
 # The `harness` container image bundles the harness (OpenCode today) on top of the control-plane
-# image: see deploy/harness/Containerfile, published as quay.io/dear-agent/harness (same tags as
-# the control-plane image). kustomize's `images:` does not manage this placeholder.
+# image: see deploy/harness/Containerfile, published as quay.io/dear-agent/harness. Set its tag
+# here to match the control-plane image (`:dev`, `:stable`, …): kustomize's `images:` cannot
+# rewrite a value inside this ConfigMap's `job.yaml`, so it is pinned below.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -110,11 +111,17 @@ data:
               envFrom:
                 - configMapRef:
                     name: dear-agent-config
+                # The harness's own model credential — and only that (ADR 0007).
+                - secretRef:
+                    name: dear-agent-model
+                    optional: true
               env:
                 - name: DEAR_AGENT_HARNESS_DIR
                   value: "/work/harness"
                 - name: DEAR_AGENT_HARNESS
                   value: "opencode"
+                - name: DEAR_AGENT_HARNESS_ENV
+                  value: "OPENCODE_CONFIG_CONTENT"
               volumeMounts:
                 - name: work
                   mountPath: /work

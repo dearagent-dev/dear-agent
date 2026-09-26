@@ -67,7 +67,7 @@ One credential per purpose, least privilege, referenced by `secretKeyRef`:
 | `dear-agent-git-push` | `ssh-privatekey` | push `dear-agent/<slug>`, open draft PR | write deploy key, `dear-agent/*` only |
 | `dear-agent-forge` | `GH_TOKEN` / `GITLAB_TOKEN` / `GITEA_TOKEN` / `BITBUCKET_TOKEN`(+`BITBUCKET_USERNAME`) | open the draft PR/MR via the API (ADR 0009) | pull-request write on the target repos |
 | `dear-agent-jmap` | `FASTMAIL_API_TOKEN` | read/send mail | `Email` (+ `Email submission`) |
-| `dear-agent-model` | provider-specific | model calls | scoped provider key |
+| `dear-agent-model` | `OPENCODE_CONFIG_CONTENT` (or the harness's provider key) | harness model calls | scoped provider config/key |
 | `dear-agent-postgres` | `POSTGRESQL_*`, `DATABASE_URL` | database credentials | one database, least privilege |
 
 Create them without putting values in git, for example:
@@ -82,7 +82,7 @@ oc create secret generic dear-agent-git-push \
 oc create secret generic dear-agent-forge \
   --from-literal=GH_TOKEN="$FORGE_TOKEN"
 oc create secret generic dear-agent-model \
-  --from-literal=API_KEY="$MODEL_API_KEY"
+  --from-literal=OPENCODE_CONFIG_CONTENT="$OPENCODE_CONFIG_CONTENT"
 oc create secret generic dear-agent-postgres \
   --from-literal=POSTGRESQL_USER=dear-agent \
   --from-literal=POSTGRESQL_PASSWORD="$DEAR_AGENT_POSTGRES_PASSWORD" \
@@ -112,11 +112,15 @@ selected repositories.
   be redirected to another host.
 - A dedicated read-only key is mounted for the clone; the push uses a scoped write key
   (`DEAR_AGENT_GIT_PUSH_KEY`) and the draft PR a forge token (`dear-agent-forge`, ADR 0009).
-- An **opt-in two-container runner** (`runner-sidecar-template.yaml`, ADR 0007): the untrusted
-  harness runs in its own container with no credential and only the shared worktree, while the
-  control container carries the git keys and the forge token. Enable it with
-  `DEAR_AGENT_RUNNER_TEMPLATE_CONFIGMAP=dear-agent-runner-sidecar-template`. The harness image is
-  built from `deploy/harness/Containerfile` and published as `quay.io/dear-agent/harness`.
+- The **two-container runner** (`runner-sidecar-template.yaml`, ADR 0007) is the **default**: the
+  untrusted harness runs in its own container with only its own model credential and the shared
+  worktree, while the control container carries the git keys and the forge token. Switch to the
+  single-container `runner-template.yaml` with
+  `DEAR_AGENT_RUNNER_TEMPLATE_CONFIGMAP=dear-agent-runner-template` if you accept that trade-off.
+  The harness image is built from `deploy/harness/Containerfile` and published as
+  `quay.io/dear-agent/harness`; set its tag in `deploy/base/runner-sidecar-template.yaml` to match
+  the control-plane image (`:dev`/`:stable`), because kustomize `images:` cannot rewrite a value
+  inside the runner ConfigMap.
 - An **egress allowlist** for runner Jobs (`deploy/components/egress/`), included by default:
   DNS, same-namespace (Postgres) and everything except link-local/metadata, so the model and
   Git work out of the box. Tighten it to the model/Git CIDRs or an egress proxy. It is the

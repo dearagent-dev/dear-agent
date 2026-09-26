@@ -53,11 +53,17 @@ data:
                 - secretRef:
                     name: dear-agent-forge
                     optional: true
+                # The harness model credential; OpenCode reads OPENCODE_CONFIG_CONTENT.
+                - secretRef:
+                    name: dear-agent-model
+                    optional: true
               env:
                 - name: DEAR_AGENT_TASK_ID
                   value: ""
                 - name: DEAR_AGENT_MODEL
                   value: ""
+                - name: DEAR_AGENT_HARNESS_ENV
+                  value: "OPENCODE_CONFIG_CONTENT"
                 - name: DEAR_AGENT_DATABASE_URL
                   valueFrom:
                     secretKeyRef:

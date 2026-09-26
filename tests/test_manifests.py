@@ -71,7 +71,9 @@ def test_runner_template_mounts_the_push_key_and_forge_token() -> None:
 
     assert {"git-read", "git-push"} <= volumes
     assert "DEAR_AGENT_GIT_PUSH_KEY" in env_names
+    assert "DEAR_AGENT_HARNESS_ENV" in env_names
     assert "dear-agent-forge" in secret_sources
+    assert "dear-agent-model" in secret_sources
 
 
 def test_runner_template_carries_no_mail_credential() -> None:
@@ -106,14 +108,16 @@ def test_sidecar_runner_isolates_the_harness_container() -> None:
         entry["secretRef"]["name"] for entry in harness.get("envFrom", []) if "secretRef" in entry
     }
 
-    # The harness holds no credential and cannot see the git keys or the forge token.
+    # The harness holds no DB/git/forge credential — only its own model config.
     assert "DEAR_AGENT_DATABASE_URL" not in env_names
     assert "DEAR_AGENT_GIT_PUSH_KEY" not in env_names
     assert "git-read" not in mount_names
     assert "git-push" not in mount_names
     assert "dear-agent-forge" not in harness_secrets
+    assert "dear-agent-model" in harness_secrets
+    assert "DEAR_AGENT_HARNESS_ENV" in env_names
     assert "harness-serve" in harness["args"]
-    assert harness["image"] == "quay.io/dear-agent/harness:latest"
+    assert harness["image"].startswith("quay.io/dear-agent/harness")
     # The control container does clone/push/PR, so it carries the read+write keys and the token.
     control = containers["control"]
     control_mounts = {mount["name"] for mount in control["volumeMounts"]}
@@ -210,6 +214,10 @@ def test_config_selects_the_postgres_queue_and_jmap_transport() -> None:
 
     assert config["data"]["DEAR_AGENT_QUEUE"] == "postgres"
     assert config["data"]["DEAR_AGENT_BACKEND"] == "jmap"
+    # The credential-isolated two-container runner is the default (ADR 0007).
+    assert config["data"]["DEAR_AGENT_RUNNER_TEMPLATE_CONFIGMAP"] == (
+        "dear-agent-runner-sidecar-template"
+    )
 
 
 def postgres_statefulset(docs: list[dict]) -> dict:
