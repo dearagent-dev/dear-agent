@@ -23,6 +23,7 @@ data:
           labels:
             app.kubernetes.io/name: dear-agent
             app.kubernetes.io/component: runner
+            app.kubernetes.io/part-of: dear-agent
         spec:
           restartPolicy: Never
           serviceAccountName: dear-agent-runner
