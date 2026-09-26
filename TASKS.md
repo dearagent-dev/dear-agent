@@ -39,8 +39,8 @@ repository moved to the **`dearagent-dev`** org; every reference to the old name
    Open gaps in [Known gaps](#known-gaps-for-review).
 5. **PITR** — deferred (see Later); not needed at this scale.
 6. **Remaining after the M9 session** — pick these up next; none is a self-contained code slice:
-   - **M9.7** live in-cluster PR path (runbook + `scripts/verify-openshift.sh`; needs a cluster
-     and provisioned secrets).
+   - **M9.7** in-cluster PR path: **verified live** on the SNO cluster (draft PR #6). Deploy
+     follow-ups noted under "Known gaps" (Quay harness repo, runner ConfigMap image tags).
    - **Bundle multi-harness**: Claude Code / Codex are not single binaries (Node/npm), so they
      need a different packaging than the OpenCode musl bundle.
    - **Credential isolation in the single-container runner**: the write key and the forge token
@@ -170,9 +170,11 @@ still-open gaps:
   is not supported. The two-container runner is now the default, so this is isolated; the
   opt-in single-container runner (`DEAR_AGENT_RUNNER_TEMPLATE_CONFIGMAP=dear-agent-runner-template`)
   still exposes the write key and forge token to the harness (ADR 0007 residual).
-- **Ops**: the sidecar harness image is published from `deploy/harness/Containerfile`, but the
-  in-cluster PR path has not been verified live. Runbook + preflight/enqueue script ready:
-  [`docs/verify-openshift.md`](docs/verify-openshift.md), `scripts/verify-openshift.sh`.
+- **Ops**: **M9.7 verified live** on the SNO cluster (draft PR #6 in `dear-agent-lab-python`).
+  Two deploy follow-ups: publish `quay.io/dear-agent/harness` (the Quay robot cannot push a new
+  `harness` repo, so the CI harness push fails — the runbook documents a workaround), and manage
+  the runner ConfigMap image tags (kustomize `images:` cannot rewrite a value inside the
+  ConfigMap, so the runner template pins a tag that must be set per environment).
 
 ## Later
 
