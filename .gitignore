@@ -31,3 +31,6 @@ approvals.json
 .idea/
 .vscode/
 *.swp
+
+# Reviewer brief is a local artifact, never committed (see docs/reviews/REVIEW-BRIEF.md)
+docs/reviews/

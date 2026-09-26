@@ -46,7 +46,10 @@ repository moved to the **`dearagent-dev`** org; every reference to the old name
    - **Credential isolation in the single-container runner**: the write key and the forge token
      are visible to the harness (ADR 0007 residual); the sidecar is the isolated path.
    - Also closed this session: Bitbucket forge (ADR 0009), descriptor path-traversal hardening,
-     bundle robustness, self-hosted decider docs, adversarial review (ADR 0010).
+     bundle robustness, multi-harness bootstrap, adversarial review (ADR 0010), unique branch per
+     task, and the **two-container runner is now the default** (the single-container residual is
+     opt-in). The reviewer brief is updated to `main` in `docs/reviews/REVIEW-BRIEF.md`
+     (untracked).
 
 ### SNO cluster teardown — 2026-09-25
 
