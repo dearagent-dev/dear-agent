@@ -10,7 +10,10 @@ data:
   DEAR_AGENT_WORKTREES_ROOT: "/work"
   DEAR_AGENT_MODEL: "local:model"
   DEAR_AGENT_GIT_HOST: "github.com"
-  DEAR_AGENT_RUNNER_TEMPLATE_CONFIGMAP: "dear-agent-runner-template"
+  # The two-container runner is the default: the harness container holds the model credential
+  # only, never the DB/git/forge credentials (ADR 0007). Set this to dear-agent-runner-template
+  # for the single-container runner.
+  DEAR_AGENT_RUNNER_TEMPLATE_CONFIGMAP: "dear-agent-runner-sidecar-template"
   DEAR_AGENT_MAX_BODY_BYTES: "1048576"
   DEAR_AGENT_HTTP_TIMEOUT: "15"
 ---

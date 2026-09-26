@@ -1,6 +1,6 @@
 # 0007 — Isolate the harness from the runner's credentials
 
-- **Status:** accepted (mechanism implemented; opt-in manifest)
+- **Status:** accepted (mechanism implemented; the default manifest)
 - **Date:** 2026-09-24
 - **Related:** [0006](0006-container-isolation.md), [../security.md](../security.md),
   [#94](https://github.com/dearagent-dev/dear-agent/issues/94)
@@ -57,9 +57,12 @@ The control/harness handshake is `runners/shared.py`: `DelegatingRunner` (contro
 writes a credential-free request to the shared directory and waits for the result;
 `dear-agent harness-serve --dir <dir> --once` (harness side) runs the harness in the shared
 worktree and writes the result back. `build_worker` uses `DelegatingRunner` when
-`DEAR_AGENT_HARNESS_DIR` is set. The opt-in Job is
-`deploy/base/runner-sidecar-template.yaml` (enable it with
-`DEAR_AGENT_RUNNER_TEMPLATE_CONFIGMAP=dear-agent-runner-sidecar-template`).
+`DEAR_AGENT_HARNESS_DIR` is set. The Job is `deploy/base/runner-sidecar-template.yaml` and it is
+the **default** runner template (`DEAR_AGENT_RUNNER_TEMPLATE_CONFIGMAP=dear-agent-runner-sidecar-template`
+in `deploy/base/config.yaml`); the harness container gets the `dear-agent-model` secret (its own
+model credential) and nothing else. The single-container `runner-template.yaml` remains for a
+simpler, less isolated setup: set `DEAR_AGENT_RUNNER_TEMPLATE_CONFIGMAP=dear-agent-runner-template`
+to use it, accepting that the write key and forge token are then visible to the harness.
 
 ## Consequences
 
