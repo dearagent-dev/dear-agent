@@ -78,6 +78,14 @@ data:
                 # The clone uses the read key above; the push uses this write key (ADR 0003).
                 - name: DEAR_AGENT_GIT_PUSH_KEY
                   value: "/run/secrets/git-push/ssh-privatekey"
+                # HTTPS remotes use the forge token as a credential (deploy keys are not always
+                # available); SSH remotes still use the keys above.
+                - name: GIT_CONFIG_COUNT
+                  value: "1"
+                - name: GIT_CONFIG_KEY_0
+                  value: "credential.helper"
+                - name: GIT_CONFIG_VALUE_0
+                  value: "!f() { echo username=x-access-token; echo password=${GH_TOKEN}; }; f"
               volumeMounts:
                 - name: work
                   mountPath: /work

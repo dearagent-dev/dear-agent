@@ -95,6 +95,10 @@ For production, project these from an external store (External Secrets Operator,
 Store CSI driver, SealedSecrets) so rotation is automated and values never sit in the
 cluster as plain objects.
 
+For **HTTPS** repository remotes the git keys are optional: the runner configures git to use
+the `dear-agent-forge` token as a credential (`GIT_CONFIG_*`), which is handy where deploy keys
+are disabled. SSH remotes use the `dear-agent-git-read`/`-push` keys instead.
+
 **Do not use a classic PAT with the `repo` scope**: it reaches every repository and cannot
 be limited to `dear-agent/*`. Prefer a GitHub App installation, or a fine-grained PAT limited to
 selected repositories.
