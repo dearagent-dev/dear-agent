@@ -295,3 +295,21 @@ def test_git_over_https_uses_the_forge_token() -> None:
     runner = runner_template(build("dev"))["spec"]["template"]["spec"]["containers"][0]
     runner_env = {entry["name"]: entry.get("value") for entry in runner["env"]}
     assert runner_env["GIT_CONFIG_KEY_0"] == "credential.helper"
+
+
+def test_runner_jobs_carry_the_part_of_label() -> None:
+    # Runtime-created Jobs are not touched by kustomize's label transformer, but the Postgres
+    # ingress NetworkPolicy requires app.kubernetes.io/part-of=dear-agent.
+    for template in (runner_template(build("dev")), sidecar_template(build("dev"))):
+        labels = template["spec"]["template"]["metadata"]["labels"]
+        assert labels["app.kubernetes.io/part-of"] == "dear-agent"
+
+
+def test_dispatcher_role_allows_the_selected_template_and_getting_jobs() -> None:
+    role = next(doc for doc in build("dev") if doc.get("kind") == "Role")
+    rules = role["rules"]
+    configmaps = next(rule for rule in rules if "configmaps" in rule["resources"])
+    jobs = next(rule for rule in rules if "jobs" in rule["resources"])
+
+    assert "dear-agent-runner-sidecar-template" in configmaps["resourceNames"]
+    assert {"create", "get"} <= set(jobs["verbs"])

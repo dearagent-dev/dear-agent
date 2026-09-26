@@ -134,3 +134,17 @@ def test_diff_refuses_a_protected_branch(repo: Path) -> None:
 
     with pytest.raises(ProtectedBranchError):
         GitPlane(forge=RecordingForge()).diff(protected, "main")
+
+
+def test_commit_all_sets_an_identity_for_a_runner(monkeypatch, repo: Path, tmp_path: Path) -> None:
+    # A runner container has no git user.name/user.email; the commit must still work.
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", "/dev/null")
+    monkeypatch.setenv("GIT_CONFIG_SYSTEM", "/dev/null")
+    git(repo, "config", "--unset", "user.email")
+    git(repo, "config", "--unset", "user.name")
+    worktree = Worktree.create(repo, tmp_path / "wt-no-id", slug="no-id", base_branch="main")
+    (worktree.path / "x.txt").write_text("y\n")
+
+    sha = GitPlane(forge=RecordingForge()).commit_all(worktree, message="from a runner")
+
+    assert len(sha) == 40

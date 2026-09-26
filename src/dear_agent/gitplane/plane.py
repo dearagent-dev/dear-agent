@@ -8,6 +8,11 @@ from typing import Protocol, runtime_checkable
 
 from dear_agent.runners.worktree import Worktree
 
+# The committer identity for agent commits, set explicitly because a runner container has no
+# git user.name/user.email (see GitPlane.commit_all).
+COMMITTER_NAME = "Dear Agent"
+COMMITTER_EMAIL = "dear-agent@localhost"
+
 
 class GitError(RuntimeError):
     """A git operation in the plane failed."""
@@ -60,7 +65,18 @@ class GitPlane:
         _git(worktree.path, "add", "-A")
         status = _git(worktree.path, "status", "--porcelain").stdout.strip()
         if status:
-            _git(worktree.path, "commit", "-m", message)
+            # An explicit identity: the runner container has no git user.name/user.email, and
+            # `git commit` fails without one (locally the operator's global config hid this).
+            _git(
+                worktree.path,
+                "-c",
+                f"user.name={COMMITTER_NAME}",
+                "-c",
+                f"user.email={COMMITTER_EMAIL}",
+                "commit",
+                "-m",
+                message,
+            )
         return _git(worktree.path, "rev-parse", "HEAD").stdout.strip()
 
     def push(self, worktree: Worktree, *, remote: str = "origin") -> None:
