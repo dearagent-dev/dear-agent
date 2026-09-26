@@ -278,3 +278,20 @@ def test_postgres_persists_its_data(overlay: str) -> None:
     assert spec["volumeClaimTemplates"]
     assert any(mount["mountPath"] == "/var/lib/pgsql/data" for mount in container["volumeMounts"])
     assert spec["template"]["spec"]["automountServiceAccountToken"] is False
+
+
+def test_git_over_https_uses_the_forge_token() -> None:
+    # Deploy keys are not always available; the runner configures git to use the forge token
+    # for HTTPS remotes. The harness container never gets the token (sidecar).
+    sidecar = sidecar_template(build("dev"))["spec"]["template"]["spec"]
+    control = {c["name"]: c for c in sidecar["containers"]}["control"]
+    env = {entry["name"]: entry.get("value") for entry in control["env"]}
+    assert env["GIT_CONFIG_KEY_0"] == "credential.helper"
+    assert "${GH_TOKEN}" in env["GIT_CONFIG_VALUE_0"]
+    harness = {c["name"]: c for c in sidecar["containers"]}["harness"]
+    harness_env = {entry["name"] for entry in harness["env"]}
+    assert "GIT_CONFIG_KEY_0" not in harness_env
+
+    runner = runner_template(build("dev"))["spec"]["template"]["spec"]["containers"][0]
+    runner_env = {entry["name"]: entry.get("value") for entry in runner["env"]}
+    assert runner_env["GIT_CONFIG_KEY_0"] == "credential.helper"
