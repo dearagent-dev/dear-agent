@@ -191,7 +191,8 @@ These are the non-obvious wires that the first real deployment had to get right:
   idempotent create path) and the **selected** runner-template ConfigMap name; runner Job pods
   need `app.kubernetes.io/part-of=dear-agent` for the Postgres ingress `NetworkPolicy`. Both are
   in the base manifests now.
-- **Email ingress is not wired by the base manifests.** The control plane runs the webhook
-  (`dear-agent-http`); `DEAR_AGENT_BACKEND=jmap` additionally needs the `dear-agent-jmap` secret
-  and a poller (`dear-agent poll` CronJob) or `dear-agent listen`.
+- **Email ingress has two halves.** The control plane serves the webhook (`dear-agent-http`); the
+  `dear-agent-poll` CronJob polls the mailbox (JMAP/IMAP). For email, create the `dear-agent-jmap`
+  secret and keep `DEAR_AGENT_BACKEND=jmap` (the base default). A `dear-agent listen` Deployment
+  (JMAP push) is the low-latency alternative to the poll CronJob.
 - **An explicit git identity** is set on commits; a runner container has no `user.name`/`email`.

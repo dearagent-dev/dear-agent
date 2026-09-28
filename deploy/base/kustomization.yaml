@@ -11,6 +11,7 @@ resources:
   - runner-template.yaml
   - runner-sidecar-template.yaml
   - sweep-cronjob.yaml
+  - poll-cronjob.yaml
 labels:
   - includeSelectors: true
     pairs:

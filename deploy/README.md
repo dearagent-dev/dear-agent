@@ -1,7 +1,7 @@
 # Deploying Dear Agent on Kubernetes / OpenShift
 
 Dear Agent is Kubernetes/OpenShift by design (ADR 0002, ADR 0005): one `Job` per task, a `CronJob`
-sweep, no always-on daemon, and a PostgreSQL `StatefulSet` for durable state. The transport
+sweep, a `CronJob` poll for email ingress, no always-on daemon, and a PostgreSQL `StatefulSet` for durable state. The transport
 mailbox is ingress only.
 
 ```
