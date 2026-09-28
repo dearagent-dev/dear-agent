@@ -18,6 +18,10 @@ data:
   # only, never the DB/git/forge credentials (ADR 0007). Set this to dear-agent-runner-template
   # for the single-container runner.
   DEAR_AGENT_RUNNER_TEMPLATE_CONFIGMAP: "dear-agent-runner-sidecar-template"
+  # The runner's own transport for status/approval mail (memory = send nothing). Set
+  # DEAR_AGENT_RUNNER_BACKEND=jmap and DEAR_AGENT_RECIPIENT to notify by email.
+  DEAR_AGENT_RUNNER_BACKEND: "memory"
+  DEAR_AGENT_RECIPIENT: ""
   DEAR_AGENT_MAX_BODY_BYTES: "1048576"
   DEAR_AGENT_HTTP_TIMEOUT: "15"
 ---
