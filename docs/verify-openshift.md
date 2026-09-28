@@ -167,3 +167,31 @@ oc -n "$NS" delete job -l app.kubernetes.io/component=runner
 If it passes, mark **M9.7** done in `docs/roadmap.md` and move the "in-cluster PR path" line out
 of `TASKS.md` → *Known gaps*, noting the commit/tag and the cluster. If it fails, add the
 finding with the failing Job logs.
+
+## 9. Deploy notes (learned from the first live run)
+
+These are the non-obvious wires that the first real deployment had to get right:
+
+- **The runner image tags are injected, not pinned.** The runner ConfigMaps use
+  `__RUNNER_IMAGE__`/`__HARNESS_IMAGE__`; `dear-agent sweep` resolves them from
+  `DEAR_AGENT_RUNNER_IMAGE`/`DEAR_AGENT_HARNESS_IMAGE`, which the overlays set. If a runner Job
+  shows the raw placeholder, the **sweep** is running stale code — repull its image
+  (`imagePullPolicy: Always` is set for the mutable `:dev`/`:stable` tags).
+- **HTTPS git uses the forge token.** SSH deploy keys are disabled in some orgs; the runner sets
+  `credential.helper` from `GH_TOKEN`, so enqueue **HTTPS** repository URLs. The clone and push
+  both authenticate with it.
+- **The harness image is a tag, not a repo**: `quay.io/dear-agent/dear-agent:harness-<tag>` (CI
+  publishes it beside the control-plane image), so no separate Quay repository is needed.
+- **The harness model credential** lives in `dear-agent-model` (key `OPENCODE_CONFIG_CONTENT`);
+  the harness container holds only that credential, never the DB/git/forge ones.
+- **The human gate can park a task.** If the decider flags the instructions, the task sits in
+  `action` (`approval.requested reason=needs-human`); release it with
+  `dear-agent approval pending --show-tokens` + `dear-agent approval approve <token>`.
+- **Dispatcher RBAC and the NetworkPolicy**: the sweep's Role needs `get` on `jobs` (the
+  idempotent create path) and the **selected** runner-template ConfigMap name; runner Job pods
+  need `app.kubernetes.io/part-of=dear-agent` for the Postgres ingress `NetworkPolicy`. Both are
+  in the base manifests now.
+- **Email ingress is not wired by the base manifests.** The control plane runs the webhook
+  (`dear-agent-http`); `DEAR_AGENT_BACKEND=jmap` additionally needs the `dear-agent-jmap` secret
+  and a poller (`dear-agent poll` CronJob) or `dear-agent listen`.
+- **An explicit git identity** is set on commits; a runner container has no `user.name`/`email`.
