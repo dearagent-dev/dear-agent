@@ -170,12 +170,12 @@ still-open gaps:
   is not supported. The two-container runner is now the default, so this is isolated; the
   opt-in single-container runner (`DEAR_AGENT_RUNNER_TEMPLATE_CONFIGMAP=dear-agent-runner-template`)
   still exposes the write key and forge token to the harness (ADR 0007 residual).
-- **Ops**: **M9.7 verified live** on the SNO cluster (draft PR #6 in `dear-agent-lab-python`).
-  The runner/harness images are injected by the dispatcher from
-  `DEAR_AGENT_RUNNER_IMAGE`/`DEAR_AGENT_HARNESS_IMAGE` (the runner ConfigMap uses
+- **Ops**: **M9.7 verified live** on the SNO cluster (draft PR #6 and #7 in `dear-agent-lab-python`),
+  and **email ingress verified live** (the `dear-agent-poll` CronJob ingested a message into the
+  "Dear Agent" mailbox → runner → draft PR #8). The runner/harness images are injected by the
+  dispatcher from `DEAR_AGENT_RUNNER_IMAGE`/`DEAR_AGENT_HARNESS_IMAGE` (the runner ConfigMap uses
   `__RUNNER_IMAGE__`/`__HARNESS_IMAGE__` placeholders), and the harness image is published as
   `harness-<tag>` tags in the `dear-agent` repository, so no separate Quay repo is needed.
-  Re-apply the overlay to pick up the new manifests.
 
 ## Later
 
