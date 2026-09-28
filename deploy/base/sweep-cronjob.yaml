@@ -28,6 +28,7 @@ spec:
           containers:
             - name: sweep
               image: quay.io/dear-agent/dear-agent:latest
+              imagePullPolicy: Always
               command: ["dear-agent"]
               args: ["sweep"]
               envFrom:

@@ -35,6 +35,7 @@ data:
           containers:
             - name: runner
               image: __RUNNER_IMAGE__
+              imagePullPolicy: Always
               command: ["dear-agent"]
               # The runner claims a persisted task and runs the harness; it needs no mailbox
               # (the spec lives on the task row) and sends no mail without --recipient, so it
