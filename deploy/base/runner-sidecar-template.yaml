@@ -46,6 +46,7 @@ data:
             # Control: holds the DB DSN and the git key, and does clone/push/PR.
             - name: control
               image: __RUNNER_IMAGE__
+              imagePullPolicy: Always
               command: ["dear-agent"]
               args:
                 - "run"
@@ -115,6 +116,7 @@ data:
             # the jail; it only sees the shared worktree.
             - name: harness
               image: __HARNESS_IMAGE__
+              imagePullPolicy: Always
               command: ["dear-agent"]
               args: ["harness-serve", "--dir", "/work/harness", "--once"]
               envFrom:

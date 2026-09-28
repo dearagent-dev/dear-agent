@@ -28,7 +28,7 @@ spec:
       containers:
         - name: control-plane
           image: quay.io/dear-agent/dear-agent:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           command: ["dear-agent-http"]
           args: []
           envFrom:
