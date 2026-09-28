@@ -37,16 +37,20 @@ data:
               image: __RUNNER_IMAGE__
               imagePullPolicy: Always
               command: ["dear-agent"]
-              # The runner claims a persisted task and runs the harness; it needs no mailbox
-              # (the spec lives on the task row) and sends no mail without --recipient, so it
-              # carries no mail credential. The transport defaults to memory. To notify from
-              # the runner, add --recipient and --backend jmap and mount dear-agent-jmap.
+              # The runner claims a persisted task and runs the harness; the spec lives on the
+              # task row. It notifies the recipient only when DEAR_AGENT_RUNNER_BACKEND is a real
+              # transport (jmap) and DEAR_AGENT_RECIPIENT is set; the default backend is memory, so
+              # it sends no mail and needs no mail credential.
               args:
                 - "run"
                 - "--repo"
                 - "/work/source"
                 - "--model"
                 - "$(DEAR_AGENT_MODEL)"
+                - "--backend"
+                - "$(DEAR_AGENT_RUNNER_BACKEND)"
+                - "--recipient"
+                - "$(DEAR_AGENT_RECIPIENT)"
                 - "$(DEAR_AGENT_TASK_ID)"
               envFrom:
                 - configMapRef:
@@ -58,6 +62,10 @@ data:
                 # The harness model credential; OpenCode reads OPENCODE_CONFIG_CONTENT.
                 - secretRef:
                     name: dear-agent-model
+                    optional: true
+                # Outbound status/approval mail, only needed when the runner backend is jmap.
+                - secretRef:
+                    name: dear-agent-jmap
                     optional: true
               env:
                 - name: DEAR_AGENT_TASK_ID

@@ -76,15 +76,37 @@ def test_runner_template_mounts_the_push_key_and_forge_token() -> None:
     assert "dear-agent-model" in secret_sources
 
 
-def test_runner_template_carries_no_mail_credential() -> None:
-    # The runner claims a persisted task and sends no mail without --recipient, so it must
-    # not carry the mailbox token (the harness shares the container).
-    job = runner_template(build("dev"))
-    container = job["spec"]["template"]["spec"]["containers"][0]
-    env_names = {entry["name"] for entry in container.get("env", [])}
+def test_runner_outbound_mail_is_optional_and_default_off() -> None:
+    # The runner notifies only when DEAR_AGENT_RUNNER_BACKEND is a real transport and
+    # DEAR_AGENT_RECIPIENT is set; the default (memory) sends no mail.
+    docs = build("dev")
+    config = next(
+        doc
+        for doc in docs
+        if doc.get("kind") == "ConfigMap" and doc["metadata"]["name"] == "dear-agent-config"
+    )
+    assert config["data"]["DEAR_AGENT_RUNNER_BACKEND"] == "memory"
+    assert config["data"]["DEAR_AGENT_RECIPIENT"] == ""
 
-    assert "FASTMAIL_API_TOKEN" not in env_names
-    assert "jmap" not in container.get("args", [])
+    runner = runner_template(docs)["spec"]["template"]["spec"]["containers"][0]
+    assert "--backend" in runner["args"]
+    assert runner["args"][runner["args"].index("--backend") + 1] == "$(DEAR_AGENT_RUNNER_BACKEND)"
+    jmap = [
+        entry
+        for entry in runner["envFrom"]
+        if entry.get("secretRef", {}).get("name") == "dear-agent-jmap"
+    ]
+    assert jmap and jmap[0]["secretRef"].get("optional") is True
+
+    # The sidecar harness container never gets the mail token.
+    sidecar_containers = {
+        c["name"]: c for c in sidecar_template(docs)["spec"]["template"]["spec"]["containers"]
+    }
+    harness = sidecar_containers["harness"]
+    harness_secrets = {
+        entry["secretRef"]["name"] for entry in harness.get("envFrom", []) if "secretRef" in entry
+    }
+    assert "dear-agent-jmap" not in harness_secrets
 
 
 def sidecar_template(docs: list[dict]) -> dict:

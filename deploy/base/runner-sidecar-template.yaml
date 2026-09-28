@@ -43,7 +43,9 @@ data:
             seccompProfile:
               type: RuntimeDefault
           containers:
-            # Control: holds the DB DSN and the git key, and does clone/push/PR.
+            # Control: holds the DB DSN and the git key, and does clone/push/PR. It notifies the
+            # recipient only when DEAR_AGENT_RUNNER_BACKEND is a real transport (jmap) and
+            # DEAR_AGENT_RECIPIENT is set (default backend is memory -> no mail credential used).
             - name: control
               image: __RUNNER_IMAGE__
               imagePullPolicy: Always
@@ -54,6 +56,10 @@ data:
                 - "/work/source"
                 - "--model"
                 - "$(DEAR_AGENT_MODEL)"
+                - "--backend"
+                - "$(DEAR_AGENT_RUNNER_BACKEND)"
+                - "--recipient"
+                - "$(DEAR_AGENT_RECIPIENT)"
                 - "$(DEAR_AGENT_TASK_ID)"
               envFrom:
                 - configMapRef:
@@ -61,6 +67,10 @@ data:
                 # The forge token (GH_TOKEN/GITLAB_TOKEN/GITEA_TOKEN) for the API PR (ADR 0009).
                 - secretRef:
                     name: dear-agent-forge
+                    optional: true
+                # Outbound status/approval mail, only needed when the runner backend is jmap.
+                - secretRef:
+                    name: dear-agent-jmap
                     optional: true
               env:
                 - name: DEAR_AGENT_TASK_ID
