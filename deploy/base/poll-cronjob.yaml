@@ -1,0 +1,60 @@
+# The pull half of ingress: on a schedule it polls the mailbox, normalizes and enqueues. The push
+# half is the control-plane webhook. It needs no Kubernetes API access, so no service-account
+# token is mounted. Enable email ingress by creating the `dear-agent-jmap` secret and setting
+# `DEAR_AGENT_BACKEND=jmap` (the base default).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: dear-agent-poll
+  labels:
+    app.kubernetes.io/name: dear-agent
+    app.kubernetes.io/component: transport
+spec:
+  schedule: "*/1 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          serviceAccountName: dear-agent-control-plane
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: poll
+              image: quay.io/dear-agent/dear-agent:latest
+              imagePullPolicy: Always
+              command: ["dear-agent"]
+              args: ["poll"]
+              envFrom:
+                - configMapRef:
+                    name: dear-agent-config
+              env:
+                - name: FASTMAIL_API_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: dear-agent-jmap
+                      key: FASTMAIL_API_TOKEN
+                      optional: true
+                - name: DEAR_AGENT_DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: dear-agent-postgres
+                      key: DATABASE_URL
+                      optional: true
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  cpu: 250m
+                  memory: 256Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]

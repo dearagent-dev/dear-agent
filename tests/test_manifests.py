@@ -332,3 +332,22 @@ def test_runner_images_come_from_config_placeholders() -> None:
 
     runner = runner_template(docs)
     assert runner["spec"]["template"]["spec"]["containers"][0]["image"] == "__RUNNER_IMAGE__"
+
+
+@pytest.mark.parametrize("overlay", ["dev", "prod"])
+def test_poll_cronjob_ingests_email(overlay: str) -> None:
+    docs = build(overlay)
+    cron = next(
+        doc
+        for doc in docs
+        if doc.get("kind") == "CronJob" and doc["metadata"]["name"] == "dear-agent-poll"
+    )
+    pod = cron["spec"]["jobTemplate"]["spec"]["template"]["spec"]
+    container = pod["containers"][0]
+
+    assert container["command"] == ["dear-agent"]
+    assert container["args"] == ["poll"]
+    env_names = {entry["name"] for entry in container["env"]}
+    assert {"FASTMAIL_API_TOKEN", "DEAR_AGENT_DATABASE_URL"} <= env_names
+    # The poll runs no Kubernetes API call, so it must not carry a token.
+    assert pod["automountServiceAccountToken"] is False
