@@ -130,3 +130,44 @@ def test_dispatch_fails_a_task_whose_dependency_failed() -> None:
 
     assert created == []
     assert queue.get("e1").state is TaskState.FAILED
+
+
+IMAGE_TEMPLATE = """
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: x
+spec:
+  template:
+    spec:
+      containers:
+        - name: control
+          image: __RUNNER_IMAGE__
+          env: []
+        - name: harness
+          image: __HARNESS_IMAGE__
+          env: []
+"""
+
+
+def test_render_job_resolves_image_placeholders_from_env() -> None:
+    job = render_job(
+        IMAGE_TEMPLATE,
+        Task(id="e1", transport_id="<m1@x>"),
+        env={
+            "DEAR_AGENT_RUNNER_IMAGE": "reg/runner:1",
+            "DEAR_AGENT_HARNESS_IMAGE": "reg/harness:1",
+        },
+    )
+
+    containers = {c["name"]: c for c in job["spec"]["template"]["spec"]["containers"]}
+    assert containers["control"]["image"] == "reg/runner:1"
+    assert containers["harness"]["image"] == "reg/harness:1"
+
+
+def test_render_job_uses_image_placeholder_defaults() -> None:
+    job = render_job(IMAGE_TEMPLATE, Task(id="e1", transport_id="<m1@x>"), env={})
+
+    containers = {c["name"]: c for c in job["spec"]["template"]["spec"]["containers"]}
+    assert containers["control"]["image"].startswith("quay.io/dear-agent/dear-agent")
+    assert "harness" in containers["harness"]["image"]

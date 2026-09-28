@@ -9,6 +9,10 @@ data:
   DEAR_AGENT_MAILBOX: "Dear Agent"
   DEAR_AGENT_WORKTREES_ROOT: "/work"
   DEAR_AGENT_MODEL: "local:model"
+  # The runner/harness images the dispatcher injects into the runner Job template (placeholders
+  # __RUNNER_IMAGE__ / __HARNESS_IMAGE__); the overlays set the environment tag.
+  DEAR_AGENT_RUNNER_IMAGE: "quay.io/dear-agent/dear-agent:latest"
+  DEAR_AGENT_HARNESS_IMAGE: "quay.io/dear-agent/dear-agent:harness-latest"
   DEAR_AGENT_GIT_HOST: "github.com"
   # The two-container runner is the default: the harness container holds the model credential
   # only, never the DB/git/forge credentials (ADR 0007). Set this to dear-agent-runner-template

@@ -144,9 +144,9 @@ environment and never assumed; the draft PR is opened through the forge **REST A
 - [x] **M9.7** In-cluster PR path verified live on the SNO cluster: inbound webhook → queue →
   sweep → sidecar runner (control + harness) → the harness ran OpenCode → commit/push → draft PR
   opened through the forge API (`dear-agent-lab-python` PR #6). Runbook:
-  [`verify-openshift.md`](verify-openshift.md). Follow-ups: publish `quay.io/dear-agent/harness`
-  (the Quay robot needs the repo/permission — the CI push is failing), and manage the runner
-  ConfigMap image tags (kustomize `images:` cannot rewrite them).
+  [`verify-openshift.md`](verify-openshift.md). The runner/harness images are injected by the
+  dispatcher from `DEAR_AGENT_RUNNER_IMAGE`/`DEAR_AGENT_HARNESS_IMAGE` (ConfigMap placeholders),
+  and the harness image is published as `harness-<tag>` tags in the `dear-agent` repo.
 
 ## Later / ideas
 

@@ -121,10 +121,11 @@ selected repositories.
   worktree, while the control container carries the git keys and the forge token. Switch to the
   single-container `runner-template.yaml` with
   `DEAR_AGENT_RUNNER_TEMPLATE_CONFIGMAP=dear-agent-runner-template` if you accept that trade-off.
-  The harness image is built from `deploy/harness/Containerfile` and published as
-  `quay.io/dear-agent/harness`; set its tag in `deploy/base/runner-sidecar-template.yaml` to match
-  the control-plane image (`:dev`/`:stable`), because kustomize `images:` cannot rewrite a value
-  inside the runner ConfigMap.
+  The harness image is built from `deploy/harness/Containerfile` and published by CI as
+  `quay.io/dear-agent/dear-agent:harness-<tag>` (a tag in the same repository). The dispatcher
+  injects both the runner and harness images into the runner template from
+  `DEAR_AGENT_RUNNER_IMAGE` / `DEAR_AGENT_HARNESS_IMAGE`, which the overlays set, so the
+  ConfigMap does not pin an image tag.
 - An **egress allowlist** for runner Jobs (`deploy/components/egress/`), included by default:
   DNS, same-namespace (Postgres) and everything except link-local/metadata, so the model and
   Git work out of the box. Tighten it to the model/Git CIDRs or an egress proxy. It is the
@@ -151,9 +152,9 @@ selected repositories.
   the file stores are a single-process fallback only. The parsed `TaskSpec` is persisted on
   the task row, so a runner needs no mailbox access to run.
 - **The base control-plane image ships no harness.** The harness image
-  (`deploy/harness/Containerfile`, published as `quay.io/dear-agent/harness`) bundles OpenCode on
-  top of it for the two-container runner. For the single-container runner, point at a repository
-  that declares its environment (ADR 0008), inject the harness bundle
+  (`deploy/harness/Containerfile`, published as `quay.io/dear-agent/dear-agent:harness-<tag>`)
+  bundles OpenCode on top of it for the two-container runner. For the single-container runner,
+  point at a repository that declares its environment (ADR 0008), inject the harness bundle
   (`DEAR_AGENT_HARNESS_BUNDLE=true`), or set `DEAR_AGENT_HARNESS=command` with
   `DEAR_AGENT_HARNESS_COMMAND`. Without a harness, runs fail as `HARNESS_MISSING` and escalate.
 

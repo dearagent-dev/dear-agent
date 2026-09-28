@@ -8,7 +8,9 @@
 #
 #   podman build -f deploy/harness/Containerfile \
 #     --build-arg DEAR_AGENT_IMAGE=quay.io/dear-agent/dear-agent:latest \
-#     -t quay.io/dear-agent/harness:latest deploy/harness
+#     -t quay.io/dear-agent/dear-agent:harness-latest deploy/harness
+#
+# Published by CI as `harness-<tag>` tags in the same `dear-agent` repository (no separate repo).
 ARG DEAR_AGENT_IMAGE=quay.io/dear-agent/dear-agent:latest
 FROM ghcr.io/anomalyco/opencode:latest AS harness
 

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
 import yaml
@@ -14,6 +15,17 @@ from dear_agent.queue.port import Queue
 WORKER_ANNOTATION = "dearagent.dev/task-id"
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
+
+# Image placeholders in the runner Job template. The dispatcher resolves them from the
+# environment, so the ConfigMap does not pin an image tag (kustomize `images:` cannot rewrite a
+# value inside a ConfigMap). Each maps to (env var, fallback).
+IMAGE_PLACEHOLDERS: dict[str, tuple[str, str]] = {
+    "__RUNNER_IMAGE__": ("DEAR_AGENT_RUNNER_IMAGE", "quay.io/dear-agent/dear-agent:latest"),
+    "__HARNESS_IMAGE__": (
+        "DEAR_AGENT_HARNESS_IMAGE",
+        "quay.io/dear-agent/dear-agent:harness-latest",
+    ),
+}
 
 
 class DispatchError(RuntimeError):
@@ -34,14 +46,17 @@ def job_name(task_id: str) -> str:
     return f"{prefix}{slug}-{digest}"
 
 
-def render_job(template: str, task: Task) -> dict:
+def render_job(template: str, task: Task, *, env: Mapping[str, str] | None = None) -> dict:
     """Render the runner JobTemplate for one task, injecting its id.
 
     The template is a Job manifest as a YAML string (as stored in the ConfigMap). We parse
-    it, stamp the task id as an env var and an annotation, and give the Job a deterministic
-    name. No shell interpolation is involved, so a hostile task id cannot inject YAML.
+    it, stamp the task id as an env var and an annotation, resolve the image placeholders from
+    ``env`` (``DEAR_AGENT_RUNNER_IMAGE`` / ``DEAR_AGENT_HARNESS_IMAGE``), and give the Job a
+    deterministic name. No shell interpolation is involved, so a hostile task id cannot inject
+    YAML.
     """
 
+    source = env if env is not None else os.environ
     job = yaml.safe_load(template)
     metadata = job.setdefault("metadata", {})
     metadata.pop("generateName", None)
@@ -51,16 +66,25 @@ def render_job(template: str, task: Task) -> dict:
     if not containers:
         raise DispatchError("runner template has no containers")
     for container in containers:
-        env = container.setdefault("env", [])
-        for entry in env:
+        _resolve_image(container, source)
+        env_list = container.setdefault("env", [])
+        for entry in env_list:
             if entry.get("name") == "DEAR_AGENT_TASK_ID":
                 entry["value"] = task.id
                 break
         else:
-            env.append({"name": "DEAR_AGENT_TASK_ID", "value": task.id})
+            env_list.append({"name": "DEAR_AGENT_TASK_ID", "value": task.id})
     template_meta = job["spec"]["template"].setdefault("metadata", {})
     template_meta.setdefault("annotations", {})[WORKER_ANNOTATION] = task.id
     return job
+
+
+def _resolve_image(container: dict, env: Mapping[str, str]) -> None:
+    image = container.get("image")
+    placeholder = IMAGE_PLACEHOLDERS.get(image) if isinstance(image, str) else None
+    if placeholder is not None:
+        variable, default = placeholder
+        container["image"] = env.get(variable) or default
 
 
 @dataclass(slots=True)
