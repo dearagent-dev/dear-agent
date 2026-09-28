@@ -5,9 +5,9 @@
 #   DEAR_AGENT_RUNNER_TEMPLATE_CONFIGMAP=dear-agent-runner-sidecar-template
 #
 # The `harness` container image bundles the harness (OpenCode today) on top of the control-plane
-# image: see deploy/harness/Containerfile, published as quay.io/dear-agent/harness. Set its tag
-# here to match the control-plane image (`:dev`, `:stable`, …): kustomize's `images:` cannot
-# rewrite a value inside this ConfigMap's `job.yaml`, so it is pinned below.
+# image: see deploy/harness/Containerfile. The image is a placeholder resolved by the dispatcher
+# from `DEAR_AGENT_HARNESS_IMAGE` (the control container from `DEAR_AGENT_RUNNER_IMAGE`), so the
+# tag lives in the ConfigMap, not here.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -45,7 +45,7 @@ data:
           containers:
             # Control: holds the DB DSN and the git key, and does clone/push/PR.
             - name: control
-              image: quay.io/dear-agent/dear-agent:latest
+              image: __RUNNER_IMAGE__
               command: ["dear-agent"]
               args:
                 - "run"
@@ -114,7 +114,7 @@ data:
             # Harness: no DB DSN, no git key, no transport credential. Its own container is
             # the jail; it only sees the shared worktree.
             - name: harness
-              image: quay.io/dear-agent/harness:latest
+              image: __HARNESS_IMAGE__
               command: ["dear-agent"]
               args: ["harness-serve", "--dir", "/work/harness", "--once"]
               envFrom:

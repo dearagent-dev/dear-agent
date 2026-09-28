@@ -35,9 +35,11 @@ jobs:
         run: |
           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
             echo "tags=${GITHUB_REF_NAME} stable latest" >> "$GITHUB_OUTPUT"
+            echo "harness_tags=harness-${GITHUB_REF_NAME} harness-stable harness-latest" >> "$GITHUB_OUTPUT"
             echo "first=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
           else
             echo "tags=dev sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+            echo "harness_tags=harness-dev harness-sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
             echo "first=dev" >> "$GITHUB_OUTPUT"
           fi
 
@@ -69,14 +71,16 @@ jobs:
           password: ${{ secrets.QUAY_PASSWORD }}
 
       # The harness image for the two-container runner (ADR 0007): built FROM the image just
-      # pushed, with the harness bundled through its own loader (ADR 0008). Same tags.
+      # pushed, with the harness bundled through its own loader (ADR 0008). It is published as
+      # `harness-<tag>` tags in the same `dear-agent` repository (a separate `harness` repo would
+      # need its own Quay permission).
       - name: Build the harness image
         id: build-harness
         if: steps.guard.outputs.ready == 'true'
         uses: redhat-actions/buildah-build@v3
         with:
-          image: harness
-          tags: ${{ steps.meta.outputs.tags }}
+          image: dear-agent
+          tags: ${{ steps.meta.outputs.harness_tags }}
           context: ./deploy/harness
           containerfiles: ./deploy/harness/Containerfile
           build-args: |

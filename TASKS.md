@@ -171,10 +171,11 @@ still-open gaps:
   opt-in single-container runner (`DEAR_AGENT_RUNNER_TEMPLATE_CONFIGMAP=dear-agent-runner-template`)
   still exposes the write key and forge token to the harness (ADR 0007 residual).
 - **Ops**: **M9.7 verified live** on the SNO cluster (draft PR #6 in `dear-agent-lab-python`).
-  Two deploy follow-ups: publish `quay.io/dear-agent/harness` (the Quay robot cannot push a new
-  `harness` repo, so the CI harness push fails — the runbook documents a workaround), and manage
-  the runner ConfigMap image tags (kustomize `images:` cannot rewrite a value inside the
-  ConfigMap, so the runner template pins a tag that must be set per environment).
+  The runner/harness images are injected by the dispatcher from
+  `DEAR_AGENT_RUNNER_IMAGE`/`DEAR_AGENT_HARNESS_IMAGE` (the runner ConfigMap uses
+  `__RUNNER_IMAGE__`/`__HARNESS_IMAGE__` placeholders), and the harness image is published as
+  `harness-<tag>` tags in the `dear-agent` repository, so no separate Quay repo is needed.
+  Re-apply the overlay to pick up the new manifests.
 
 ## Later
 

@@ -12,6 +12,16 @@ images:
     newTag: stable
 patches:
   - target:
+      kind: ConfigMap
+      name: dear-agent-config
+    patch: |-
+      - op: replace
+        path: /data/DEAR_AGENT_RUNNER_IMAGE
+        value: quay.io/dear-agent/dear-agent:stable
+      - op: replace
+        path: /data/DEAR_AGENT_HARNESS_IMAGE
+        value: quay.io/dear-agent/dear-agent:harness-stable
+  - target:
       kind: Deployment
       name: dear-agent-control-plane
     patch: |-

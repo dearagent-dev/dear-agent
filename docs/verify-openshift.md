@@ -20,16 +20,17 @@ is the source of truth for the manual path and the troubleshooting.
 - An OpenShift/Kubernetes cluster and `oc` (or `kubectl`), `kustomize`, `curl`.
 - A repository you can push to and whose forge you can token against (GitHub/GitLab/Gitea).
 - The images published: the control-plane image and the **harness image**. `main` publishes both
-  (`quay.io/dear-agent/dear-agent` and `quay.io/dear-agent/harness`) via `.github/workflows/publish.yml`.
-  To build and push locally instead:
+  via `.github/workflows/publish.yml` — the harness as `harness-<tag>` tags in the same
+  `quay.io/dear-agent/dear-agent` repository (no separate repo/permission needed). To build and
+  push locally instead:
 
   ```sh
   podman build -t quay.io/dear-agent/dear-agent:latest .
   podman build -f deploy/harness/Containerfile \
     --build-arg DEAR_AGENT_IMAGE=quay.io/dear-agent/dear-agent:latest \
-    -t quay.io/dear-agent/harness:latest deploy/harness
+    -t quay.io/dear-agent/dear-agent:harness-latest deploy/harness
   podman push quay.io/dear-agent/dear-agent:latest
-  podman push quay.io/dear-agent/harness:latest
+  podman push quay.io/dear-agent/dear-agent:harness-latest
   ```
 
 ## 1. Secrets (ADR 0003/0009)
@@ -156,7 +157,7 @@ oc -n "$NS" delete job -l app.kubernetes.io/component=runner
 | Responds `401` | wrong HMAC | sign the **raw** body plus `sender\n`; check the secret |
 | Responds `403` | sender not allowed | add to `DEAR_AGENT_ALLOWED_SENDERS` |
 | Task `rejected` | repo has no policy and `DEAR_AGENT_REQUIRE_REPO_POLICY=true` | add a policy or set it `false` |
-| Job fails `HARNESS_MISSING` | harness image/binary missing | use `quay.io/dear-agent/harness`, check the bundle shim |
+| Job fails `HARNESS_MISSING` | harness image/binary missing | check `DEAR_AGENT_HARNESS_IMAGE` and the bundle shim |
 | Job fails `PUBLISH_FAILED` | push key or forge token absent/insufficient | check `dear-agent-git-push` and `dear-agent-forge` |
 | Harness cannot reach the model | no model credential or egress blocked | wire `dear-agent-model`; check the runner egress `NetworkPolicy` |
 | `CreateContainerConfigError` | referenced Secret has no keys | every `secretKeyRef` is `optional: true`; create the keys |

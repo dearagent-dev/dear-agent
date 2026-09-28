@@ -117,7 +117,7 @@ def test_sidecar_runner_isolates_the_harness_container() -> None:
     assert "dear-agent-model" in harness_secrets
     assert "DEAR_AGENT_HARNESS_ENV" in env_names
     assert "harness-serve" in harness["args"]
-    assert harness["image"].startswith("quay.io/dear-agent/harness")
+    assert harness["image"] == "__HARNESS_IMAGE__"
     # The control container does clone/push/PR, so it carries the read+write keys and the token.
     control = containers["control"]
     control_mounts = {mount["name"] for mount in control["volumeMounts"]}
@@ -313,3 +313,22 @@ def test_dispatcher_role_allows_the_selected_template_and_getting_jobs() -> None
 
     assert "dear-agent-runner-sidecar-template" in configmaps["resourceNames"]
     assert {"create", "get"} <= set(jobs["verbs"])
+
+
+def test_runner_images_come_from_config_placeholders() -> None:
+    docs = build("dev")
+    config = next(
+        doc
+        for doc in docs
+        if doc.get("kind") == "ConfigMap" and doc["metadata"]["name"] == "dear-agent-config"
+    )
+    assert config["data"]["DEAR_AGENT_RUNNER_IMAGE"].endswith(":dev")
+    assert config["data"]["DEAR_AGENT_HARNESS_IMAGE"].endswith(":harness-dev")
+
+    sidecar = sidecar_template(docs)
+    images = [c["image"] for c in sidecar["spec"]["template"]["spec"]["containers"]]
+    assert "__RUNNER_IMAGE__" in images
+    assert "__HARNESS_IMAGE__" in images
+
+    runner = runner_template(docs)
+    assert runner["spec"]["template"]["spec"]["containers"][0]["image"] == "__RUNNER_IMAGE__"

@@ -10,3 +10,15 @@ components:
 images:
   - name: quay.io/dear-agent/dear-agent
     newTag: dev
+patches:
+  # The runner/harness images the dispatcher injects must match the environment tag.
+  - target:
+      kind: ConfigMap
+      name: dear-agent-config
+    patch: |-
+      - op: replace
+        path: /data/DEAR_AGENT_RUNNER_IMAGE
+        value: quay.io/dear-agent/dear-agent:dev
+      - op: replace
+        path: /data/DEAR_AGENT_HARNESS_IMAGE
+        value: quay.io/dear-agent/dear-agent:harness-dev
