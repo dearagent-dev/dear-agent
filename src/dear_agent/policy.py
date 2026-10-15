@@ -141,10 +141,9 @@ def _configured_git_hosts() -> tuple[str, ...]:
     an open set. Several hosts can be listed for a deployment that mirrors repositories.
     """
     raw = os.environ.get("DEAR_AGENT_GIT_HOST") or DEFAULT_GIT_HOST
-    return (
-        tuple(part.strip().lower() for part in raw.replace(";", ",").split(",") if part.strip())
-        or (DEFAULT_GIT_HOST,)
-    )
+    return tuple(
+        part.strip().lower() for part in raw.replace(";", ",").split(",") if part.strip()
+    ) or (DEFAULT_GIT_HOST,)
 
 
 def parse_policy(text: str, *, source: str | None = None) -> ProjectPolicy:

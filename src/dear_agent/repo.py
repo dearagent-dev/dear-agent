@@ -77,9 +77,7 @@ class RepoPreparer:
             check=False,
         )
         if result.returncode != 0:
-            raise RepoError(
-                f"{path} has no 'origin' remote; refusing to reuse it for {repo_url!r}"
-            )
+            raise RepoError(f"{path} has no 'origin' remote; refusing to reuse it for {repo_url!r}")
         existing = result.stdout.strip()
         if normalize_repo(existing) != normalize_repo(repo_url):
             raise RepoError(
