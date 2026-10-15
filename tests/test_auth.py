@@ -11,11 +11,13 @@ from dear_agent.auth import (
     EmailAuthGate,
     InboundAuthorizer,
     InboundGate,
+    InboundGateError,
     MissingSignatureError,
     RateLimitedError,
     RateLimiter,
     SenderAllowlist,
     UnauthorizedSenderError,
+    build_email_gate,
     parse_authentication_results,
     sign,
 )
@@ -363,3 +365,50 @@ def test_rate_limited_gate_without_an_inner_gate() -> None:
     gate.admit(body=BODY, headers={}, sender=SENDER)
     with pytest.raises(RateLimitedError):
         gate.admit(body=BODY, headers={}, sender=SENDER)
+
+
+def test_an_email_backend_without_a_gate_refuses_to_start() -> None:
+    """Neither the rate limiter nor the repo policy authenticates the sender (review finding 4).
+
+    With no gate, any message addressed to the mailbox becomes a task.
+    """
+    with pytest.raises(InboundGateError):
+        build_email_gate({"DEAR_AGENT_BACKEND": "jmap"})
+
+
+def test_the_memory_backend_needs_no_gate() -> None:
+    gate = build_email_gate({"DEAR_AGENT_BACKEND": "memory"})
+
+    assert gate.gate is None
+
+
+def test_an_explicit_opt_out_allows_an_open_mailbox() -> None:
+    """The unsafe state is a decision, not an omission."""
+    gate = build_email_gate(
+        {"DEAR_AGENT_BACKEND": "imap", "DEAR_AGENT_ALLOW_UNAUTHENTICATED_INBOUND": "true"}
+    )
+
+    gate.admit(body="repo: https://github.com/o/r\n\nx", headers={}, sender="anyone@example.com")
+
+
+def test_an_allowlist_is_enough_to_start_and_still_rejects_others() -> None:
+    gate = build_email_gate(
+        {"DEAR_AGENT_BACKEND": "jmap", "DEAR_AGENT_ALLOWED_SENDERS": "me@example.com"}
+    )
+
+    gate.admit(body="x", headers={}, sender="me@example.com")
+    with pytest.raises(UnauthorizedSenderError):
+        gate.admit(body="x", headers={}, sender="someone@example.com")
+
+
+def test_the_dmarc_gate_is_preferred_over_the_allowlist() -> None:
+    gate = build_email_gate(
+        {
+            "DEAR_AGENT_BACKEND": "jmap",
+            "DEAR_AGENT_AUTH_DOMAINS": "example.com",
+            "DEAR_AGENT_ALLOWED_SENDERS": "me@example.com",
+        }
+    )
+
+    # A DMARC gate always has its own allowlist attached, never a bare sender list.
+    assert isinstance(gate.gate, EmailAuthGate)

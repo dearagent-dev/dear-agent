@@ -148,3 +148,73 @@ def test_commit_all_sets_an_identity_for_a_runner(monkeypatch, repo: Path, tmp_p
     sha = GitPlane(forge=RecordingForge()).commit_all(worktree, message="from a runner")
 
     assert len(sha) == 40
+
+
+def test_commit_all_does_not_run_a_repository_hook(worktree: Worktree) -> None:
+    """The harness can write the shared checkout, so its hooks must never run in control.
+
+    In the two-container runner both containers mount the same volume: the harness can drop a
+    ``.git/hooks/pre-commit`` and the control container's ``git commit`` would execute it with
+    the database DSN, the Git keys and the forge token in the environment.
+    """
+    hook = worktree.repo_path / ".git" / "hooks" / "pre-commit"
+    hook.write_text("#!/bin/sh\necho pwned > hook-ran.txt\n")
+    hook.chmod(0o755)
+    (worktree.path / "health.txt").write_text("ok\n")
+
+    GitPlane(forge=RecordingForge()).commit_all(worktree, message="add health")
+
+    assert not (worktree.path / "hook-ran.txt").exists()
+
+
+def test_commit_all_does_not_run_a_clean_filter(worktree: Worktree) -> None:
+    """A ``filter.*.clean`` driver runs arbitrary code on ``git add``."""
+    git(
+        worktree.repo_path,
+        "config",
+        "filter.evil.clean",
+        "sh -c 'echo pwned > filter-ran.txt; cat'",
+    )
+    (worktree.path / ".gitattributes").write_text("* filter=evil\n")
+    (worktree.path / "health.txt").write_text("ok\n")
+
+    GitPlane(forge=RecordingForge()).commit_all(worktree, message="add health")
+
+    assert not (worktree.path / "filter-ran.txt").exists()
+
+
+def test_commit_all_neutralises_the_shared_config(worktree: Worktree) -> None:
+    """Sanitising the checkout closes the vectors that ``-c`` cannot override per command."""
+    git(worktree.repo_path, "config", "core.hooksPath", "/tmp/attacker-hooks")
+    git(worktree.repo_path, "config", "core.fsmonitor", "/tmp/attacker-fsmonitor")
+    git(worktree.repo_path, "config", "core.sshCommand", "sh -c 'echo pwned'")
+    git(worktree.repo_path, "config", "alias.co", "!sh -c 'echo pwned'")
+    (worktree.path / "health.txt").write_text("ok\n")
+
+    GitPlane(forge=RecordingForge()).commit_all(worktree, message="add health")
+
+    for key in ("core.hooksPath", "core.fsmonitor", "core.sshCommand", "alias.co"):
+        result = subprocess.run(
+            ["git", "config", "--local", "--get", key],
+            cwd=worktree.repo_path,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.returncode != 0, f"{key} survived: {result.stdout.strip()}"
+
+
+def test_push_does_not_run_a_pre_push_hook(worktree: Worktree, tmp_path: Path) -> None:
+    hook = worktree.repo_path / ".git" / "hooks" / "pre-push"
+    hook.write_text("#!/bin/sh\necho pwned > hook-ran.txt\n")
+    hook.chmod(0o755)
+    bare = tmp_path / "remote.git"
+    git(tmp_path, "init", "--bare", str(bare))
+    git(worktree.path, "remote", "add", "backup", str(bare))
+    (worktree.path / "health.txt").write_text("ok\n")
+    plane = GitPlane(forge=RecordingForge())
+
+    plane.commit_all(worktree, message="add health")
+    plane.push(worktree, remote="backup")
+
+    assert not (worktree.path / "hook-ran.txt").exists()

@@ -53,18 +53,23 @@ If a change does not serve one of those goals (or a milestone in
 
 ## 3. Status and where to start
 
-**Current status: M8 (durable state in PostgreSQL) implemented** (PR #55), plus the execution
+**Dear Agent is feature-complete through M9 and verified live.** M0–M8 are done; the execution
 environment and forge slices ([ADR 0008](docs/decisions/0008-execution-environment.md),
-[ADR 0009](docs/decisions/0009-forge-api.md)): a run is one **environment session**
-(harness + verify share one container), the harness is injected into a repository-declared
-environment, and the draft PR is opened through the forge **REST API** (no `gh`), with an
-optional adversarial review before the PR
-([ADR 0010](docs/decisions/0010-adversarial-review.md)). M0–M7 are
-done; M0–M6 were verified live on OpenShift + Fastmail. The mailbox is **ingress**: durable
-tasks, state, approvals and the decision log live in PostgreSQL — see
-[`docs/decisions/0005-state-store.md`](docs/decisions/0005-state-store.md), which supersedes
-[ADR 0002](docs/decisions/0002-deployment-topology.md) in part. The local MVP path is in
-[`docs/getting-started.md`](docs/getting-started.md). The decision layer uses System One models
+[ADR 0009](docs/decisions/0009-forge-api.md)) and the adversarial review
+([ADR 0010](docs/decisions/0010-adversarial-review.md)) are on `main`. A run is one
+**environment session**: the harness is injected into a repository-declared environment, the
+`verify` gate runs in the **credential-free harness container**, and the draft PR is opened
+through the forge **REST API** (no `gh`). M9.7 was verified live on the SNO cluster
+(`api-virt-daytwo-dev`, namespace `dear-agent`): inbound webhook and **email ingress** → queue →
+sweep → two-container runner → commit/push → draft PR, and the cluster is deployed as of
+2026-10-15 (see [`TASKS.md`](TASKS.md), which supersedes the older handoff notes).
+
+The mailbox is **ingress**: durable tasks, state, approvals and the decision log live in
+PostgreSQL — see [`docs/decisions/0005-state-store.md`](docs/decisions/0005-state-store.md), which
+supersedes [ADR 0002](docs/decisions/0002-deployment-topology.md) in part. The local MVP path is in
+[`docs/getting-started.md`](docs/getting-started.md); the cluster demo is in
+[`docs/demo.md`](docs/demo.md) (with `scripts/demo.sh` and `scripts/demo_console.py`). The decision
+layer uses System One models
 (Jev first) for routing/gates — see
 [`docs/decisions/0004-decision-model.md`](docs/decisions/0004-decision-model.md). Dear Agent has
 **no direct-LLM path**: a harness codes, a decider decides.
@@ -114,32 +119,42 @@ dear-agent/
 ├── docs/
 │   ├── architecture.md
 │   ├── getting-started.md
+│   ├── demo.md               # cluster demo runbook (scripts/demo.sh, scripts/demo_console.py)
 │   ├── transports.md
 │   ├── queue.md
 │   ├── providers.md
 │   ├── security.md
 │   ├── roadmap.md
+│   ├── verify-openshift.md   # M9.7 runbook (manual path + troubleshooting)
 │   └── decisions/            # ADRs, one file per decision
-├── src/dear_agent/               # Python package
-│   ├── db.py                 # Postgres connect + schema composition
-│   ├── events.py             # append-only task event log + error budget
-│   ├── deps.py               # task dependency graph (depends-on) resolution
-│   ├── policy.py             # per-project policy: markdown projected into the store
-│   ├── queue/                # Task model + Queue port (Postgres; mailbox is ingress)
-│   ├── transports/           # inbound/outbound adapters (jmap, imap/smtp, webhook, memory)
-│   ├── imap/                 # IMAP client (receive) for the IMAP/SMTP transport
-│   ├── smtp/                 # SMTP client (send) for the IMAP/SMTP transport
-│   ├── runners/              # harness adapters (opencode, claude, codex, custom) + catalog
-│   ├── providers/            # model provider config (hosted + local)
-│   ├── gitplane/             # worktree, branch, PR
+├── src/dear_agent/           # Python package
+│   ├── cli/                  # `dear-agent` argument parsing and commands
+│   ├── decision/             # decider port + rules/jev/openai-compat + decision log
+│   ├── environment/          # descriptor, builder, harness bundle (ADR 0008)
+│   ├── gitplane/             # worktree, branch, PR (forge API, ADR 0009)
+│   ├── idle/                 # creative loop for empty queues
+│   ├── imap/ · smtp/ · jmap/ # mail clients for the transports
 │   ├── notify/               # outbound status/approval threading
-│   └── idle/                 # creative loop for empty queues
+│   ├── observability/        # health
+│   ├── providers/            # model provider config (hosted + local)
+│   ├── queue/                # Task model + Queue port (Postgres; mailbox is ingress)
+│   ├── runners/              # harness adapters (opencode, claude, codex, command) + catalog
+│   │                         #   shared.py: the two-container control↔harness handshake
+│   ├── transports/           # inbound/outbound adapters (jmap, imap/smtp, webhook, memory)
+│   ├── auth.py · security.py # inbound gates and injection scanning
+│   ├── control_plane.py      # gate → normalize → enqueue
+│   ├── executor.py · worker.py · worker_factory.py   # one task, end to end
+│   ├── verify.py             # the task's allowlisted verify gate
+│   └── db.py · events.py · deps.py · policy.py · review.py
 ├── deploy/                   # Kubernetes/OpenShift manifests (Kustomize)
-│   ├── base/                 # control plane, runner Job/CronJob
-│   ├── components/           # opt-in pieces (postgresql StatefulSet)
+│   ├── base/                 # control plane, runner Job/CronJob, sweep, poll, egress
+│   ├── components/           # opt-in pieces (postgresql StatefulSet, backup, egress)
+│   ├── harness/              # the two-container harness image (opencode shim + bundle)
 │   └── overlays/             # dev, prod
+├── scripts/                  # dev/ops helpers: dev-postgres, verify-openshift, demo,
+│                             #   demo_console (read-only web view)
 ├── tests/
-└── scripts/                  # dev/ops helpers
+└── policy/                   # example per-project policy markdown
 ```
 
 ## 6. How to work in this repo

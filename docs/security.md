@@ -82,11 +82,18 @@ Owner: normalizer + runner prompt construction.
 - The container drops all capabilities (`--cap-drop ALL`), caps processes (`--pids-limit`) and
   can run a read-only rootfs with a `/tmp` tmpfs; credential mounts are read-only by default.
 - Do **not** mount a service account token (`automountServiceAccountToken: false`).
-- The runner Job carries only what it needs (the database DSN and a **read-only** git key); the
-  **harness environment** withholds them (`runners.harness.harness_env` is an allowlist). Within
-  the container the harness still shares a PID namespace and could read the parent's environment
-  via `/proc`, so full separation — the harness in its own container — is tracked in
-  [#94](https://github.com/dearagent-dev/dear-agent/issues/94).
+- **The default runner is two containers** (ADR 0007): `control` holds the database DSN, the
+  git keys and the forge token; `harness` holds only its own model credential. The harness
+  environment withholds everything else (`runners.harness.harness_env` is an allowlist), and
+  because the harness is a *sibling* container it cannot read the control's environment through
+  `/proc` at all. A task's **`verify` command runs in the `harness` container** too: it executes
+  on files the harness just wrote, so it must not run where the credentials are. The
+  single-container runner (`DEAR_AGENT_RUNNER_TEMPLATE_CONFIGMAP=dear-agent-runner-template`) is
+  opt-in and does expose the write key and the forge token to the harness.
+- **Repository-controlled code never runs in the credential holder.** The control's git commands
+  pin hooks off, drop the checkout config that makes git execute a program (`filter.*`,
+  `core.fsmonitor`, `core.sshCommand`, `url.*.insteadOf`, …), and re-check the remote host right
+  before pushing, because both containers share the worktree volume.
 - Mount the repo read-only outside the disposable worktree.
 - Give the harness an **allowlist** of tools, not arbitrary shell.
 - Reject attachments and any message that carries source code or patches.
@@ -129,6 +136,21 @@ Owner: gitplane + repository settings.
 - A repository that no *enabled* project policy matches is **refused**: once policies are
   configured, one cannot ask Dear Agent to work on a repo the operator did not allow. Scope the
   push credential to the allowed repos and keep branch protection as the last line.
+- The policy matcher compares the **host** and the `owner/repo` slug separately
+  (`policy.split_repo`). A hostless pattern such as `acme/*` only matches a remote on a trusted
+  host (`DEAR_AGENT_GIT_HOST`, default `github.com`); a URL that merely contains it
+  (`https://evil.example/github.com/acme/widget`) has the host `evil.example` and is refused.
+  A pattern that names a host authorizes exactly that host.
+- `RepoPreparer` repeats the host check before cloning and refuses to reuse a checkout whose
+  `origin` is a different repository, so the control container's Git credential is only ever
+  offered to the approved host. The runner's `credential.helper` is host-scoped for the same
+  reason.
+- The control container runs its git commands with hooks **disabled** (`core.hooksPath` pinned,
+  `core.fsmonitor` off) and drops the checkout config that makes git execute a program
+  (clean/smudge `filter.*`, `diff.*.textconv`, `core.sshCommand`, `url.*.insteadOf`, …) before
+  staging or pushing. In the two-container runner the harness writes the same volume, so
+  without this a `.git/hooks/pre-push` it dropped would run with the database DSN and the forge
+  token in the environment. The push also re-checks the remote's host immediately before it.
 
 Owner: queue + notifier + runner.
 

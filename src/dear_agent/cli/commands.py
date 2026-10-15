@@ -315,11 +315,9 @@ def _inbound_plane(queue, transport):
     Email cannot carry Dear Agent's HMAC header, so the transport-level gate is what
     authenticates it.
     """
-    from datetime import timedelta
-
     from dear_agent.approvals import build_approval_store
     from dear_agent.approvals_service import ApprovalService
-    from dear_agent.auth import EmailAuthGate, RateLimitedGate, RateLimiter, SenderAllowlist
+    from dear_agent.auth import build_email_gate
     from dear_agent.control_plane import ControlPlane
     from dear_agent.decision.factory import build_decider
     from dear_agent.decision.router import HumanGate
@@ -329,17 +327,9 @@ def _inbound_plane(queue, transport):
     from dear_agent.policy import build_policy_store
     from dear_agent.security import InjectionScanner
 
-    gate = EmailAuthGate.from_env(os.environ)
-    if gate is None:
-        gate = SenderAllowlist.from_env(os.environ.get("DEAR_AGENT_ALLOWED_SENDERS"))
-    # Rate-limit the email path too: a mail burst must not become a burst of agent runs.
-    gate = RateLimitedGate(
-        gate=gate,
-        rate_limiter=RateLimiter(
-            limit=int(os.environ.get("DEAR_AGENT_RATE_LIMIT", "60")),
-            window=timedelta(minutes=1),
-        ),
-    )
+    # The email path authenticates the sender here (DMARC or an allowlist) and is rate limited;
+    # a real email backend refuses to start without one. See auth.build_email_gate.
+    gate = build_email_gate(os.environ)
     decider = build_decider()
     return ControlPlane(
         transport=transport,
@@ -594,6 +584,12 @@ def add_harness_commands(
     parser.add_argument(
         "--once", action="store_true", help="serve one request then exit (one task per pod)"
     )
+    parser.add_argument(
+        "--idle-timeout",
+        type=float,
+        default=float(os.environ.get("DEAR_AGENT_HARNESS_IDLE_TIMEOUT", "900")),
+        help="stop serving after this many idle seconds (0 = never)",
+    )
     parser.set_defaults(handler=_handle_harness_serve, needs_queue=False)
 
 
@@ -608,7 +604,12 @@ def _handle_harness_serve(args: argparse.Namespace, context: CliContext) -> int:
     # The harness container is itself the jail and holds no credential, so no sandbox.
     runner = build_runner(os.environ.get("DEAR_AGENT_MODEL"), NoSandbox())
     context.emit(f"harness-serve: {shared}")
-    serve(shared, runner=runner, once=bool(getattr(args, "once", False)))
+    serve(
+        shared,
+        runner=runner,
+        once=bool(getattr(args, "once", False)),
+        idle_timeout=float(getattr(args, "idle_timeout", 0) or 0),
+    )
     return 0
 
 
@@ -690,6 +691,12 @@ def _handle_run(args: argparse.Namespace, context: CliContext) -> int:
         if existing is not None and existing.spec is not None:
             model = existing.spec.model_request
     transport = build_transport(args.backend)
+    if args.task_id:
+        # Prepare the checkout *before* the worker resolves the execution environment (ADR
+        # 0008): `build_worker` reads the environment descriptor from `repo_path`, and on a
+        # fresh runner that directory does not exist yet (the spec resolver clones it later),
+        # so a repository-declared environment was ignored on the first run.
+        _prepare_checkout(queue, transport, args.repo, args.task_id)
     worker = build_worker(
         queue=queue,
         transport=transport,
@@ -709,8 +716,37 @@ def _handle_run(args: argparse.Namespace, context: CliContext) -> int:
         context.emit_json(payload)
     else:
         context.emit(f"{evidence.task_id} {evidence.branch} {evidence.pr_url}")
+    if not evidence.ok:
+        # The runner's log is operator-facing and is what a live demo reads, so say *why* it
+        # failed (the failure kind plus the tail of the harness output). This is not the
+        # transport: nothing here travels to the sender, and no source is printed.
+        context.emit(f"failed: {evidence.failure.value if evidence.failure else 'unknown'}")
+        if evidence.detail:
+            context.emit(f"  detail: {evidence.detail}")
+        tail = (evidence.run.stderr or evidence.run.stdout or "").strip().splitlines()
+        for line in tail[-5:]:
+            context.emit(f"  {line}")
     # Mirror the task outcome in the exit code so a runner Job reflects success/failure.
     return 0 if evidence.ok else 1
+
+
+def _prepare_checkout(queue, transport, repo_path: str, task_id: str) -> None:
+    """Clone the task's repository before the execution environment is resolved (ADR 0008).
+
+    A repository declares its environment (Dev Container, EE, `Containerfile`, …); the worker
+    detects it from ``repo_path``. Cloning here means the descriptor is read from real content
+    instead of an empty directory. A clone failure is not raised: the spec resolver reports it
+    inside the run, with the task's own error handling.
+    """
+    from dear_agent.repo import RepoError, RepoPreparer
+
+    task = queue.get(task_id)
+    if task is None or task.spec is None or not task.spec.repo_url:
+        return
+    try:
+        RepoPreparer().ensure(repo_path, task.spec.repo_url)
+    except (RepoError, OSError):
+        return
 
 
 def add_approval_commands(

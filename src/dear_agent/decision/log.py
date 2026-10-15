@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
@@ -230,19 +231,26 @@ class PostgresDecisionLog:
         self._conn = conn
 
     def record(self, record: DecisionRecord) -> None:
-        with self._conn.cursor() as cur:
-            cur.execute(
-                "INSERT INTO dear_agent_decision (at, state, questions, answers, label) "
-                "VALUES (%s, %s, %s::jsonb, %s::jsonb, %s)",
-                (
-                    record.at,
-                    record.state,
-                    json.dumps(record.questions),
-                    json.dumps(record.answers),
-                    record.label,
-                ),
-            )
-        self._conn.commit()
+        try:
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO dear_agent_decision (at, state, questions, answers, label) "
+                    "VALUES (%s, %s, %s::jsonb, %s::jsonb, %s)",
+                    (
+                        record.at,
+                        record.state,
+                        json.dumps(record.questions),
+                        json.dumps(record.answers),
+                        record.label,
+                    ),
+                )
+            self._conn.commit()
+        except Exception:
+            # Leave the connection usable: a failed statement aborts the transaction, and the
+            # caller (the decider) treats logging as advisory.
+            with contextlib.suppress(Exception):
+                self._conn.rollback()
+            raise
 
     def read(self) -> list[DecisionRecord]:
         with self._conn.cursor() as cur:

@@ -92,7 +92,7 @@ data:
                 - name: GIT_CONFIG_KEY_0
                   value: "credential.helper"
                 - name: GIT_CONFIG_VALUE_0
-                  value: "!f() { echo username=x-access-token; echo password=${GH_TOKEN}; }; f"
+                  value: '!f() { h=""; while IFS="=" read -r k v; do [ "$k" = host ] && h="$v"; done; if [ "$h" = "${DEAR_AGENT_GIT_HOST:-github.com}" ]; then echo username=x-access-token; echo password=$GH_TOKEN; fi; }; f'
               volumeMounts:
                 - name: work
                   mountPath: /work

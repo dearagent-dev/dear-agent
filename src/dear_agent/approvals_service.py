@@ -71,14 +71,18 @@ class ApprovalService:
         task = self._queue.get(approval.task_id)
         if task is None:
             raise UnknownTokenError(reply.token)
-        if task.state is not TaskState.ACTION:
-            raise ApprovalNotApplicableError(approval.task_id, task.state)
         if sender is not None and task.sender is not None and sender.lower() != task.sender.lower():
             raise ApprovalMismatchError(approval.task_id, "sender")
         if thread_id is not None and task.thread_id is not None and thread_id != task.thread_id:
             raise ApprovalMismatchError(approval.task_id, "thread")
+        if approval.used and task.state is not TaskState.ACTION:
+            # The decision was applied already.
+            raise TokenAlreadyUsedError(reply.token)
+        if not approval.used and task.state is not TaskState.ACTION:
+            raise ApprovalNotApplicableError(approval.task_id, task.state)
+        if not approval.used and approval.expired(self._store.now()):
+            raise ExpiredTokenError(reply.token)
 
-        approval = self._store.redeem(reply.token)
         # The approval's action decides what "approved" means: a ``run`` gate releases the
         # task to be executed (ACTION -> QUEUED); a ``land`` gate records the decision
         # (ACTION -> APPROVED). A rejection is always terminal.
@@ -88,7 +92,17 @@ class ApprovalService:
             target = TaskState.QUEUED
         else:
             target = TaskState.APPROVED
-        return self._queue.transition(task, target)
+
+        # Move the task **before** consuming the token. The two writes live in different
+        # stores (queue and approvals) and cannot share a transaction, so the order decides
+        # what a crash can lose: releasing the task first means a crash after it leaves the
+        # token unused and the task moved — the human's decision is never lost — whereas the
+        # reverse order burned the only token while the task stayed parked, and a re-delivered
+        # reply was then refused as already used.
+        transitioned = self._queue.transition(task, target)
+        if not approval.used:
+            self._store.redeem(reply.token)
+        return transitioned
 
 
 __all__ = [

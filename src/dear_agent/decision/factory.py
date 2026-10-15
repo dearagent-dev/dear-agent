@@ -91,7 +91,9 @@ class LoggingDecider:
 
     def decide(self, state: str, questions: dict[str, Question]) -> Decision:
         decision = self.decider.decide(state, questions)
-        with contextlib.suppress(OSError):
+        # Advisory metadata, never a control path: any logging failure (a file error, but also
+        # a database error from ``PostgresDecisionLog``) must leave the decision untouched.
+        with contextlib.suppress(Exception):
             self.log.record(DecisionRecord.from_decision(state, questions, decision))
         return decision
 

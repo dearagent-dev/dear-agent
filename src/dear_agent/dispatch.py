@@ -32,18 +32,22 @@ class DispatchError(RuntimeError):
     """A task could not be dispatched to a runner Job."""
 
 
-def job_name(task_id: str) -> str:
-    """A deterministic, DNS-1123 Job name for a task id.
+def job_name(task_id: str, attempts: int = 0) -> str:
+    """A deterministic, DNS-1123 Job name for a task id and attempt.
 
-    Deterministic so that re-dispatching the same task is a no-op (the Job already exists),
-    which is what makes the sweep idempotent across restarts and repeated CronJob runs. The
-    short digest keeps distinct task ids from colliding after slugging.
+    Deterministic so that re-dispatching the same task **attempt** is a no-op (the Job already
+    exists), which is what makes the sweep idempotent across restarts and repeated CronJob runs.
+    The attempt is part of the name because finished Jobs are kept for 24h: with a name that
+    ignored it, a task released by the lease sweep would keep colliding with its own terminal Job
+    and never actually retry. The short digest keeps distinct task ids from colliding after
+    slugging.
     """
     prefix = "dear-agent-task-"
+    suffix = f"-a{attempts}"
     digest = hashlib.sha256(task_id.encode()).hexdigest()[:10]
-    max_slug = 63 - len(prefix) - 1 - len(digest)
+    max_slug = 63 - len(prefix) - 1 - len(digest) - len(suffix)
     slug = _SLUG_RE.sub("-", task_id.lower()).strip("-")[:max_slug] or "task"
-    return f"{prefix}{slug}-{digest}"
+    return f"{prefix}{slug}-{digest}{suffix}"
 
 
 def render_job(template: str, task: Task, *, env: Mapping[str, str] | None = None) -> dict:
@@ -60,7 +64,7 @@ def render_job(template: str, task: Task, *, env: Mapping[str, str] | None = Non
     job = yaml.safe_load(template)
     metadata = job.setdefault("metadata", {})
     metadata.pop("generateName", None)
-    metadata["name"] = job_name(task.id)
+    metadata["name"] = job_name(task.id, task.attempts)
     spec = job["spec"]["template"]["spec"]
     containers = spec.get("containers", [])
     if not containers:

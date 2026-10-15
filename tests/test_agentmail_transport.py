@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
+import pytest
+
 from dear_agent.transports.agentmail import AgentMailClient, AgentMailTransport
 from dear_agent.transports.base import OutboundMessage
 
@@ -181,3 +183,17 @@ def test_client_composes_the_send_request(monkeypatch: Any) -> None:
     assert captured["method"] == "POST"
     assert captured["auth"] == "Bearer secret"
     assert b'"subject": "s"' in captured["body"]
+
+
+def test_poll_propagates_a_detail_fetch_failure() -> None:
+    """A transient get failure must not become an empty-body rejection that gets acked."""
+    client = FakeClient(messages=[message()])
+
+    def boom(inbox_id: str, message_id: str) -> dict[str, Any]:
+        raise RuntimeError("agentmail is down")
+
+    client.get_message = boom  # type: ignore[method-assign]
+    transport = AgentMailTransport(client, inbox_id=INBOX)
+
+    with pytest.raises(RuntimeError):
+        transport.poll()

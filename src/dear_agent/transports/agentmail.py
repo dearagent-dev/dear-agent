@@ -164,13 +164,16 @@ class AgentMailTransport:
         return [self._to_raw(self._full(message)) for message in fresh]
 
     def _full(self, message: dict[str, Any]) -> dict[str, Any]:
+        """The full record, including the body the list endpoint omits.
+
+        The error is **not** swallowed: returning the list record would hand the normalizer an
+        empty body, which rejects the message as empty — and the control plane then labels it
+        done, discarding a valid mail because of a transient API failure.
+        """
         message_id = message.get("message_id")
         if not message_id:
             return message
-        try:
-            return self._client.get_message(self._inbox_id, str(message_id))
-        except Exception:  # noqa: BLE001 - fall back to the list record
-            return message
+        return self._client.get_message(self._inbox_id, str(message_id))
 
     def ack(self, messages: list[RawMessage]) -> None:
         """Label handled messages so the next poll skips them (best effort)."""

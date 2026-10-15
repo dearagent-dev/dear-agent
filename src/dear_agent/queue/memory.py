@@ -77,6 +77,10 @@ class MemoryQueue:
         if stored.state != task.state:
             raise StateConflictError(task.id, task.state, stored.state)
 
+        # A requeue is a new run: it gets a new attempt number, which is what makes the runner
+        # Job name (derived from it) unique instead of colliding with the finished Job.
+        if to_state is TaskState.QUEUED and stored.state in (TaskState.FAILED, TaskState.REJECTED):
+            stored.attempts += 1
         stored.state = to_state
         if to_state != TaskState.RUNNING:
             stored.lease_until = None

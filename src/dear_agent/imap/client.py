@@ -47,7 +47,13 @@ class ImapClient:
         return data[0].split() if data and data[0] else []
 
     def fetch_raw(self, uid: bytes) -> bytes:
-        status, data = self._require().uid("FETCH", uid, "(RFC822)")
+        """Fetch a message body **without** setting ``\\Seen``.
+
+        ``BODY.PEEK[]`` rather than ``RFC822``: a plain RFC822 fetch flags the message as seen,
+        so a crash (or a failed enqueue) before ``move()`` would make it invisible to the next
+        ``UNSEEN`` search and the task would be lost from the durable queue.
+        """
+        status, data = self._require().uid("FETCH", uid, "(BODY.PEEK[])")
         if status != "OK":
             raise ImapError(f"FETCH {uid!r} failed")
         for part in data or []:

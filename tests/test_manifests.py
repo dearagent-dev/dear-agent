@@ -139,6 +139,9 @@ def test_sidecar_runner_isolates_the_harness_container() -> None:
     assert "dear-agent-model" in harness_secrets
     assert "DEAR_AGENT_HARNESS_ENV" in env_names
     assert "harness-serve" in harness["args"]
+    # Not ``--once``: the same container also runs the verify gate (and any revision), so it
+    # serves until the control container writes the shutdown marker.
+    assert "--once" not in harness["args"]
     assert harness["image"] == "__HARNESS_IMAGE__"
     # The control container does clone/push/PR, so it carries the read+write keys and the token.
     control = containers["control"]
@@ -309,7 +312,9 @@ def test_git_over_https_uses_the_forge_token() -> None:
     control = {c["name"]: c for c in sidecar["containers"]}["control"]
     env = {entry["name"]: entry.get("value") for entry in control["env"]}
     assert env["GIT_CONFIG_KEY_0"] == "credential.helper"
-    assert "${GH_TOKEN}" in env["GIT_CONFIG_VALUE_0"]
+    assert "GH_TOKEN" in env["GIT_CONFIG_VALUE_0"]
+    # The helper is host-scoped: it only offers the token to the configured Git host.
+    assert "DEAR_AGENT_GIT_HOST" in env["GIT_CONFIG_VALUE_0"]
     harness = {c["name"]: c for c in sidecar["containers"]}["harness"]
     harness_env = {entry["name"] for entry in harness["env"]}
     assert "GIT_CONFIG_KEY_0" not in harness_env

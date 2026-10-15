@@ -47,6 +47,17 @@ class SandboxPolicy:
 
 
 @runtime_checkable
+class Session(Protocol):
+    """A resource the executor owns for the length of a run and closes at the end.
+
+    ``Sandbox`` satisfies it (an OS jail with a ``close``); the two-container runner's
+    ``SidecarSession`` does too (``close`` tells the harness container to stop).
+    """
+
+    def close(self) -> None: ...
+
+
+@runtime_checkable
 class Sandbox(Protocol):
     """Wraps a command so it runs under an OS sandbox.
 
@@ -410,6 +421,7 @@ __all__ = [
     "Sandbox",
     "SandboxError",
     "SandboxPolicy",
+    "Session",
     "parse_mounts",
     "sandbox_policy_from_env",
 ]

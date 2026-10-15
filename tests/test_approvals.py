@@ -232,3 +232,57 @@ def test_build_approval_store_postgres_requires_a_dsn(monkeypatch) -> None:
 
     with pytest.raises(RuntimeError):
         build_approval_store()
+
+
+def test_a_token_burned_without_releasing_the_task_is_repaired(clock) -> None:
+    """A crash between consuming the token and moving the task must not strand the task.
+
+    The reply is re-delivered (the transport is idempotent), so the decision is recoverable.
+    """
+    queue = MemoryQueue(clock=clock)
+    task = queue.enqueue(Task(id="e1", transport_id="<m1@x>"))
+    queue.claim(task, lease=timedelta(hours=1))
+    queue.transition(queue.get("e1"), TaskState.ACTION)
+    store = MemoryApprovalStore(clock=clock)
+    service = ApprovalService(store, queue)
+    token = service.request("e1", "run")
+    # Simulate the crash: the token was consumed but the task never moved.
+    store.redeem(token)
+
+    service.apply(parse_reply(f"approve {token}"))
+
+    assert queue.get("e1").state is TaskState.QUEUED
+
+
+def test_a_used_token_for_a_task_that_already_moved_is_refused(clock) -> None:
+    from dear_agent.approvals import TokenAlreadyUsedError
+
+    queue = MemoryQueue(clock=clock)
+    task = queue.enqueue(Task(id="e1", transport_id="<m1@x>"))
+    queue.claim(task, lease=timedelta(hours=1))
+    queue.transition(queue.get("e1"), TaskState.ACTION)
+    store = MemoryApprovalStore(clock=clock)
+    service = ApprovalService(store, queue)
+    token = service.request("e1", "land")
+    service.apply(parse_reply(f"approve {token}"))
+
+    with pytest.raises(TokenAlreadyUsedError):
+        service.apply(parse_reply(f"approve {token}"))
+
+
+def test_an_expired_token_does_not_move_the_task(clock) -> None:
+    from dear_agent.approvals import ExpiredTokenError
+
+    queue = MemoryQueue(clock=clock)
+    task = queue.enqueue(Task(id="e1", transport_id="<m1@x>"))
+    queue.claim(task, lease=timedelta(hours=1))
+    queue.transition(queue.get("e1"), TaskState.ACTION)
+    store = MemoryApprovalStore(clock=clock)
+    service = ApprovalService(store, queue)
+    token = service.request("e1", "run")
+    clock.advance(timedelta(days=30))
+
+    with pytest.raises(ExpiredTokenError):
+        service.apply(parse_reply(f"approve {token}"))
+
+    assert queue.get("e1").state is TaskState.ACTION
