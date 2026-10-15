@@ -104,6 +104,10 @@ Owns worktrees, branches and pull requests. **Agents never write `main`.** Every
 an `dear-agent/<slug>` branch and a draft PR.
 
 Only the **control process** commits, pushes and opens the PR — never the harness (ADR 0007).
+In the default two-container runner the harness runs in a sibling container with no database
+DSN, no git key and no forge token; the task's `verify` command runs there too, because it
+executes on the worktree the harness just wrote. The control container hides hooks and
+executable git config from that shared worktree before it stages or pushes.
 The PR is opened through the forge's REST API behind a `Forge` seam
 (`gitplane/forge.py`: GitHub/GitLab/Gitea/Bitbucket), selected from the repository's remote host
 or `DEAR_AGENT_FORGE`, with a per-provider token passed by environment variable and no CLI

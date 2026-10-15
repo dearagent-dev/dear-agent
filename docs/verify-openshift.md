@@ -12,8 +12,11 @@ It changes nothing until you pass `--apply`/`--enqueue`, and it is idempotent. T
 script `scripts/verify-openshift.sh` runs the preflight and the enqueue for you; this document
 is the source of truth for the manual path and the troubleshooting.
 
-> Status: **prepared, not yet run against a cluster.** Follow it and record the result in
-> `TASKS.md` (M9.7) — that is what closes the item.
+> Status: **verified live on the SNO cluster** (`api-virt-daytwo-dev`, namespace `dear-agent`):
+> inbound webhook and email ingress → queue → sweep → sidecar runner → commit/push → draft PR
+> (`dear-agent-lab-python`). The record is in `TASKS.md` (M9.7). For the demo-facing walkthrough
+> use [`demo.md`](demo.md); this document stays the source of truth for the manual path and the
+> troubleshooting.
 
 ## 0. Prerequisites
 
@@ -46,12 +49,26 @@ oc -n "$NS" create secret generic dear-agent-postgres \
   --from-literal=POSTGRESQL_DATABASE=dear-agent \
   --from-literal=POSTGRESQL_ADMIN_PASSWORD="$PGPW" \
   --from-literal=DATABASE_URL="postgresql://dear-agent:$PGPW@dear-agent-postgres:5432/dear-agent"
-oc -n "$NS" create secret generic dear-agent-git-read  --from-file=ssh-privatekey="$HOME/.ssh/dear_agent_read"
-oc -n "$NS" create secret generic dear-agent-git-push  --from-file=ssh-privatekey="$HOME/.ssh/dear_agent_push"
 oc -n "$NS" create secret generic dear-agent-inbound   --from-literal=DEAR_AGENT_INBOUND_SECRET="$INBOUND_SECRET"
-# The forge token for the draft PR (one of GH_TOKEN/GITHUB_TOKEN, GITLAB_TOKEN, GITEA_TOKEN):
+# The forge token opens the draft PR over the API (ADR 0009): GH_TOKEN/GITHUB_TOKEN,
+# GITLAB_TOKEN, GITEA_TOKEN or BITBUCKET_TOKEN+BITBUCKET_USERNAME.
 oc -n "$NS" create secret generic dear-agent-forge     --from-literal=GH_TOKEN="$FORGE_TOKEN"
 ```
+
+An SSH remote additionally needs the deploy keys; the default path is **HTTPS with the forge
+token**, where they are not used (see §9):
+
+```sh
+oc -n "$NS" create secret generic dear-agent-git-read  --from-file=ssh-privatekey="$HOME/.ssh/dear_agent_read"
+oc -n "$NS" create secret generic dear-agent-git-push  --from-file=ssh-privatekey="$HOME/.ssh/dear_agent_push"
+```
+
+### The inbox gate (do not skip it)
+
+An email backend with neither `DEAR_AGENT_AUTH_DOMAINS` (DMARC) nor
+`DEAR_AGENT_ALLOWED_SENDERS` refuses to start: the rate limiter and the repository policy do not
+authenticate the *sender*, so an open mailbox turns any message into a task. Configure one, or
+set `DEAR_AGENT_ALLOW_UNAUTHENTICATED_INBOUND=true` deliberately.
 
 ### The harness model credential
 

@@ -1,8 +1,10 @@
-# OPT-IN two-container runner (ADR 0007): the untrusted harness runs in its own container
-# with no credential, so a compromised run cannot read the DB DSN or the git key.
+# The two-container runner (ADR 0007), and the **default** one: the untrusted harness runs in
+# its own container with no credential, so a compromised run cannot read the DB DSN, the git key
+# or the forge token. `deploy/base/config.yaml` points the scheduler here.
 #
-# Enable it by pointing the scheduler at this template:
+# Select it explicitly, or fall back to the single-container template:
 #   DEAR_AGENT_RUNNER_TEMPLATE_CONFIGMAP=dear-agent-runner-sidecar-template
+#   DEAR_AGENT_RUNNER_TEMPLATE_CONFIGMAP=dear-agent-runner-template   # opt-in, less isolated
 #
 # The `harness` container image bundles the harness (OpenCode today) on top of the control-plane
 # image: see deploy/harness/Containerfile. The image is a placeholder resolved by the dispatcher

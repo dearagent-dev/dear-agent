@@ -10,7 +10,9 @@ the whole pipeline work before deploying to Kubernetes.
 - **podman** (or Docker) for the local database.
 - **A harness** on your `PATH`: `opencode` (default), `claude`, or `codex`. For a local model,
   point OpenCode at it with `--model provider/model`.
-- **git** and an authenticated **`gh`** (Dear Agent opens a draft PR through the GitHub CLI).
+- **git** — Dear Agent commits and pushes; the draft PR is opened through the forge REST API,
+  so no `gh` is needed. (`DEAR_AGENT_FORGE=gh` keeps the legacy CLI path and then `gh` must be
+  installed and authenticated.)
 - Credentials only for the transport you use (see [security.md](security.md)). Nothing secret
   is needed for a fully local run with `dear-agent task enqueue`.
 
@@ -57,8 +59,9 @@ the repository and injects the harness into it.
 - **Descriptor.** `detect()` reads, in order, `.devcontainer/devcontainer.json` (a Dev
   Container), an Ansible `execution-environment.yml`, a `Containerfile`/`Dockerfile`, or
   `mise.toml`/`.tool-versions`. A declared **image** becomes the session image;
-  `DEAR_AGENT_HARNESS_IMAGE` overrides it. `build`/`Containerfile` recipes are detected but not
-  built yet (next slice).
+  `DEAR_AGENT_HARNESS_IMAGE` overrides it. A `build`/`Containerfile` recipe is **built** with
+  `DEAR_AGENT_BUILD_ENVIRONMENT=true` (`podman build` for a Containerfile, `devcontainer build`
+  for a Dev Container), naming the result `DEAR_AGENT_ENVIRONMENT_IMAGE`.
 - **Harness injection.** An environment image does not contain the harness, so Dear Agent either
   mounts a portable **bundle** (OpenCode today: a shim on `PATH` runs the bundled binary through
   its own loader) or **bootstraps** it with the harness's install recipe (Claude Code and Codex
@@ -69,7 +72,11 @@ the repository and injects the harness into it.
   unwritable home (e.g. UBI).
 - **Provisioning vs prebuild.** In the fallback (no descriptor) the harness installs the
   toolchain itself; the reproducible path is to compose a Dev Container **Feature** (or a
-  `Containerfile`) with the harness and prebuild the image (next slice).
+  `Containerfile`) with the harness — `DEAR_AGENT_HARNESS_FEATURE` adds it, so the harness is
+  baked in and no bundle is needed at run time.
+- **The repository is cloned first.** `dear-agent run <task>` prepares the checkout *before* it
+  resolves the environment, so the descriptor is read from real content rather than an empty
+  directory.
 
 On an SELinux host (Fedora/RHEL) the worktree is relabelled with `:Z` automatically
 (`DEAR_AGENT_HARNESS_CONTAINER_SELINUX=auto`, the default). Set it to `Z` to relabel the credential
