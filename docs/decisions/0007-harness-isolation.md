@@ -53,16 +53,29 @@ so no source leaves Git and no credential crosses into the harness container.
 
 ## Implementation
 
-The control/harness handshake is `runners/shared.py`: `DelegatingRunner` (control side)
-writes a credential-free request to the shared directory and waits for the result;
-`dear-agent harness-serve --dir <dir> --once` (harness side) runs the harness in the shared
-worktree and writes the result back. `build_worker` uses `DelegatingRunner` when
-`DEAR_AGENT_HARNESS_DIR` is set. The Job is `deploy/base/runner-sidecar-template.yaml` and it is
-the **default** runner template (`DEAR_AGENT_RUNNER_TEMPLATE_CONFIGMAP=dear-agent-runner-sidecar-template`
+The control/harness handshake is `runners/shared.py`: `SidecarSession` (control side) writes a
+credential-free request to the shared directory and waits for the result; `dear-agent
+harness-serve --dir <dir>` (harness side) serves requests — the harness run *and* the task's
+`verify` command — until the control container writes the shutdown marker. `build_worker` uses
+`DelegatingRunner` when `DEAR_AGENT_HARNESS_DIR` is set. The Job is
+`deploy/base/runner-sidecar-template.yaml` and it is the **default** runner template
+(`DEAR_AGENT_RUNNER_TEMPLATE_CONFIGMAP=dear-agent-runner-sidecar-template`
 in `deploy/base/config.yaml`); the harness container gets the `dear-agent-model` secret (its own
 model credential) and nothing else. The single-container `runner-template.yaml` remains for a
 simpler, less isolated setup: set `DEAR_AGENT_RUNNER_TEMPLATE_CONFIGMAP=dear-agent-runner-template`
 to use it, accepting that the write key and forge token are then visible to the harness.
+
+**Update (2026-10-15, adversarial review findings 1, 7, 15).** The `verify` gate previously ran
+in the **control** container (`CommandVerifier` got `NoSandbox` because `build_worker` left the
+session unset in sidecar mode). That defeated the boundary: an inbound task could have the
+harness edit a `Makefile`, and the control container then executed it with the database DSN, the
+Git keys and the forge token in the environment. Verification now goes through the same
+handshake, so the command runs where the harness runs, with `harness_env` and no credential.
+Two consequences followed and are implemented with it: the harness container serves **several**
+requests (a revision after an adversarial review is a second harness request, which used to wait
+out the full handshake timeout because the server had exited after `--once`), and the handshake
+is **atomic** — messages are written to a temporary file and renamed into place and carry a
+monotonic sequence number, so a half-written or stale message is never read.
 
 ## Consequences
 
@@ -70,13 +83,15 @@ to use it, accepting that the write key and forge token are then visible to the 
   control/harness split. This is a **staged** change, not a drop-in.
 - The git credential and the DB DSN never appear in the harness container at all, which also
   removes the `/proc` concern.
-- Until it lands, the residual is bounded by the earlier mitigations: the harness env is an
-  allowlist, the mail token is absent, only a **read-only** git key is mounted, and the DB role
-  should be least-privilege.
+- Repository-controlled code (the harness and the `verify` command) never executes in the
+  container that holds the credentials.
+- The harness container exits on the shutdown marker the control writes in a `finally`, and on
+  `--idle-timeout` (default 900s) as a backstop, so a killed control container cannot leave it
+  waiting forever.
 
 ## Open questions
 
 - Whether to build a dedicated harness image (per ADR 0006's `HarnessInfo.image`) for the
   sidecar, or reuse the runner image with the harness installed.
-- The exact readiness/handshake protocol and its timeout.
-- Whether to also run `verify` in the harness container.
+- ~~Whether to also run `verify` in the harness container.~~ **Decided: yes** (see the update
+  above).

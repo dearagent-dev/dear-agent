@@ -594,6 +594,12 @@ def add_harness_commands(
     parser.add_argument(
         "--once", action="store_true", help="serve one request then exit (one task per pod)"
     )
+    parser.add_argument(
+        "--idle-timeout",
+        type=float,
+        default=float(os.environ.get("DEAR_AGENT_HARNESS_IDLE_TIMEOUT", "900")),
+        help="stop serving after this many idle seconds (0 = never)",
+    )
     parser.set_defaults(handler=_handle_harness_serve, needs_queue=False)
 
 
@@ -608,7 +614,12 @@ def _handle_harness_serve(args: argparse.Namespace, context: CliContext) -> int:
     # The harness container is itself the jail and holds no credential, so no sandbox.
     runner = build_runner(os.environ.get("DEAR_AGENT_MODEL"), NoSandbox())
     context.emit(f"harness-serve: {shared}")
-    serve(shared, runner=runner, once=bool(getattr(args, "once", False)))
+    serve(
+        shared,
+        runner=runner,
+        once=bool(getattr(args, "once", False)),
+        idle_timeout=float(getattr(args, "idle_timeout", 0) or 0),
+    )
     return 0
 
 

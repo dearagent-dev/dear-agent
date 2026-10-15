@@ -13,7 +13,7 @@ from dear_agent.queue.port import Queue
 from dear_agent.review import Reviewer, ReviewVerdict
 from dear_agent.runners.port import Runner, SessionProvider
 from dear_agent.runners.worktree import RunResult, Worktree
-from dear_agent.sandbox import Sandbox
+from dear_agent.sandbox import Sandbox, Session
 from dear_agent.verify import CommandVerifier
 
 DEFAULT_LEASE = timedelta(hours=6)
@@ -60,7 +60,7 @@ class TaskExecutor:
         verifier: CommandVerifier | None = None,
         events: EventLog | None = None,
         lease: timedelta = DEFAULT_LEASE,
-        session: Sandbox | None = None,
+        session: Session | None = None,
         reviewer: Reviewer | None = None,
         debate_rounds: int = 0,
     ) -> None:

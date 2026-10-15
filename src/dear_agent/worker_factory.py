@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Mapping
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from dear_agent.environment.builder import DEFAULT_IMAGE_NAME, EnvironmentBuilder
@@ -21,6 +22,7 @@ from dear_agent.sandbox import (
     ContainerSandbox,
     NoSandbox,
     Sandbox,
+    Session,
     sandbox_policy_from_env,
 )
 from dear_agent.transports.port import Transport
@@ -400,17 +402,24 @@ def build_worker(
     from dear_agent.verify import CommandVerifier
 
     harness_dir = os.environ.get("DEAR_AGENT_HARNESS_DIR")
-    session: Sandbox | None = None
+    session: Session | None = None
+    verifier_execute = None
     if harness_dir:
         # Two-container runner: the harness runs in a sibling container (no credentials), so
         # the control container delegates to it over the shared worktree volume. The session
         # lives in the harness container, not here (ADR 0007).
-        from dear_agent.runners.shared import DelegatingRunner
+        from dear_agent.runners.shared import DelegatingRunner, SidecarSession
 
-        runner: Runner = DelegatingRunner(
+        sidecar = SidecarSession(
             harness_dir,
             timeout=float(os.environ.get("DEAR_AGENT_HARNESS_TIMEOUT", "3600")),
         )
+        runner: Runner = DelegatingRunner(sidecar)
+        session = sidecar
+        # The verify gate executes *in the harness container*: the command runs on files the
+        # harness wrote, so running it here would hand a crafted Makefile the database DSN,
+        # the Git keys and the forge token (ADR 0007).
+        verifier_execute = sidecar.run_command
     else:
         sandbox = sandbox or default_sandbox()
         routing = build_routing_runner(sandbox)
@@ -423,7 +432,10 @@ def build_worker(
             runner, session = build_runner_and_session(provider_model, sandbox, repo_path=repo_path)
     approvals = ApprovalService(build_approval_store(), queue)
     events = build_event_log()
-    verifier = CommandVerifier.from_env(os.environ, sandbox=session)
+    sandbox_for_verifier = session if isinstance(session, Sandbox) else None
+    verifier = CommandVerifier.from_env(os.environ, sandbox=sandbox_for_verifier)
+    if verifier_execute is not None:
+        verifier = replace(verifier, _execute=verifier_execute)
     executor = TaskExecutor(
         queue=queue,
         runner=runner,

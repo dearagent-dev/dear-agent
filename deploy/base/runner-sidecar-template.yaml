@@ -128,7 +128,9 @@ data:
               image: __HARNESS_IMAGE__
               imagePullPolicy: Always
               command: ["dear-agent"]
-              args: ["harness-serve", "--dir", "/work/harness", "--once"]
+              # Serve until the control container writes the shutdown marker: one run can need
+              # several requests (the harness, a revision after a review, and the verify gate).
+              args: ["harness-serve", "--dir", "/work/harness"]
               envFrom:
                 - configMapRef:
                     name: dear-agent-config
