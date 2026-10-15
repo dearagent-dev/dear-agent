@@ -623,3 +623,44 @@ def test_enqueue_is_idempotent_on_transport_id() -> None:
     assert second == 1
     assert "already exists" in output
     assert len(queue.list(TaskState.QUEUED)) == 1
+
+
+def test_run_prepares_the_checkout_before_resolving_the_environment(tmp_path) -> None:
+    """ADR 0008 reads the environment from the repository; it must be cloned first.
+
+    `build_worker` detects the descriptor from `repo_path`. On a fresh runner that path does
+    not exist yet (cloning happened later, inside the spec resolver), so a repository-declared
+    environment was silently ignored on the first run.
+    """
+    import subprocess
+
+    from dear_agent.cli.commands import _prepare_checkout
+    from dear_agent.queue.memory import MemoryQueue
+    from dear_agent.queue.models import Task, TaskSpec
+    from dear_agent.transports.memory import MemoryTransport
+
+    origin = tmp_path / "origin"
+    origin.mkdir()
+    for args in (
+        ("init", "-q"),
+        ("config", "user.email", "t@example.com"),
+        ("config", "user.name", "t"),
+    ):
+        subprocess.run(["git", *args], cwd=origin, check=True, capture_output=True)
+    (origin / "README.md").write_text("hi\n")
+    subprocess.run(["git", "add", "."], cwd=origin, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-qm", "init"], cwd=origin, check=True, capture_output=True)
+
+    queue = MemoryQueue()
+    queue.enqueue(
+        Task(
+            id="e1",
+            transport_id="<m1@x>",
+            spec=TaskSpec(repo_url=str(origin), instructions="do it"),
+        )
+    )
+    dest = tmp_path / "work" / "source"
+
+    _prepare_checkout(queue, MemoryTransport(), str(dest), "e1")
+
+    assert (dest / ".git").exists()

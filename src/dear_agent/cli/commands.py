@@ -691,6 +691,12 @@ def _handle_run(args: argparse.Namespace, context: CliContext) -> int:
         if existing is not None and existing.spec is not None:
             model = existing.spec.model_request
     transport = build_transport(args.backend)
+    if args.task_id:
+        # Prepare the checkout *before* the worker resolves the execution environment (ADR
+        # 0008): `build_worker` reads the environment descriptor from `repo_path`, and on a
+        # fresh runner that directory does not exist yet (the spec resolver clones it later),
+        # so a repository-declared environment was ignored on the first run.
+        _prepare_checkout(queue, transport, args.repo, args.task_id)
     worker = build_worker(
         queue=queue,
         transport=transport,
@@ -712,6 +718,25 @@ def _handle_run(args: argparse.Namespace, context: CliContext) -> int:
         context.emit(f"{evidence.task_id} {evidence.branch} {evidence.pr_url}")
     # Mirror the task outcome in the exit code so a runner Job reflects success/failure.
     return 0 if evidence.ok else 1
+
+
+def _prepare_checkout(queue, transport, repo_path: str, task_id: str) -> None:
+    """Clone the task's repository before the execution environment is resolved (ADR 0008).
+
+    A repository declares its environment (Dev Container, EE, `Containerfile`, …); the worker
+    detects it from ``repo_path``. Cloning here means the descriptor is read from real content
+    instead of an empty directory. A clone failure is not raised: the spec resolver reports it
+    inside the run, with the task's own error handling.
+    """
+    from dear_agent.repo import RepoError, RepoPreparer
+
+    task = queue.get(task_id)
+    if task is None or task.spec is None or not task.spec.repo_url:
+        return
+    try:
+        RepoPreparer().ensure(repo_path, task.spec.repo_url)
+    except (RepoError, OSError):
+        return
 
 
 def add_approval_commands(
