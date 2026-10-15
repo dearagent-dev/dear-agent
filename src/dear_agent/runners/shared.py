@@ -214,7 +214,14 @@ class SidecarSession:
         """Run ``argv`` in the harness container. Matches ``verify.Executor``'s signature."""
         seq = self._next_seq()
         request = CommandRequest(argv=list(argv), cwd=cwd, timeout=float(timeout), seq=seq)
-        result = self._request(COMMAND_REQUEST_FILE, COMMAND_RESULT_FILE, request.dumps(), seq)
+        try:
+            result = self._request(COMMAND_REQUEST_FILE, COMMAND_RESULT_FILE, request.dumps(), seq)
+        except SidecarError as exc:
+            # A dead harness container must read as a failed command, not as a crash inside the
+            # verifier: the executor turns this into VERIFY_FAILED.
+            return subprocess.CompletedProcess(
+                args=list(argv), returncode=124, stdout="", stderr=str(exc)
+            )
         return subprocess.CompletedProcess(
             args=list(argv),
             returncode=int(result.get("exit_code", 1)),
