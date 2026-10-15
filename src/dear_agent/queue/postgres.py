@@ -190,11 +190,16 @@ class PostgresQueue:
         evidence: Evidence | None = None,
     ) -> Task:
         now = self._clock()
+        # Returning a terminal task to `queued` is a new run, so it gets a new attempt number:
+        # the runner Job name is derived from it, and a finished Job keeps its name for 24h, so
+        # without this a requeued task would collide with its own Job and never run again.
+        bump = to_state is TaskState.QUEUED and task.state in (TaskState.FAILED, TaskState.REJECTED)
         with self._conn.cursor() as cur:
             cur.execute(
                 f"""
                 UPDATE dear_agent_task
                    SET state = %s,
+                       attempts = CASE WHEN %s THEN attempts + 1 ELSE attempts END,
                        lease_until = CASE WHEN %s = 'running' THEN lease_until ELSE NULL END,
                        updated_at = %s,
                        branch = COALESCE(%s, branch),
@@ -205,6 +210,7 @@ class PostgresQueue:
                 """,
                 (
                     to_state.value,
+                    bump,
                     to_state.value,
                     now,
                     evidence.branch if evidence else None,

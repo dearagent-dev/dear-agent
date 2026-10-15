@@ -243,3 +243,21 @@ def test_release_stale_ignores_unexpired_and_non_running(
     queue.claim(running, lease=LEASE)
 
     assert queue.release_stale(now=clock.now) == []
+
+
+def test_requeue_bumps_the_attempt_so_the_job_name_changes(clock) -> None:
+    """A requeued task must not collide with its own finished runner Job.
+
+    The Job name is derived from the attempt, and a finished Job keeps its name for 24h.
+    """
+    queue = MemoryQueue(clock=clock)
+    task = queue.enqueue(Task(id="e1", transport_id="<m1@x>"))
+    queue.claim(task, lease=timedelta(hours=1))
+    running = queue.get("e1")
+    queue.transition(running, TaskState.FAILED)
+    before = queue.get("e1").attempts
+
+    requeued = queue.transition(queue.get("e1"), TaskState.QUEUED)
+
+    assert requeued.state is TaskState.QUEUED
+    assert requeued.attempts == before + 1

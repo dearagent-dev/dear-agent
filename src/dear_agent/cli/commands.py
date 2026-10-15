@@ -716,6 +716,16 @@ def _handle_run(args: argparse.Namespace, context: CliContext) -> int:
         context.emit_json(payload)
     else:
         context.emit(f"{evidence.task_id} {evidence.branch} {evidence.pr_url}")
+    if not evidence.ok:
+        # The runner's log is operator-facing and is what a live demo reads, so say *why* it
+        # failed (the failure kind plus the tail of the harness output). This is not the
+        # transport: nothing here travels to the sender, and no source is printed.
+        context.emit(f"failed: {evidence.failure.value if evidence.failure else 'unknown'}")
+        if evidence.detail:
+            context.emit(f"  detail: {evidence.detail}")
+        tail = (evidence.run.stderr or evidence.run.stdout or "").strip().splitlines()
+        for line in tail[-5:]:
+            context.emit(f"  {line}")
     # Mirror the task outcome in the exit code so a runner Job reflects success/failure.
     return 0 if evidence.ok else 1
 

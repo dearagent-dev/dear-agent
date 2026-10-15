@@ -41,3 +41,7 @@ src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+# The console embeds its HTML/CSS/JS page in one string, so its lines are as long as the page.
+"scripts/demo_console.py" = ["E501"]

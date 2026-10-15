@@ -317,6 +317,14 @@ def serve(
                 result = runner.run(task, spec, worktree)
             except Exception as exc:  # noqa: BLE001 - report a broken harness; keep serving
                 result = RunResult(exit_code=1, stderr=f"harness raised {type(exc).__name__}")
+            # Print what the harness did: this container's log is the operator's (and the
+            # demo console's) window onto the agent, and on a failure it is the only place the
+            # reason is visible.
+            print(f"[dear-agent] harness exit={result.exit_code}", flush=True)
+            for line in (result.stdout or "").strip().splitlines()[-40:]:
+                print(f"  {line}", flush=True)
+            for line in (result.stderr or "").strip().splitlines()[-40:]:
+                print(f"  {line}", flush=True)
             payload = asdict(result)
             payload["seq"] = request.seq
             # Write the result before removing the request: a crash in between is retried,

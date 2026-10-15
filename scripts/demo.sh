@@ -111,6 +111,51 @@ preflight() {
   fi
   control dear-agent task ls 2>/dev/null | sed 's/^/  /' || true
 
+  step "Model credential (the demo's one external dependency)"
+  # The harness calls the provider on every run. OpenCode asks for up to 32k output tokens by
+  # default, and a key with a small spend limit dies mid-run with "This request requires more
+  # credits" — or, less helpfully, an opaque "Unexpected server error". Check it *before* the
+  # audience is watching.
+  local model_cfg
+  model_cfg="$($KUBECTL -n "$NAMESPACE" get secret dear-agent-model \
+    -o jsonpath='{.data.OPENCODE_CONFIG_CONTENT}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+  if [[ -z "$model_cfg" ]]; then
+    warn "secret dear-agent-model has no OPENCODE_CONFIG_CONTENT: the harness cannot call a model"
+  else
+    if ! MODEL_CFG="$model_cfg" python3 - <<'PY'
+import json, os, urllib.request
+cfg = json.loads(os.environ["MODEL_CFG"])
+provider = next(iter(cfg.get("provider") or {}), "")
+key = ((cfg.get("provider") or {}).get(provider) or {}).get("options", {}).get("apiKey", "")
+model = cfg.get("small_model", "")
+print(f"  provider: {provider} · small model: {model or '(default: may be an image model!)'}")
+if provider != "openrouter" or not key:
+    print("  (credit check skipped: only openrouter is probed)")
+    raise SystemExit(0)
+req = urllib.request.Request(
+    "https://openrouter.ai/api/v1/credits", headers={"Authorization": f"Bearer {key}"}
+)
+try:
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        data = json.load(resp)["data"]
+except Exception as exc:  # noqa: BLE001 - a network hiccup is a warning, not a failure
+    print(f"  could not reach openrouter: {type(exc).__name__}")
+    raise SystemExit(0)
+left = float(data.get("total_credits", 0)) - float(data.get("total_usage", 0))
+if left < 1:
+    print(f"  openrouter balance is ${left:.2f}: a run will die mid-way.")
+    print("  Top the account up, lower the model's output limit in OPENCODE_CONFIG_CONTENT,")
+    print("  or point DEAR_AGENT_MODEL at a provider/model with credit.")
+    raise SystemExit(3)
+print(f"  balance ${left:.2f}")
+PY
+    then
+      bad "the model credential is not usable (see above): fix it before demoing"; failed=1
+    else
+      ok "model credential is funded"
+    fi
+  fi
+
   if [[ "$failed" == 1 ]]; then
     echo; bold "Preflight FAILED — fix the items above before demoing."; exit 1
   fi
