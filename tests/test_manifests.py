@@ -309,7 +309,9 @@ def test_git_over_https_uses_the_forge_token() -> None:
     control = {c["name"]: c for c in sidecar["containers"]}["control"]
     env = {entry["name"]: entry.get("value") for entry in control["env"]}
     assert env["GIT_CONFIG_KEY_0"] == "credential.helper"
-    assert "${GH_TOKEN}" in env["GIT_CONFIG_VALUE_0"]
+    assert "GH_TOKEN" in env["GIT_CONFIG_VALUE_0"]
+    # The helper is host-scoped: it only offers the token to the configured Git host.
+    assert "DEAR_AGENT_GIT_HOST" in env["GIT_CONFIG_VALUE_0"]
     harness = {c["name"]: c for c in sidecar["containers"]}["harness"]
     harness_env = {entry["name"] for entry in harness["env"]}
     assert "GIT_CONFIG_KEY_0" not in harness_env

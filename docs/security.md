@@ -129,6 +129,15 @@ Owner: gitplane + repository settings.
 - A repository that no *enabled* project policy matches is **refused**: once policies are
   configured, one cannot ask Dear Agent to work on a repo the operator did not allow. Scope the
   push credential to the allowed repos and keep branch protection as the last line.
+- The policy matcher compares the **host** and the `owner/repo` slug separately
+  (`policy.split_repo`). A hostless pattern such as `acme/*` only matches a remote on a trusted
+  host (`DEAR_AGENT_GIT_HOST`, default `github.com`); a URL that merely contains it
+  (`https://evil.example/github.com/acme/widget`) has the host `evil.example` and is refused.
+  A pattern that names a host authorizes exactly that host.
+- `RepoPreparer` repeats the host check before cloning and refuses to reuse a checkout whose
+  `origin` is a different repository, so the control container's Git credential is only ever
+  offered to the approved host. The runner's `credential.helper` is host-scoped for the same
+  reason.
 
 Owner: queue + notifier + runner.
 

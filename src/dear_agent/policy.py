@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import fnmatch
 import json
-from collections.abc import Iterable
+import os
+import urllib.parse
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
@@ -10,6 +12,11 @@ from typing import Any, Protocol, runtime_checkable
 import yaml
 
 from dear_agent.queue.models import utcnow
+
+# The Git host a deployment trusts by default. A hostless policy pattern (``owner/repo``) only
+# matches a remote on a trusted host, so a URL that merely *contains* the host — e.g.
+# ``https://evil.example/github.com/o/r`` — is refused instead of matching ``o/r``.
+DEFAULT_GIT_HOST = "github.com"
 
 POLICY_SCHEMA_STATEMENTS: tuple[str, ...] = (
     """
@@ -54,9 +61,30 @@ class ProjectPolicy:
     verify_allow: tuple[str, ...] = ()
     source: str | None = None
 
-    def matches(self, repo: str) -> bool:
-        slug = normalize_repo(repo)
-        return any(fnmatch.fnmatch(slug, normalize_repo(pattern)) for pattern in self.repos)
+    def matches(self, repo: str, *, hosts: Sequence[str] | None = None) -> bool:
+        """True when ``repo`` is allowed by this policy.
+
+        The **host** is checked separately from the ``owner/repo`` slug. A pattern that names
+        a host (``gitlab.com/acme/*``) authorizes exactly that host. A hostless pattern
+        (``acme/*``) only matches a repository on a trusted Git host
+        (``DEAR_AGENT_GIT_HOST``, default ``github.com``). A URL that merely *contains* the
+        trusted host — ``https://evil.example/github.com/acme/widget`` — has the host
+        ``evil.example`` and is refused, which closes the allowlist bypass that let an
+        attacker host ride a hostless pattern.
+        """
+        allowed = _allowed_hosts(hosts)
+        host, slug = split_repo(repo)
+        for pattern in self.repos:
+            pattern_host, pattern_slug = split_repo(pattern)
+            if pattern_host is not None:
+                if pattern_host == host and fnmatch.fnmatch(slug, pattern_slug):
+                    return True
+                continue
+            if host is not None and host not in allowed:
+                continue
+            if fnmatch.fnmatch(slug, pattern_slug):
+                return True
+        return False
 
 
 @runtime_checkable
@@ -69,16 +97,54 @@ class PolicyStore(Protocol):
     def for_repo(self, repo: str) -> ProjectPolicy | None: ...
 
 
-def normalize_repo(repo: str) -> str:
-    """Reduce a repo URL or slug to ``owner/repo`` so patterns can be matched."""
-    value = repo.strip().lower().rstrip("/")
+def split_repo(repo: str) -> tuple[str | None, str]:
+    """Split a remote into ``(host, owner/repo)``. ``host`` is None for a bare slug.
+
+    The host is parsed, never substring-searched: a URL that merely *contains* the forge host —
+    ``https://evil.example/github.com/acme/widget`` or ``https://github.com@evil.example/...`` —
+    yields the real host (``evil.example``), not the embedded one.
+    """
+    value = repo.strip().rstrip("/")
     if value.endswith(".git"):
         value = value[:-4]
-    if "github.com/" in value:
-        value = value.split("github.com/", 1)[1]
-    elif value.startswith("git@") and ":" in value:
-        value = value.split(":", 1)[1]
-    return value
+    if "://" in value:
+        parsed = urllib.parse.urlparse(value)
+        host = parsed.hostname.lower() if parsed.hostname else None
+        return host, parsed.path.strip("/").lower()
+    if value.startswith("git@") and ":" in value:
+        host_part, _, path = value.partition(":")
+        return host_part.split("@", 1)[-1].lower(), path.strip("/").lower()
+    # A bare ``host/owner/repo`` (the first segment looks like a host) vs an ``owner/repo`` slug.
+    head, sep, rest = value.partition("/")
+    if sep and "." in head:
+        return head.lower(), rest.strip("/").lower()
+    return None, value.lower()
+
+
+def normalize_repo(repo: str) -> str:
+    """Reduce a repo URL or slug to ``host/owner/repo`` (or ``owner/repo`` for a bare slug)."""
+    host, slug = split_repo(repo)
+    return slug if host is None else f"{host}/{slug}"
+
+
+def _allowed_hosts(hosts: Sequence[str] | None) -> frozenset[str]:
+    """The Git hosts a hostless policy pattern may match."""
+    if hosts is not None:
+        return frozenset(host.lower() for host in hosts if host and host.strip())
+    return frozenset(_configured_git_hosts())
+
+
+def _configured_git_hosts() -> tuple[str, ...]:
+    """``DEAR_AGENT_GIT_HOST`` (comma/semicolon-separated), default ``github.com``.
+
+    The deployment's forge is the trusted host, so the safe value is the default rather than
+    an open set. Several hosts can be listed for a deployment that mirrors repositories.
+    """
+    raw = os.environ.get("DEAR_AGENT_GIT_HOST") or DEFAULT_GIT_HOST
+    return (
+        tuple(part.strip().lower() for part in raw.replace(";", ",").split(",") if part.strip())
+        or (DEFAULT_GIT_HOST,)
+    )
 
 
 def parse_policy(text: str, *, source: str | None = None) -> ProjectPolicy:
@@ -243,5 +309,6 @@ __all__ = [
     "load_policies",
     "normalize_repo",
     "parse_policy",
+    "split_repo",
     "sync_policies",
 ]

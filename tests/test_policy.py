@@ -11,6 +11,7 @@ from dear_agent.policy import (
     load_policies,
     normalize_repo,
     parse_policy,
+    split_repo,
     sync_policies,
 )
 
@@ -46,9 +47,16 @@ def test_parse_policy_requires_a_project() -> None:
 
 
 def test_normalize_repo_handles_urls_and_slugs() -> None:
-    assert normalize_repo("https://github.com/Acme/Widget.git") == "acme/widget"
-    assert normalize_repo("git@github.com:Acme/Widget.git") == "acme/widget"
+    assert normalize_repo("https://github.com/Acme/Widget.git") == "github.com/acme/widget"
+    assert normalize_repo("git@github.com:Acme/Widget.git") == "github.com/acme/widget"
+    assert normalize_repo("ssh://git@github.com:22/Acme/Widget.git") == "github.com/acme/widget"
     assert normalize_repo("Acme/Widget") == "acme/widget"
+
+
+def test_split_repo_separates_the_host_from_the_slug() -> None:
+    assert split_repo("https://github.com/acme/widget.git") == ("github.com", "acme/widget")
+    assert split_repo("git@gitlab.com:acme/widget.git") == ("gitlab.com", "acme/widget")
+    assert split_repo("acme/widget") == (None, "acme/widget")
 
 
 def test_policy_matches_a_repo_by_glob() -> None:
@@ -56,6 +64,43 @@ def test_policy_matches_a_repo_by_glob() -> None:
 
     assert policy.matches("https://github.com/acme/widget") is True
     assert policy.matches("https://github.com/other/widget") is False
+
+
+def test_policy_rejects_a_lookalike_host() -> None:
+    """A URL that merely *contains* github.com must not match a hostless pattern.
+
+    This is the allowlist bypass: ``normalize_repo`` used to split on the first
+    ``github.com/`` anywhere in the string, so an attacker host embedding it in its path
+    matched the policy while ``RepoPreparer`` cloned the attacker's repository.
+    """
+    policy = ProjectPolicy(project="p", repos=("acme/*",))
+
+    assert policy.matches("https://evil.example/github.com/acme/widget.git") is False
+    assert policy.matches("https://github.com.evil.example/acme/widget.git") is False
+    assert policy.matches("https://evil.example/acme/widget.git") is False
+    assert policy.matches("https://evil.example/acme/widget") is False
+    assert policy.matches("evil.example/acme/widget") is False
+
+
+def test_policy_rejects_url_userinfo_spoofing() -> None:
+    """``https://github.com@evil.example/acme/widget`` is the host evil.example."""
+    policy = ProjectPolicy(project="p", repos=("acme/*",))
+
+    assert policy.matches("https://github.com@evil.example/acme/widget.git") is False
+
+
+def test_policy_accepts_an_explicit_host_pattern() -> None:
+    policy = ProjectPolicy(project="p", repos=("gitlab.com/acme/*",))
+
+    assert policy.matches("https://gitlab.com/acme/widget") is True
+    assert policy.matches("https://github.com/acme/widget") is False
+
+
+def test_policy_honours_the_configured_hosts() -> None:
+    policy = ProjectPolicy(project="p", repos=("acme/*",))
+
+    assert policy.matches("https://gitlab.com/acme/widget", hosts=("gitlab.com",)) is True
+    assert policy.matches("https://github.com/acme/widget", hosts=("gitlab.com",)) is False
 
 
 def test_memory_store_satisfies_the_port() -> None:
