@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from email.message import EmailMessage
 
+from dear_agent.imap.client import ImapClient
 from dear_agent.transports.base import OutboundMessage
 from dear_agent.transports.imap import ImapSmtpTransport
 from dear_agent.transports.port import Transport
@@ -158,3 +159,35 @@ def test_send_requires_a_recipient() -> None:
     except ValueError:
         return
     raise AssertionError("expected ValueError")
+
+
+class _RecordingConnection:
+    """A minimal ``imaplib`` stand-in that records the commands the client sends."""
+
+    def __init__(self) -> None:
+        self.commands: list[tuple] = []
+
+    def uid(self, command: str, *args: object) -> tuple[str, list]:
+        self.commands.append((command, args))
+        if command == "FETCH":
+            return "OK", [(b"1 (BODY[] {3}", b"raw")]
+        return "OK", [b"7"]
+
+
+def test_fetch_uses_body_peek_so_it_does_not_mark_the_message_seen() -> None:
+    """A crash before ``move()`` must not lose the task.
+
+    ``RFC822`` sets ``\\Seen``, so the message would drop out of the next ``UNSEEN`` search
+    while the durable queue never received it.
+    """
+    client = ImapClient(host="h", user="u", password="p")
+    connection = _RecordingConnection()
+    client._conn = connection
+
+    body = client.fetch_raw(b"7")
+
+    assert body == b"raw"
+    command, args = connection.commands[-1]
+    assert command == "FETCH"
+    assert "BODY.PEEK[]" in args[1]
+    assert "RFC822" not in args[1]

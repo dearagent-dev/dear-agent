@@ -51,6 +51,23 @@ def test_job_name_is_dns1123_and_distinct() -> None:
     assert job_name("a/b") != job_name("a-b")
 
 
+def test_a_retried_task_gets_a_new_job_name() -> None:
+    """A released task must not collide with its own terminal Job (finding: retry).
+
+    Finished Jobs are kept for 24h, so a name that ignored the attempt made every sweep report
+    the task as dispatched while the old (failed/completed) Job kept the name.
+    """
+    assert job_name("e1", 0) != job_name("e1", 1)
+    assert job_name("e1", 1) == job_name("e1", 1)
+    assert len(job_name("x" * 200, 12)) <= 63
+
+
+def test_render_job_uses_the_task_attempt_in_the_name() -> None:
+    job = render_job(TEMPLATE, Task(id="e1", transport_id="<m1@x>", attempts=2))
+
+    assert job["metadata"]["name"] == job_name("e1", 2)
+
+
 def test_render_job_cannot_be_injected_by_a_hostile_task_id() -> None:
     task = Task(id="x\n  evil: true", transport_id="<m1@x>")
 

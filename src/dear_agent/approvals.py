@@ -101,6 +101,7 @@ class ApprovalStore(Protocol):
     def get(self, token: str) -> Approval | None: ...
     def redeem(self, token: str) -> Approval: ...
     def pending(self) -> list[Approval]: ...
+    def now(self) -> datetime: ...
 
 
 class _ApprovalRegistry:
@@ -146,6 +147,10 @@ class _ApprovalRegistry:
 
     def pending(self) -> list[Approval]:
         return [approval for approval in self._by_token.values() if not approval.used]
+
+    def now(self) -> datetime:
+        """The store's clock, so a caller can check expiry without its own clock."""
+        return self._clock()
 
     def _persist(self) -> None:
         """Hook for durable subclasses; memory does nothing."""
@@ -296,6 +301,10 @@ class PostgresApprovalStore:
             rows = cur.fetchall()
         self._conn.commit()
         return [_approval_from_row(row) for row in rows]
+
+    def now(self) -> datetime:
+        """The store's clock, so a caller can check expiry without its own clock."""
+        return self._clock()
 
 
 def _approval_from_row(row: tuple) -> Approval:
