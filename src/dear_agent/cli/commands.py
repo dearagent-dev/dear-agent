@@ -315,11 +315,9 @@ def _inbound_plane(queue, transport):
     Email cannot carry Dear Agent's HMAC header, so the transport-level gate is what
     authenticates it.
     """
-    from datetime import timedelta
-
     from dear_agent.approvals import build_approval_store
     from dear_agent.approvals_service import ApprovalService
-    from dear_agent.auth import EmailAuthGate, RateLimitedGate, RateLimiter, SenderAllowlist
+    from dear_agent.auth import build_email_gate
     from dear_agent.control_plane import ControlPlane
     from dear_agent.decision.factory import build_decider
     from dear_agent.decision.router import HumanGate
@@ -329,17 +327,9 @@ def _inbound_plane(queue, transport):
     from dear_agent.policy import build_policy_store
     from dear_agent.security import InjectionScanner
 
-    gate = EmailAuthGate.from_env(os.environ)
-    if gate is None:
-        gate = SenderAllowlist.from_env(os.environ.get("DEAR_AGENT_ALLOWED_SENDERS"))
-    # Rate-limit the email path too: a mail burst must not become a burst of agent runs.
-    gate = RateLimitedGate(
-        gate=gate,
-        rate_limiter=RateLimiter(
-            limit=int(os.environ.get("DEAR_AGENT_RATE_LIMIT", "60")),
-            window=timedelta(minutes=1),
-        ),
-    )
+    # The email path authenticates the sender here (DMARC or an allowlist) and is rate limited;
+    # a real email backend refuses to start without one. See auth.build_email_gate.
+    gate = build_email_gate(os.environ)
     decider = build_decider()
     return ControlPlane(
         transport=transport,

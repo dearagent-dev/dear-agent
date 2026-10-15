@@ -29,6 +29,14 @@ class AuthError(Exception):
     """Base class for inbound authentication errors."""
 
 
+class InboundGateError(RuntimeError):
+    """An email backend was started without any inbound authentication configured."""
+
+
+def _flag(value: str | None) -> bool:
+    return (value or "").strip().lower() in ("1", "true", "yes", "on")
+
+
 class MissingSignatureError(AuthError):
     """The message carried no signature header."""
 
@@ -278,6 +286,40 @@ def parse_authentication_results(raw: str) -> dict[str, str]:
     return verdicts
 
 
+def build_email_gate(env: Mapping[str, str]) -> RateLimitedGate:
+    """The inbound gate for an email transport, rate limited.
+
+    Email cannot carry Dear Agent's HMAC header, so the transport-level gate is what
+    authenticates the sender — and neither the rate limiter nor the repository policy does
+    that. A **real email backend can only start when one is configured**
+    (``DEAR_AGENT_AUTH_DOMAINS`` for DMARC, or ``DEAR_AGENT_ALLOWED_SENDERS``); otherwise any
+    message addressed to the mailbox becomes a task. A deployment that accepts that sets
+    ``DEAR_AGENT_ALLOW_UNAUTHENTICATED_INBOUND=true`` explicitly, so the unsafe state is a
+    decision instead of an omission.
+    """
+    backend = (env.get("DEAR_AGENT_BACKEND") or "memory").strip().lower()
+    gate: Gate | None = EmailAuthGate.from_env(env)
+    if gate is None:
+        gate = SenderAllowlist.from_env(env.get("DEAR_AGENT_ALLOWED_SENDERS"))
+    if (
+        gate is None
+        and backend != "memory"
+        and not _flag(env.get("DEAR_AGENT_ALLOW_UNAUTHENTICATED_INBOUND"))
+    ):
+        raise InboundGateError(
+            f"backend {backend!r} has no inbound authentication: set DEAR_AGENT_AUTH_DOMAINS "
+            "(DMARC) or DEAR_AGENT_ALLOWED_SENDERS, or set "
+            "DEAR_AGENT_ALLOW_UNAUTHENTICATED_INBOUND=true to accept mail from anyone"
+        )
+    return RateLimitedGate(
+        gate=gate,
+        rate_limiter=RateLimiter(
+            limit=int(env.get("DEAR_AGENT_RATE_LIMIT", "60")),
+            window=timedelta(minutes=1),
+        ),
+    )
+
+
 @dataclass(slots=True)
 class EmailAuthGate:
     """Admits email only when the receiving MTA authenticated it (SPF/DKIM/DMARC).
@@ -347,6 +389,7 @@ __all__ = [
     "Gate",
     "InboundAuthorizer",
     "InboundGate",
+    "InboundGateError",
     "MissingSignatureError",
     "RateLimitedError",
     "RateLimitedGate",
@@ -354,6 +397,7 @@ __all__ = [
     "SIGNATURE_HEADER",
     "SenderAllowlist",
     "UnauthorizedSenderError",
+    "build_email_gate",
     "parse_authentication_results",
     "sign",
 ]

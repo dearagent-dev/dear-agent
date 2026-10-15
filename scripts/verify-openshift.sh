@@ -72,6 +72,9 @@ secret_key() { "$KUBECTL" -n "$NAMESPACE" get secret "$1" -o jsonpath="{.data.$2
 require_key() {
   if [[ -n "$(secret_key "$1" "$2")" ]]; then pass "secret $1 has $2"; else fail "secret $1 is missing key $2"; fi
 }
+optional_key() {
+  if [[ -n "$(secret_key "$1" "$2")" ]]; then pass "secret $1 has $2"; else warn "secret $1 has no $2 (fine for an HTTPS remote)"; fi
+}
 require_one_key() {
   local name=$1; shift
   for key in "$@"; do
@@ -81,8 +84,10 @@ require_one_key() {
 }
 
 require_key dear-agent-postgres DATABASE_URL
-require_key dear-agent-git-read ssh-privatekey
-require_key dear-agent-git-push ssh-privatekey
+# A deploy key is only needed for an SSH remote. The runner's default path is HTTPS with the
+# forge token (see docs/verify-openshift.md §9), so a missing key is a warning, not a failure.
+optional_key dear-agent-git-read ssh-privatekey
+optional_key dear-agent-git-push ssh-privatekey
 require_key dear-agent-inbound DEAR_AGENT_INBOUND_SECRET
 require_one_key dear-agent-forge GH_TOKEN GITHUB_TOKEN GITLAB_TOKEN GITEA_TOKEN
 if "$KUBECTL" -n "$NAMESPACE" get secret dear-agent-model >/dev/null 2>&1; then
@@ -107,7 +112,7 @@ section "Runner template and config"
 if "$KUBECTL" -n "$NAMESPACE" get configmap dear-agent-runner-sidecar-template >/dev/null 2>&1; then
   pass "sidecar runner template is present"
   harness_image=$("$KUBECTL" -n "$NAMESPACE" get configmap dear-agent-runner-sidecar-template \
-    -o jsonpath='{.data.job\.yaml}' | grep -m1 'image: .*harness' || true)
+    -o jsonpath='{.data.job\.yaml}' | grep -m1 -E 'image: +(__HARNESS_IMAGE__|.*harness)' || true)
   if [[ -n "$harness_image" ]]; then
     pass "harness container image: ${harness_image##*image: }"
   else
@@ -126,11 +131,19 @@ are visible to the harness in the single-container runner)"
 fi
 
 section "Images"
-for image in quay.io/dear-agent/dear-agent:latest quay.io/dear-agent/harness:latest; do
+# The dispatcher injects the runner/harness images from the config, so check those values
+# rather than a hardcoded pair of tags (the harness is a tag in the same repository, not a
+# separate `dear-agent/harness` repo).
+runner_image=$("$KUBECTL" -n "$NAMESPACE" get configmap dear-agent-config \
+  -o jsonpath='{.data.DEAR_AGENT_RUNNER_IMAGE}' 2>/dev/null || true)
+harness_image_cfg=$("$KUBECTL" -n "$NAMESPACE" get configmap dear-agent-config \
+  -o jsonpath='{.data.DEAR_AGENT_HARNESS_IMAGE}' 2>/dev/null || true)
+for image in "$runner_image" "$harness_image_cfg"; do
+  [[ -z "$image" ]] && continue
   if "$KUBECTL" -n "$NAMESPACE" get pods -o jsonpath='{.items[*].spec.containers[*].image}' 2>/dev/null | grep -q "$image"; then
     pass "image in use: $image"
   else
-    warn "image not seen in running pods: $image (may still be pullable)"
+    warn "image not seen in running pods: $image (the runner pulls it when a task dispatches)"
   fi
 done
 
