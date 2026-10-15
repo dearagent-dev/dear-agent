@@ -77,6 +77,16 @@ out the full handshake timeout because the server had exited after `--once`), an
 is **atomic** — messages are written to a temporary file and renamed into place and carry a
 monotonic sequence number, so a half-written or stale message is never read.
 
+**Update (2026-10-15, adversarial review finding 2).** The two containers share one volume, so
+the harness could write the checkout's `.git/hooks` or local config and have the **control**
+container execute it when it staged, committed or pushed (``core.hooksPath``, a clean/smudge
+``filter``, ``core.fsmonitor``, ``core.sshCommand``, ``url.*.insteadOf``, ``diff.*.textconv``).
+``GitPlane`` now runs every control-side git command with hooks pinned off
+(``-c core.hooksPath=<nonexistent>``, ``-c core.fsmonitor=false``), drops those keys from the
+checkout config before staging or pushing, and re-checks the remote's host right before the
+push. Credentials are unaffected: the runner supplies them through the environment
+(``GIT_CONFIG_*``) or the operator's global config, which the harness cannot write.
+
 ## Consequences
 
 - The runner becomes a two-container pod; the K8s dispatch and the runner CLI grow a

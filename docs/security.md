@@ -138,6 +138,12 @@ Owner: gitplane + repository settings.
   `origin` is a different repository, so the control container's Git credential is only ever
   offered to the approved host. The runner's `credential.helper` is host-scoped for the same
   reason.
+- The control container runs its git commands with hooks **disabled** (`core.hooksPath` pinned,
+  `core.fsmonitor` off) and drops the checkout config that makes git execute a program
+  (clean/smudge `filter.*`, `diff.*.textconv`, `core.sshCommand`, `url.*.insteadOf`, …) before
+  staging or pushing. In the two-container runner the harness writes the same volume, so
+  without this a `.git/hooks/pre-push` it dropped would run with the database DSN and the forge
+  token in the environment. The push also re-checks the remote's host immediately before it.
 
 Owner: queue + notifier + runner.
 
